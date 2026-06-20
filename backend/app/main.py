@@ -33,7 +33,13 @@ app.add_middleware(
 
 def create_agro_ai_model() -> AgroAiCreditModel:
     configured_model_path = os.getenv("AGRO_AI_MODEL_PATH")
-    candidate_paths = [_resolve_path(configured_model_path)] if configured_model_path else [DEFAULT_MODEL_PATH]
+    candidate_paths: list[Path] = []
+    if configured_model_path:
+        resolved_path = _resolve_path(configured_model_path)
+        if resolved_path:
+            candidate_paths.append(resolved_path)
+    if DEFAULT_MODEL_PATH not in candidate_paths:
+        candidate_paths.append(DEFAULT_MODEL_PATH)
 
     for candidate_path in candidate_paths:
         if candidate_path and candidate_path.exists():
@@ -113,7 +119,11 @@ def get_credit_summary() -> dict[str, Any]:
     eligible_count = sum(1 for item in assessments if item["eligible"])
     high_risk_count = sum(1 for item in assessments if item["risk_band"] == "High risk")
     review_count = sum(1 for item in assessments if item["risk_band"] == "Watchlist")
-    average_score = round(sum(item["score"] for item in assessments) / len(assessments), 1)
+    average_score = (
+        round(sum(item["score"] for item in assessments) / len(assessments), 1)
+        if assessments
+        else 0.0
+    )
 
     return {
         "model_version": agro_ai.model_version,

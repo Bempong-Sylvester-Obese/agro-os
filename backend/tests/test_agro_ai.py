@@ -8,7 +8,7 @@ from app.agro_ai.audit import PredictionAuditLogger
 from app.agro_ai.evaluation import train_and_evaluate
 from app.agro_ai.model import AgroAiCreditModel, save_model_artifact
 from app.agro_ai.synthetic_data import DEMO_FARMERS
-from app.main import app, prediction_audit
+from app.main import app, create_agro_ai_model, prediction_audit
 
 
 def test_train_and_evaluate_returns_enterprise_metrics() -> None:
@@ -61,30 +61,73 @@ def test_prediction_audit_logger_writes_jsonl(tmp_path) -> None:
     assert saved["prediction"]["model_version"] == prediction.model_version
 
 
-def test_predict_endpoint_returns_score_and_audits(tmp_path) -> None:
-    prediction_audit.path = tmp_path / "api_predictions.jsonl"
-    client = TestClient(app)
+def test_prediction_never_approves_more_than_requested() -> None:
+    model = AgroAiCreditModel()
+    requested_credit_amount = 500
+    prediction = model.predict(DEMO_FARMERS[0]["features"], requested_credit_amount)
 
-    response = client.post(
-        "/api/agro-ai/predict",
-        json={
-            "requested_credit_amount": 3000,
-            "farmer_id": DEMO_FARMERS[1]["farmer_id"],
-            "cooperative_id": "coop-demo",
-            "actor_id": "admin-demo",
-            "features": DEMO_FARMERS[1]["features"],
-        },
+    assert prediction.approved_credit_limit <= requested_credit_amount
+
+
+def test_create_agro_ai_model_falls_back_to_default_artifact(tmp_path, monkeypatch) -> None:
+    result = train_and_evaluate(row_count=200, test_size=0.25, random_state=42)
+    default_artifact = tmp_path / "default-model.joblib"
+    save_model_artifact(
+        default_artifact,
+        result.classifier,
+        {"model_version": "default-artifact", "metrics": result.metrics},
     )
+
+    monkeypatch.setenv("AGRO_AI_MODEL_PATH", str(tmp_path / "missing-model.joblib"))
+    monkeypatch.setattr("app.main.DEFAULT_MODEL_PATH", default_artifact)
+
+    model = create_agro_ai_model()
+
+    assert model.model_version == "default-artifact"
+    assert model.artifact_source == str(default_artifact)
+
+
+def test_credit_summary_handles_empty_assessments(monkeypatch) -> None:
+    monkeypatch.setattr("app.main.agro_ai.list_farmer_assessments", lambda: [])
+
+    client = TestClient(app)
+    response = client.get("/api/agro-ai/credit-summary")
 
     assert response.status_code == 200
     payload = response.json()
-    assert 0 <= payload["score"] <= 100
-    assert payload["model_version"].startswith("agro-ai")
-    assert payload["farmer_id"] == DEMO_FARMERS[1]["farmer_id"]
-    assert payload["cooperative_id"] == "coop-demo"
+    assert payload["total_farmers"] == 0
+    assert payload["average_score"] == 0.0
 
-    saved = json.loads((tmp_path / "api_predictions.jsonl").read_text(encoding="utf-8"))
-    assert saved["context"]["source"] == "ad_hoc_prediction"
-    assert saved["context"]["cooperative_id"] == "coop-demo"
-    assert saved["context"]["actor_id"] == "admin-demo"
-    assert saved["requested_credit_amount"] == 3000
+
+def test_predict_endpoint_returns_score_and_audits(tmp_path) -> None:
+    original_audit_path = prediction_audit.path
+    audit_path = tmp_path / "api_predictions.jsonl"
+    prediction_audit.path = audit_path
+    try:
+        client = TestClient(app)
+
+        response = client.post(
+            "/api/agro-ai/predict",
+            json={
+                "requested_credit_amount": 3000,
+                "farmer_id": DEMO_FARMERS[1]["farmer_id"],
+                "cooperative_id": "coop-demo",
+                "actor_id": "admin-demo",
+                "features": DEMO_FARMERS[1]["features"],
+            },
+        )
+
+        assert response.status_code == 200
+        payload = response.json()
+        assert 0 <= payload["score"] <= 100
+        assert payload["model_version"].startswith("agro-ai")
+        assert payload["farmer_id"] == DEMO_FARMERS[1]["farmer_id"]
+        assert payload["cooperative_id"] == "coop-demo"
+
+        saved = json.loads(audit_path.read_text(encoding="utf-8"))
+        assert saved["context"]["source"] == "ad_hoc_prediction"
+        assert saved["context"]["cooperative_id"] == "coop-demo"
+        assert saved["context"]["actor_id"] == "admin-demo"
+        assert saved["requested_credit_amount"] == 3000
+    finally:
+        prediction_audit.path = original_audit_path

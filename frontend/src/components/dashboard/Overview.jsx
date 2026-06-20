@@ -10,7 +10,10 @@ const scoreTier = (score) => {
 export default function Overview({ agroAi }) {
   const farmers = agroAi?.farmers || FARMER_ASSESSMENTS
   const summary = agroAi?.summary || CREDIT_SUMMARY
-  const topScores = [...farmers].sort((a, b) => b.score - a.score).slice(0, 4)
+  const topScores = farmers
+    .filter((farmer) => farmer.eligible)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4)
   const reviewQueue = farmers.filter((farmer) => !farmer.eligible).slice(0, 3)
 
   return (

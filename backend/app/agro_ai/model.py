@@ -155,6 +155,7 @@ class AgroAiCreditModel:
         recommendation = self._recommendation(score)
         credit_limit_factor = 0.45 + (score / 100)
         approved_credit_limit = int(round(requested_credit_amount * credit_limit_factor / 50) * 50)
+        approved_credit_limit = min(approved_credit_limit, requested_credit_amount)
 
         if not eligible:
             approved_credit_limit = min(approved_credit_limit, int(requested_credit_amount * 0.55))
