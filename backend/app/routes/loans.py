@@ -118,33 +118,41 @@ async def disburse_loan(loan_id: int, db: Session = Depends(get_db)):
         reference=f"AgroOS loan #{loan.id}",
     )
 
-    # Record disbursement transaction regardless of Moolre status
+    if not transfer_result["success"]:
+        failed_tx = Transaction(
+            farmer_id=farmer.id,
+            transaction_type=TransactionType.payout,
+            amount=loan.amount,
+            currency=loan.currency,
+            status=TransactionStatus.failed,
+            moolre_transfer_ref=transfer_result.get("moolre_transfer_ref"),
+            payee_phone=farmer.phone,
+            description=f"Loan disbursement #{loan.id}",
+        )
+        db.add(failed_tx)
+        db.commit()
+        raise HTTPException(
+            status_code=502,
+            detail=f"Moolre transfer failed: {transfer_result['message']}",
+        )
+
     tx = Transaction(
         farmer_id=farmer.id,
         transaction_type=TransactionType.payout,
         amount=loan.amount,
         currency=loan.currency,
-        status=(
-            TransactionStatus.completed if transfer_result["success"] else TransactionStatus.failed
-        ),
+        status=TransactionStatus.completed,
         moolre_transfer_ref=transfer_result.get("moolre_transfer_ref"),
         payee_phone=farmer.phone,
         description=f"Loan disbursement #{loan.id}",
     )
     db.add(tx)
 
-    # Update loan record
     loan.status = LoanStatus.disbursed
     loan.moolre_transfer_ref = transfer_result.get("moolre_transfer_ref")
     loan.disbursed_at = datetime.utcnow()
     db.commit()
     db.refresh(loan)
-
-    if not transfer_result["success"]:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Loan marked disbursed but Moolre transfer failed: {transfer_result['message']}",
-        )
 
     return loan
 

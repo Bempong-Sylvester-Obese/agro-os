@@ -117,6 +117,33 @@ def test_disburse_loan(client, farmer):
     assert data["moolre_transfer_ref"] == "TEST-TRANSFER-001"
 
 
+def test_disburse_loan_keeps_approved_when_transfer_fails(client, farmer):
+    create_resp = client.post(
+        "/loans/", json={"farmer_id": farmer["id"], "amount": 250.0}
+    )
+    loan_id = create_resp.json()["id"]
+    client.post(f"/loans/{loan_id}/approve", json={"approved_by": "Admin"})
+
+    mock_result = {
+        "success": False,
+        "moolre_transfer_ref": None,
+        "external_ref": "some-uuid",
+        "message": "Transfer failed",
+        "raw": {},
+    }
+
+    with patch(
+        "app.services.moolre_service.MoolreService.initiate_transfer",
+        new_callable=AsyncMock,
+        return_value=mock_result,
+    ):
+        resp = client.post(f"/loans/{loan_id}/disburse")
+
+    assert resp.status_code == 502
+    loan_resp = client.get(f"/loans/{loan_id}")
+    assert loan_resp.json()["status"] == "approved"
+
+
 def test_repay_loan(client, farmer):
     """Test full repay flow after disbursement (Moolre mocked)."""
     create_resp = client.post(
