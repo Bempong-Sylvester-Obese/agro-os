@@ -1,5 +1,6 @@
 // src/pages/DashboardPage.jsx
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { fetchAgroAiDashboard } from '../api/agroAi'
 import Overview from '../components/dashboard/Overview'
 import Members  from '../components/dashboard/Members'
 import Payments from '../components/dashboard/Payments'
@@ -10,7 +11,7 @@ const NAV_ITEMS = [
   { key: 'overview', icon: '📊', label: 'Overview' },
   { key: 'members',  icon: '👥', label: 'Members' },
   { key: 'payments', icon: '💳', label: 'Payments' },
-  { key: 'scores',   icon: '⭐', label: 'AgroCredit scores' },
+  { key: 'scores',   icon: '⭐', label: 'Agro-AI scores' },
   { key: 'sms',      icon: '📱', label: 'SMS broadcasts' },
 ]
 
@@ -18,13 +19,26 @@ const TITLES = {
   overview: 'Overview',
   members:  'Members',
   payments: 'Payments',
-  scores:   'AgroCredit scores',
+  scores:   'Agro-AI credit scores',
   sms:      'SMS broadcasts',
   settings: 'Settings',
 }
 
 export default function DashboardPage() {
   const [section, setSection] = useState('overview')
+  const [agroAi, setAgroAi] = useState(null)
+
+  useEffect(() => {
+    let mounted = true
+
+    fetchAgroAiDashboard().then((data) => {
+      if (mounted) setAgroAi(data)
+    })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   return (
     <div className="admin-shell">
@@ -69,10 +83,10 @@ export default function DashboardPage() {
         </div>
 
         <div className="admin-content">
-          {section === 'overview'  && <Overview />}
-          {section === 'members'   && <Members />}
+          {section === 'overview'  && <Overview agroAi={agroAi} />}
+          {section === 'members'   && <Members farmers={agroAi?.farmers} />}
           {section === 'payments'  && <Payments />}
-          {section === 'scores'    && <Scores />}
+          {section === 'scores'    && <Scores agroAi={agroAi} />}
           {section === 'sms'       && <SMS />}
           {section === 'settings'  && (
             <div className="admin-card" style={{ padding: 48, textAlign: 'center' }}>

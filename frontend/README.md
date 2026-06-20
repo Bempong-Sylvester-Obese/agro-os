@@ -2,12 +2,11 @@
 
 The frontend will be the cooperative administrator dashboard for AgroOS.
 
-## Planned Stack
+## Current Stack
 
-- Next.js App Router
 - React
-- Tailwind CSS
-- shadcn/ui
+- Vite
+- Plain CSS in `src/styles/global.css`
 
 ## Initial Responsibilities
 
@@ -32,15 +31,25 @@ Reference: [Moolre Products Overview](https://moolre.com/#products).
 
 ## API Contract
 
-The frontend should call the FastAPI backend through `NEXT_PUBLIC_API_URL`.
+The frontend calls the FastAPI backend through `VITE_API_URL`.
 
-During early development, mocked data is acceptable as long as the expected response shapes are documented before backend integration.
+During early development, mocked data is acceptable as long as the expected response shapes are documented before backend integration. The current dashboard uses a fallback data set when the backend is not running, so the demo remains usable offline.
+
+## Local Setup
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+To connect to the backend, set `VITE_API_URL=http://localhost:8000` in your local environment.
 
 ## About AgroOS
 
 AgroOS is a unified digital operating system built for African farmer cooperatives — replacing fragmented tools with a single platform for member management, financial operations, and production tracking.
 
-The frontend dashboard is built with **Next.js**, **Tailwind CSS**, and **shadcn/ui**, giving cooperative administrators a clean, data-rich interface that replaces physical ledgers and manual record-keeping.
+The frontend dashboard is built with **React**, **Vite**, and custom CSS, giving cooperative administrators a clean, data-rich interface that replaces physical ledgers and manual record-keeping.
 
 **Key dashboard capabilities:**
 - Member profiles and cooperative standing
