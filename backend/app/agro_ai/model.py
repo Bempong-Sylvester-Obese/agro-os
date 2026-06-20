@@ -49,7 +49,9 @@ def build_classifier(**overrides: Any) -> RandomForestClassifier:
 def train_classifier(training_rows: list[dict[str, Any]] | None = None) -> RandomForestClassifier:
     """Train a classifier from rows that contain `features` and `eligible` labels."""
 
-    rows = training_rows or generate_training_rows()
+    rows = generate_training_rows() if training_rows is None else training_rows
+    if not rows:
+        raise ValueError("training_rows must contain at least one row")
     feature_matrix = [vectorize_features(row["features"]) for row in rows]
     labels = [row["eligible"] for row in rows]
     classifier = build_classifier()
