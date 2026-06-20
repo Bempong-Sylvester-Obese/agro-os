@@ -57,21 +57,26 @@ def _verify_signature(body: bytes, signature_header: str | None) -> bool:
 # ---------------------------------------------------------------------------
 
 
-async def _post_payment_tasks(farmer_id: int, amount: float, reference: str, db: Session) -> None:
+async def _post_payment_tasks(farmer_id: int, amount: float, reference: str) -> None:
     """Runs asynchronously after a successful payment webhook."""
+    db_gen = get_db()
+    db = next(db_gen)
     try:
-        TrustScoreService.calculate_trust_score(farmer_id, db)
-        logger.info("Trust score recalculated for farmer %s", farmer_id)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Trust score recalculation failed for farmer %s: %s", farmer_id, exc)
+        try:
+            TrustScoreService.calculate_trust_score(farmer_id, db)
+            logger.info("Trust score recalculated for farmer %s", farmer_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Trust score recalculation failed for farmer %s: %s", farmer_id, exc)
 
-    try:
-        farmer = db.query(Farmer).filter(Farmer.id == farmer_id).first()
-        if farmer:
-            comms = CommunicationsService()
-            await comms.send_payment_confirmation(farmer, amount, reference, db)
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Payment confirmation SMS failed for farmer %s: %s", farmer_id, exc)
+        try:
+            farmer = db.query(Farmer).filter(Farmer.id == farmer_id).first()
+            if farmer:
+                comms = CommunicationsService()
+                await comms.send_payment_confirmation(farmer, amount, reference, db)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Payment confirmation SMS failed for farmer %s: %s", farmer_id, exc)
+    finally:
+        db_gen.close()
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +156,6 @@ async def handle_moolre_payment_webhook(
             farmer_id=tx.farmer_id,
             amount=amount,
             reference=external_ref or str(transaction_id),
-            db=db,
         )
 
         logger.info(
