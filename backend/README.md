@@ -1,51 +1,241 @@
 # Backend
 
-The backend will expose the AgroOS API, handle Moolre webhooks, and calculate farmer Trust Scores.
+The AgroOS FastAPI backend exposes the AgroOS API, handles Moolre webhooks, calculates farmer Trust Scores, manages SMS communications, and processes loan lifecycles.
 
-## Planned Stack
+## Stack
 
+- **Python 3.10+** (tested on 3.14)
+- **FastAPI** — async REST API framework
+- **SQLAlchemy 2.0** — ORM with lazy engine initialisation
+- **Supabase PostgreSQL** — production database (SQLite for local dev)
+- **Moolre** — payments, USSD, SMS, and bulk transfers
+- **Ruff** — linting and formatting
+- **pytest** — test suite (70 tests, 0 failures)
+
+---
+
+## API Endpoints
+
+Interactive docs available at `http://localhost:8000/docs` (Swagger UI) and `http://localhost:8000/redoc`.
+
+### Health
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | API root — version and environment info |
+| GET | `/health` | Health check for deployment monitors |
+
+### Cooperatives
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/cooperatives/` | Create a new cooperative |
+| GET | `/cooperatives/` | List all cooperatives |
+| GET | `/cooperatives/{id}` | Get cooperative by ID |
+| PUT | `/cooperatives/{id}` | Update cooperative (partial) |
+| DELETE | `/cooperatives/{id}` | Delete cooperative (only if no farmers) |
+
+### Farmers
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/farmers/` | Register a new farmer |
+| GET | `/farmers/` | List farmers (filter by `cooperative_id`, `membership_status`) |
+| GET | `/farmers/{id}` | Get farmer profile |
+| PUT | `/farmers/{id}` | Update farmer profile (partial) |
+| DELETE | `/farmers/{id}` | Soft-deactivate a farmer |
+| GET | `/farmers/{id}/trust-score` | Get latest trust score breakdown |
+| GET | `/farmers/{id}/trust-score/history` | Get trust score history (trend) |
+| POST | `/farmers/{id}/recalculate-trust-score` | Trigger manual trust score recalculation |
+| POST | `/farmers/{id}/attendance` | Record cooperative event attendance |
+| GET | `/farmers/{id}/attendance` | List farmer attendance records |
+
+### Transactions
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/transactions/` | Create a manual transaction record |
+| GET | `/transactions/` | List transactions (filter by `farmer_id`, `status`, `transaction_type`) |
+| GET | `/transactions/{id}` | Get transaction by ID |
+| PATCH | `/transactions/{id}/status` | Update transaction status |
+| GET | `/transactions/farmer/{farmer_id}` | Get all transactions for a farmer |
+| POST | `/transactions/dues/collect` | Initiate dues collection via Moolre USSD push |
+| GET | `/transactions/moolre/account-transactions` | Sync transactions from Moolre wallet |
+| GET | `/transactions/moolre/wallet-balance` | Check cooperative Moolre wallet balance |
+
+### Loans
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/loans/` | Farmer requests an input/cash loan |
+| GET | `/loans/` | List loans (filter by `farmer_id`, `status`) |
+| GET | `/loans/{id}` | Get loan details |
+| POST | `/loans/{id}/approve` | Approve a loan request |
+| POST | `/loans/{id}/reject` | Reject a loan request |
+| POST | `/loans/{id}/disburse` | Disburse approved loan via Moolre transfer |
+| POST | `/loans/{id}/repay` | Record loan repayment + recalculate Trust Score |
+
+### Production
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/production/` | Log a new crop/production cycle |
+| GET | `/production/` | List production records (filter by `farmer_id`, `crop_type`) |
+| GET | `/production/{id}` | Get a production record |
+| PUT | `/production/{id}` | Update production record (log harvest data) |
+| DELETE | `/production/{id}` | Delete a production record |
+| GET | `/production/farmer/{farmer_id}` | All production records for a farmer |
+| GET | `/production/farmer/{farmer_id}/summary` | Yield summary (total kg, completion rate) |
+
+### Communications
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/communications/sms/broadcast` | Bulk SMS to all active cooperative members |
+| POST | `/communications/sms/dues-reminder` | Send dues reminder SMS to all active members |
+| GET | `/communications/logs` | List sent communication logs |
+
+### Webhooks
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/webhooks/moolre/payment` | Moolre payment confirmation webhook (HMAC verified) |
+| POST | `/webhooks/moolre/ussd` | USSD session handler (5-option farmer menu) |
+
+---
+
+## Trust Score Formula
+
+The AgroCredit Trust Score (0–100) is transparent and rules-based for the MVP:
+
+| Factor | Weight | How it's measured |
+|--------|--------|-------------------|
+| Payment Compliance | 40% | % of dues transactions completed |
+| Production History | 25% | Harvest completion rate + volume bonuses |
+| Loan Repayment | 20% | % of disbursed loans repaid |
+| Attendance | 15% | % of cooperative events attended (last 12 months) |
+
+A webhook from Moolre automatically triggers a recalculation after every successful payment.
+
+---
+
+## Moolre Integration
+
+The backend is the sole owner of all Moolre API calls — the frontend never calls Moolre directly.
+
+| Capability | Moolre Endpoint | AgroOS Use |
+|------------|-----------------|------------|
+| USSD Payment Push | `POST /open/transact/payment` | Dues collection |
+| Bulk Transfer | `POST /open/transact/transfer` | Loan disbursement & payouts |
+| Payment/Transfer Status | `POST /open/transact/status` | Retry & support flows |
+| List Transactions | `POST /open/account/status` (type=2) | Finance dashboard sync |
+| Wallet Balance | `POST /open/account/status` (type=1) | Account overview |
+| Send SMS | `POST /open/sms/send` | Dues reminders & confirmations |
+| Payment Link | `POST /embed/link` | Hosted payment pages |
+| Payment Webhook | `POST {callback_url}` | Real-time payment reconciliation |
+
+Environments:
+- **Sandbox**: `https://sandbox.moolre.com` — only `X-API-USER` required
+- **Live**: `https://api.moolre.com` — full auth headers required
+
+---
+
+## Local Setup
+
+### Prerequisites
 - Python 3.10+
-- FastAPI
-- Supabase PostgreSQL
-- Ruff for linting
+- PostgreSQL (Supabase) — or SQLite for local dev
 
-## Initial Responsibilities
+### Installation
 
-- Farmer/member management endpoints.
-- Finance endpoints for dues, transactions, loans, and payouts.
-- Production tracking endpoints for crop and harvest records.
-- Moolre webhook endpoint for payment confirmation events.
-- Trust Score service using a transparent rules-based formula for the MVP.
+```bash
+# 1. Create and activate virtual environment
+python -m venv venv
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # macOS/Linux
 
-## Moolre API Responsibilities
+# 2. Install dependencies
+pip install -r requirements.txt
 
-The backend owns all server-side communication with Moolre. Frontend code should call AgroOS endpoints rather than calling Moolre directly.
+# 3. Configure environment
+cp .env.example .env
+# Edit .env — at minimum set DATABASE_URL and MOOLRE_API_USER
 
-Relevant Moolre capabilities for the MVP:
+# 4. Run the server
+uvicorn main:app --reload
+```
 
-- Payment collection for cooperative dues.
-- Payment webhook handling for real-time reconciliation.
-- Payment status checks for retry and support flows.
-- Transaction listing for finance dashboards.
-- Transfer or bulk disbursement for approved input loans and payouts.
-- SMS sending for dues reminders and payment confirmations.
-- USSD integration for feature-phone farmer interactions.
+The API will be available at `http://localhost:8000` with:
+- Swagger UI: `http://localhost:8000/docs`
+- ReDoc: `http://localhost:8000/redoc`
 
-Moolre environments:
+> **Tip**: The default `.env.example` includes a SQLite URL (`sqlite:///./agro_os_dev.db`) so you can run locally without Supabase. Switch `DATABASE_URL` to your Supabase PostgreSQL connection string for production.
 
-- Live: `https://api.moolre.com`
-- Sandbox: `https://sandbox.moolre.com`
+### Connecting to Supabase
 
-Sandbox notes from the Moolre quickstart:
+In your `.env`:
+```
+DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres
+```
 
-- Sandbox requests use `X-API-USER`.
-- `X-API-KEY` and `X-API-PUBKEY` are not required in sandbox, but should still be represented in configuration for production readiness.
-- SMS and WhatsApp endpoints require `X-API-VASKEY`.
+### Environment Variables
 
-Primary reference: [Moolre API Documentation](https://docs.moolre.com/#/quickstart).
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL or SQLite connection string |
+| `MOOLRE_API_URL` | Moolre base URL (sandbox or live) |
+| `MOOLRE_API_USER` | Your Moolre username |
+| `MOOLRE_API_KEY` | Private API key (live only) |
+| `MOOLRE_API_PUBKEY` | Public API key (live only) |
+| `MOOLRE_API_VASKEY` | VAS key for SMS/WhatsApp |
+| `MOOLRE_ACCOUNT_NUMBER` | Cooperative Moolre wallet number |
+| `MOOLRE_MERCHANT_CODE` | USSD merchant code for dues payment |
+| `MOOLRE_WEBHOOK_SECRET` | HMAC secret for webhook signature verification |
+| `DEFAULT_CURRENCY` | Default currency (set to `GHS`) |
+| `DEFAULT_SMS_SENDER_ID` | SMS sender ID (default: `AgroOS`) |
 
-## Local Setup Placeholder
+---
 
-Implementation-specific setup commands will be added when the FastAPI app is created.
+## Development
 
-Expected environment variables should come from the root `.env.example`.
+```bash
+# Lint
+ruff check .
+
+# Format
+ruff format .
+
+# Run tests (70 tests, uses in-memory SQLite — no DB required)
+pytest tests/ -v
+```
+
+### Project Structure
+
+```
+backend/
+├── app/
+│   ├── routes/
+│   │   ├── cooperatives.py   # Cooperative CRUD
+│   │   ├── farmers.py        # Farmer CRUD + Trust Score + Attendance
+│   │   ├── transactions.py   # Finance + Moolre dues collection
+│   │   ├── loans.py          # Loan lifecycle (request→approve→disburse→repay)
+│   │   ├── production.py     # Crop/harvest tracking
+│   │   ├── communications.py # SMS broadcast & reminders
+│   │   └── webhooks.py       # Moolre payment webhook + USSD handler
+│   ├── services/
+│   │   ├── moolre_service.py          # All Moolre API calls
+│   │   ├── trust_score_service.py     # AgroCredit scoring engine
+│   │   └── communications_service.py  # SMS templates + logging
+│   ├── models/
+│   │   └── models.py         # SQLAlchemy ORM models
+│   ├── schemas/
+│   │   └── schemas.py        # Pydantic request/response schemas
+│   ├── database/
+│   │   └── db.py             # Lazy engine + session management
+│   └── config.py             # App settings (pydantic-settings)
+├── tests/
+│   ├── conftest.py            # In-memory SQLite fixtures
+│   ├── test_cooperatives.py
+│   ├── test_farmers.py
+│   ├── test_transactions.py
+│   ├── test_loans.py
+│   ├── test_production.py
+│   ├── test_webhooks.py
+│   └── test_trust_score.py
+├── main.py                    # FastAPI app entry point
+├── requirements.txt
+├── pyproject.toml             # Ruff + pytest config
+└── .env.example
+```
