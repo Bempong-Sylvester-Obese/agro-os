@@ -21,8 +21,14 @@ build/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.pip-tools-cache/
 .turbo/
 .vercel/
+wandb/
+
+# Local AI artifacts and audit logs
+backend/model_artifacts/
+backend/logs/
 
 # Logs
 *.log

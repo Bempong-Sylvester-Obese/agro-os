@@ -44,8 +44,54 @@ Sandbox notes from the Moolre quickstart:
 
 Primary reference: [Moolre API Documentation](https://docs.moolre.com/#/quickstart).
 
-## Local Setup Placeholder
+## Local Setup
 
-Implementation-specific setup commands will be added when the FastAPI app is created.
+Create a Python virtual environment from the repository root:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r backend/requirements.txt
+```
+
+Direct backend dependencies live in `backend/requirements.in`; `backend/requirements.txt` is the hash-locked output generated with `pip-compile`.
+
+Run the API locally:
+
+```bash
+cd backend
+../.venv/bin/uvicorn app.main:app --reload
+```
+
+The API will be available at `http://localhost:8000`.
+
+## Agro-AI Endpoints
+
+The hackathon `agro-ai` service scores cooperative farmers with a scikit-learn Random Forest model. It can load a local `joblib` artifact through `AGRO_AI_MODEL_PATH`; if no artifact exists locally, it falls back to deterministic synthetic training so the demo still runs.
+
+- `GET /health`
+- `GET /api/farmers`
+- `GET /api/farmers/{farmer_id}/credit-assessment`
+- `GET /api/agro-ai/credit-summary`
+- `POST /api/agro-ai/predict`
+
+`POST /api/agro-ai/predict` accepts optional `farmer_id`, `cooperative_id`, and `actor_id` fields. They are not required for the hackathon demo, but they are included in prediction audit logs so the auth/session work can attach tenant context later.
+
+## Agro-AI Training And Evaluation
+
+Train and evaluate the current synthetic-data model:
+
+```bash
+npm run train:ai -- --wandb-mode offline
+```
+
+This writes a local model artifact to `backend/model_artifacts/agro-ai-rf-v1.joblib` by default and logs W&B data in offline mode. Use online W&B after authenticating:
+
+```bash
+wandb login
+npm run train:ai -- --wandb-mode online --wandb-project agro-os
+```
+
+The training command logs model parameters, dataset split metadata, classification metrics, credit-threshold metrics, confusion matrix, feature importances, and a model artifact. Synthetic evaluation validates the pipeline only; real credit performance requires repayment and default outcomes from Supabase/Moolre data.
 
 Expected environment variables should come from the root `.env.example`.
