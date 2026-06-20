@@ -8,7 +8,9 @@ from app.agro_ai.audit import PredictionAuditLogger
 from app.agro_ai.evaluation import train_and_evaluate
 from app.agro_ai.model import AgroAiCreditModel, save_model_artifact
 from app.agro_ai.synthetic_data import DEMO_FARMERS
-from app.main import app, create_agro_ai_model, prediction_audit
+from app.agro_ai.runtime import create_agro_ai_model, prediction_audit
+from app.agro_ai.train import DEFAULT_MODEL_PATH
+from main import app
 
 
 def test_train_and_evaluate_returns_enterprise_metrics() -> None:
@@ -79,7 +81,7 @@ def test_create_agro_ai_model_falls_back_to_default_artifact(tmp_path, monkeypat
     )
 
     monkeypatch.setenv("AGRO_AI_MODEL_PATH", str(tmp_path / "missing-model.joblib"))
-    monkeypatch.setattr("app.main.DEFAULT_MODEL_PATH", default_artifact)
+    monkeypatch.setattr("app.agro_ai.runtime.DEFAULT_MODEL_PATH", default_artifact)
 
     model = create_agro_ai_model()
 
@@ -88,7 +90,7 @@ def test_create_agro_ai_model_falls_back_to_default_artifact(tmp_path, monkeypat
 
 
 def test_credit_summary_handles_empty_assessments(monkeypatch) -> None:
-    monkeypatch.setattr("app.main.agro_ai.list_farmer_assessments", lambda: [])
+    monkeypatch.setattr("app.agro_ai.runtime.agro_ai.list_farmer_assessments", lambda: [])
 
     client = TestClient(app)
     response = client.get("/api/agro-ai/credit-summary")
