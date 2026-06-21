@@ -6,7 +6,7 @@ Use this document to keep ownership clear during the hackathon. Update names onc
 
 ### Frontend Dashboard
 
-Owner: TBD
+Owner: Julien Oboe Addy
 
 Responsibilities:
 
@@ -17,7 +17,7 @@ Responsibilities:
 
 ### Backend API and Moolre Integration
 
-Owner: TBD
+Owner: Elvis Antwi Boateng Osei
 
 Responsibilities:
 
@@ -28,7 +28,7 @@ Responsibilities:
 
 ### Database and Demo Data
 
-Owner: TBD
+Owner: Sylvester Obese Bempong
 
 Responsibilities:
 
@@ -39,7 +39,7 @@ Responsibilities:
 
 ### Demo Flow and Pitch
 
-Owner: TBD
+Owner: Ramzy Gbati Konde
 
 Responsibilities:
 
