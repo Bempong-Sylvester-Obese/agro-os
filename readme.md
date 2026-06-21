@@ -38,7 +38,7 @@ agroos/
 |   +-- README.md
 +-- docs/                      # Product strategy and planning notes
 |   +-- product-strategy.md
-+-- frontend/                  # Next.js web dashboard
++-- frontend/                  # Vite + React web dashboard
 |   +-- README.md
 +-- supabase/                  # Database schema, migrations, and seed data
 |   +-- README.md
@@ -70,7 +70,7 @@ Resources:
 
 ## Getting Started
 
-This repository is currently initialized as a team scaffold. The implementation folders are intentionally lightweight so each teammate can build their assigned area from a shared structure.
+This repository is an active monorepo: the Vite + React dashboard and FastAPI backend are both implemented, including production, communications, transactions, loans, webhooks, and Agro-AI routes backed by a tested backend service.
 
 ### Prerequisites
 
@@ -81,9 +81,10 @@ This repository is currently initialized as a team scaffold. The implementation 
 
 ### 1. Clone and Configure
 
-1. Copy `.env.example` to your local environment file when implementation work begins.
+1. Copy `backend/.env.example` to `backend/.env` for backend local development.
 2. Read `docs/product-strategy.md` for the product vision and Golden Path demo.
 3. Choose a feature branch before making changes.
+4. For deeper backend setup and API details, see `backend/README.md`.
 
 ### 2. Local Development
 
@@ -96,7 +97,18 @@ npm run api
 npm run dev
 ```
 
-Use `npm run build` from the repository root to build the Vite frontend.
+Additional root scripts:
+
+```bash
+npm run test:backend   # Run backend pytest suite
+npm run train:ai       # Train/evaluate Agro-AI model
+npm run build          # Build Vite frontend
+```
+
+Reference docs:
+
+- `docs/` for strategy, demo, and planning documents
+- `backend/README.md` for backend endpoints, environment variables, linting, and test commands
 
 ### 3. Team Work Areas
 
@@ -122,3 +134,4 @@ To ensure rapid development and zero merge conflicts during the hackathon:
 1. **Never push directly to `main`.**
 2. Branch naming convention: `feat/feature-name`, `fix/bug-name`, `docs/update-name`.
 3. Ensure backend code passes `ruff` linting and frontend code passes `eslint` before opening a Pull Request.
+4. Use `docs/` and `backend/README.md` for detailed implementation and setup guidance while contributing.
