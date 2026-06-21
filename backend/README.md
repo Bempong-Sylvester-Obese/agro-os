@@ -115,6 +115,8 @@ A webhook from Moolre automatically triggers a recalculation after every success
 
 The backend is the sole owner of all Moolre API calls — the frontend never calls Moolre directly.
 
+Setup reference: [`docs/moolre-setup.md`](../docs/moolre-setup.md)
+
 | Capability | Moolre Endpoint | AgroOS Use |
 |------------|-----------------|------------|
 | USSD Payment Push | `POST /open/transact/payment` | Dues collection |
