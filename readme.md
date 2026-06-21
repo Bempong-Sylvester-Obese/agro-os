@@ -86,6 +86,12 @@ This repository is an active monorepo: the Vite + React dashboard and FastAPI ba
 3. Choose a feature branch before making changes.
 4. For deeper backend setup and API details, see `backend/README.md`.
 
+### Environment files
+
+- **`backend/.env`**: runtime env file for the FastAPI backend. `backend/app/config.py` loads `.env` from the backend working directory, so copy from `backend/.env.example`.
+- **`frontend/.env`**: local env file for the Vite app when running frontend commands from `frontend/` (for example `VITE_API_URL=http://localhost:8000`).
+- **Root `.env` / `.env.example`**: shared reference for workspace-level variables. Keep Moolre keys aligned with backend names (for example `MOOLRE_API_URL`). `NEXT_PUBLIC_API_URL` is deprecated and not used by this Vite frontend.
+
 ### 2. Local Development
 
 From the repository root:
