@@ -4,7 +4,7 @@
 
 Built for the **Moolre Cup Hackathon**, AgroOS shifts the conversation from fragmented agricultural apps to a unified ecosystem. It empowers farmer organizations to manage members, process bulk disbursements, and generate AI-driven credit scores using offline-first Moolre USSD integration.
 
-By bridging the gap between unconnected rural farmers and formal financial ecosystems, AgroOS provides enterprise-grade infrastructure tailored for the agricultural value chain.
+By bridging the gap between unconnected rural farmers and formal financial ecosystems, AgroOS provides enterprise-grade infrastructure tailored for the agricultural value chain
 
 ---
 
@@ -140,4 +140,4 @@ To ensure rapid development and zero merge conflicts during the hackathon:
 1. **Never push directly to `main`.**
 2. Branch naming convention: `feat/feature-name`, `fix/bug-name`, `docs/update-name`.
 3. Ensure backend code passes `ruff` linting and frontend code passes `eslint` before opening a Pull Request.
-4. Use `docs/` and `backend/README.md` for detailed implementation and setup guidance while contributing.
+4. Use `docs/` and `backend/README.md` for detailed implementation and setup guidance while contributing
