@@ -31,7 +31,7 @@ collected or processed by AgroOS:
 
 ### 2.1 Identity and Contact Data
 - **Full name** (`Farmer.name`) — used to identify cooperative members
-- **Phone number** (`Farmer.phone_number`) — primary contact channel; used
+- **Phone number** (`Farmer.phone`) — primary contact channel; used
   for SMS communications and farmer lookup
 
 ### 2.2 Location Data
@@ -41,7 +41,7 @@ collected or processed by AgroOS:
 ### 2.3 Financial Data
 - **Transaction records** (`Transaction` model) — includes amounts, dates,
   transaction types, and associated farmer IDs
-- **Credit score** (`Farmer.credit_score` or derived scoring fields) —
+- **Credit score** (`Farmer.trust_score` or derived scoring fields) —
   computed from transaction history; influences lending or input credit
   decisions within the cooperative
 
