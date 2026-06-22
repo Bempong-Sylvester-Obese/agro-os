@@ -1,7 +1,7 @@
 # AgroOS Data Privacy Policy
 
-> **Status:** Draft — Hackathon Scope (Moolre Startup Cup, July 2025)
-> **Last updated:** 2025-07
+> **Status:** Draft — Hackathon Scope (Moolre Startup Cup, July 2026)
+> **Last updated:** 2026-06
 > **Maintainer:** AgroOS Core Team (Ramzy, Julien, Elvis, Sylvester)
 >
 > ⚠️ This document is a non-legal summary for cooperative administrators and
@@ -153,7 +153,7 @@ run in a separate, access-controlled instance.
 
 ### 7.1 Hackathon Scope
 All demo data generated during the Moolre Startup Cup will be deleted within
-**30 days of the final judging date** (estimated: August 2025), unless retained
+**30 days of the final judging date** (estimated: August 2026), unless retained
 for academic or retrospective documentation with all PII removed.
 
 ### 7.2 Production Scope (Projected)
@@ -230,4 +230,4 @@ a designated Data Protection Officer (DPO) contact will be added here.
 ---
 
 *AgroOS — Agricultural Cooperative Management Platform*
-*Moolre Startup Cup 2025 | Team: Ramzy · Julien · Elvis · Sylvester*
+*Moolre Startup Cup 2026 | Team: Ramzy · Julien · Elvis · Sylvester*
