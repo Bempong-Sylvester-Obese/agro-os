@@ -95,7 +95,7 @@ transactions in real time.
 
 ## Golden Path — What Updates After Dues Payment
 
-This is the most important thing to get right during the demo narration.
+This is the most important thing to get right during the demo narration
 
 **The Golden Path is:**
 
