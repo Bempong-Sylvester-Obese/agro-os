@@ -11,7 +11,7 @@ issues before any public demo or production deployment.
 
 ## Scope
 
-During the hackathon phase (Moolre Startup Cup, July 2025), the following
+During the hackathon phase (Moolre Startup Cup, July 2026), the following
 areas are in scope for security review:
 
 - FastAPI backend endpoints (authentication, input validation)
