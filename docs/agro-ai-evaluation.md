@@ -64,3 +64,19 @@ Real evaluation should use Supabase-backed facts:
 - final repayment outcome labels
 
 The model should not be presented as production-grade credit risk scoring until it is evaluated against real outcomes and reviewed for calibration, bias, and explainability.
+
+---
+
+## Governance and Model Card
+
+This document covers evaluation methodology and enterprise readiness gaps.
+For the model card, decision thresholds, explainability policy, audit log
+location, known limitations, and the promotion path from synthetic to
+production labels, see [`docs/agro-ai-governance.md`](agro-ai-governance.md).
+
+## Relationship to Trust Score
+
+Agro-AI runs in parallel with the rules-based Trust Score engine. The two
+systems currently use different data sources and serve different surfaces.
+For a full comparison, the Golden Path demo flow, and the production
+roadmap for merging the two, see [`docs/scoring-systems.md`](scoring-systems.md).
