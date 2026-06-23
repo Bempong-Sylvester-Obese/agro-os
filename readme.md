@@ -114,6 +114,7 @@ npm run build          # Build Vite frontend
 Reference docs:
 
 - `docs/` for strategy, demo, and planning documents
+- `docs/moolre-setup.md` for sandbox/live credential setup and local webhook testing
 - `backend/README.md` for backend endpoints, environment variables, linting, and test commands
 
 ### 3. Team Work Areas

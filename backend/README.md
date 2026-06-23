@@ -115,6 +115,8 @@ A webhook from Moolre automatically triggers a recalculation after every success
 
 The backend is the sole owner of all Moolre API calls — the frontend never calls Moolre directly.
 
+Setup reference: [`docs/moolre-setup.md`](../docs/moolre-setup.md)
+
 | Capability | Moolre Endpoint | AgroOS Use |
 |------------|-----------------|------------|
 | USSD Payment Push | `POST /open/transact/payment` | Dues collection |
@@ -181,7 +183,6 @@ DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabas
 | `MOOLRE_API_PUBKEY` | Public API key (live only) |
 | `MOOLRE_API_VASKEY` | VAS key for SMS/WhatsApp |
 | `MOOLRE_ACCOUNT_NUMBER` | Cooperative Moolre wallet number |
-| `MOOLRE_MERCHANT_CODE` | USSD merchant code for dues payment |
 | `MOOLRE_WEBHOOK_SECRET` | HMAC secret for webhook signature verification |
 | `DEFAULT_CURRENCY` | Default currency (set to `GHS`) |
 | `DEFAULT_SMS_SENDER_ID` | SMS sender ID (default: `AgroOS`) |
