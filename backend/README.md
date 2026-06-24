@@ -178,8 +178,6 @@ DATABASE_URL=postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabas
 | `MOOLRE_API_URL` | Moolre base URL (sandbox or live) |
 | `MOOLRE_API_USER` | Your Moolre username |
 | `MOOLRE_API_KEY` | Private API key (live only) |
-| `MOOLRE_API_PUBKEY` | Public API key (live only) |
-| `MOOLRE_API_VASKEY` | VAS key for SMS/WhatsApp |
 | `MOOLRE_ACCOUNT_NUMBER` | Cooperative Moolre wallet number |
 | `MOOLRE_MERCHANT_CODE` | USSD merchant code for dues payment |
 | `MOOLRE_WEBHOOK_SECRET` | HMAC secret for webhook signature verification |

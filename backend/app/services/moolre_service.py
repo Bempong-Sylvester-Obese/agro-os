@@ -40,16 +40,9 @@ class MoolreService:
         }
         if self.settings.moolre_api_key:
             headers["X-API-KEY"] = self.settings.moolre_api_key
-        if self.settings.moolre_api_pubkey:
-            headers["X-API-PUBKEY"] = self.settings.moolre_api_pubkey
         return headers
 
-    def _vaskey_headers(self) -> dict:
-        """Headers for SMS / WhatsApp endpoints (require X-API-VASKEY)."""
-        headers = dict(self._base_headers)
-        if self.settings.moolre_api_vaskey:
-            headers["X-API-VASKEY"] = self.settings.moolre_api_vaskey
-        return headers
+
 
     # ------------------------------------------------------------------
     # Internal HTTP helpers
@@ -239,7 +232,9 @@ class MoolreService:
         acc = account_number or self.settings.moolre_account_number
         payload = {"type": 1, "accountnumber": acc}
         raw = await self._post("/open/account/status", payload)
-        wallet_data = raw.get("data", {}) or {}
+        wallet_data = raw.get("data", {})
+        if not isinstance(wallet_data, dict):
+            wallet_data = {}
         return {
             "success": raw.get("status") in (1, "1"),
             "balance": wallet_data.get("balance"),
@@ -294,7 +289,7 @@ class MoolreService:
             "senderid": sid,
             "messages": recipients,
         }
-        raw = await self._post("/open/sms/send", payload, headers=self._vaskey_headers())
+        raw = await self._post("/open/sms/send", payload, headers=self._base_headers)
         return {
             "success": raw.get("status") in (1, "1"),
             "code": raw.get("code"),

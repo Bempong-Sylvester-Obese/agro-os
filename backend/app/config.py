@@ -25,8 +25,6 @@ class Settings(BaseSettings):
     moolre_api_url: str = "https://sandbox.moolre.com"
     moolre_api_user: str = ""
     moolre_api_key: str = ""
-    moolre_api_pubkey: str = ""
-    moolre_api_vaskey: str = ""
 
     # Moolre Merchant / Account
     moolre_account_number: str = ""
@@ -38,9 +36,17 @@ class Settings(BaseSettings):
     default_currency: str = "GHS"
     default_sms_sender_id: str = "AgroOS"
 
+    # Agro-AI
+    agro_ai_model_path: str = "backend/model_artifacts/agro-ai-rf-v1.joblib"
+    agro_ai_audit_log_path: str = "backend/logs/agro_ai_predictions.jsonl"
+    wandb_project: str = "agro-os"
+    wandb_entity: str = ""
+    wandb_mode: str = "offline"
+
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"
 
 
 @lru_cache()
