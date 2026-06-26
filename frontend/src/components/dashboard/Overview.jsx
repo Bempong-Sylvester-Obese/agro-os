@@ -1,5 +1,5 @@
 // src/components/dashboard/Overview.jsx
-import { PAYMENTS } from '../../data/payments'
+import { CREDIT_SUMMARY, FARMER_ASSESSMENTS, PAYMENTS } from '../../data/payments'
 
 export default function Overview({ members }) {
   const total   = members.length
@@ -12,6 +12,20 @@ export default function Overview({ members }) {
     .sort((a, b) => parseInt(b.score, 10) - parseInt(a.score, 10))
     .slice(0, 4)
     .map((m, i) => [`#${i + 1} ${m.name}`, m.region, m.score, m.tier])
+const scoreTier = (score) => {
+  if (score >= 82) return 'sh'
+  if (score >= 60) return 'sm'
+  return 'sl'
+}
+
+export default function Overview({ agroAi }) {
+  const farmers = agroAi?.farmers || FARMER_ASSESSMENTS
+  const summary = agroAi?.summary || CREDIT_SUMMARY
+  const topScores = farmers
+    .filter((farmer) => farmer.eligible)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4)
+  const reviewQueue = farmers.filter((farmer) => !farmer.eligible).slice(0, 3)
 
   return (
     <>
@@ -21,6 +35,10 @@ export default function Overview({ members }) {
           ['Dues collected',         'GHS 29,760',            'June 2026'],
           ['Pending disbursements',  'GHS 4,200',             '3 pending'],
           ['Avg trust score',        avgScore,                '+3.1 vs last month'],
+          ['Total members',          '248',        '+12 this month'],
+          ['Dues collected',         'GHS 29,760', 'June 2026'],
+          ['Credit eligible',        summary.eligible_count, `${summary.total_farmers} farmers assessed`],
+          ['Avg Agro-AI score',      summary.average_score,  summary.model_version],
         ].map(([lbl, val, sub]) => (
           <div key={lbl} className="stat-card">
             <div className="stat-lbl">{lbl}</div>
@@ -56,19 +74,45 @@ export default function Overview({ members }) {
           ))}
         </div>
 
-        {/* Top trust scores */}
+        {/* Top agro-ai scores */}
         <div className="admin-card">
           <div className="admin-card-head">
-            <span className="admin-card-title serif">Top trust scores</span>
-            <span className="admin-card-action">View all →</span>
+            <span className="admin-card-title serif">Top Agro-AI approvals</span>
+            <span className="admin-card-action">{agroAi?.source === 'api' ? 'Live API' : 'Demo data'}</span>
           </div>
           {topScores.map(([name, region, score, tier]) => (
             <div key={name} className="score-item">
+          {topScores.map((farmer) => (
+            <div key={farmer.farmer_id} className="score-item">
               <div>
-                <div className="score-item-name">{name}</div>
-                <div className="score-item-region">{region}</div>
+                <div className="score-item-name">{farmer.name}</div>
+                <div className="score-item-region">
+                  {farmer.region} · {farmer.recommendation}
+                </div>
               </div>
-              <span className={`score-bdg ${tier}`}>{score}</span>
+              <span className={`score-bdg ${scoreTier(farmer.score)}`}>{farmer.score}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="admin-card" style={{ marginTop: 20 }}>
+        <div className="admin-card-head">
+          <span className="admin-card-title serif">Credit review queue</span>
+          <span className="admin-card-action">{summary.manual_review_count + summary.high_risk_count} need attention</span>
+        </div>
+        <div className="review-grid">
+          {reviewQueue.map((farmer) => (
+            <div key={farmer.farmer_id} className="review-card">
+              <div className="review-top">
+                <div>
+                  <div className="pt-name">{farmer.name}</div>
+                  <div className="pt-id">{farmer.farmer_id} · {farmer.crop}</div>
+                </div>
+                <span className={`score-bdg ${scoreTier(farmer.score)}`}>{farmer.score}</span>
+              </div>
+              <div className="review-rec">{farmer.recommendation}</div>
+              <div className="review-reason">{farmer.top_reasons[0]}</div>
             </div>
           ))}
         </div>

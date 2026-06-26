@@ -12,6 +12,17 @@ export default function Members({ members, onAddMember }) {
     m.region.toLowerCase().includes(query.toLowerCase())
   )
 
+import { FARMER_ASSESSMENTS } from '../../data/payments'
+
+const DUE_CLS = { Paid: 'bdg-green', Pending: 'bdg-amber', Overdue: 'bdg-red' }
+
+const scoreTier = (score) => {
+  if (score >= 82) return 'sh'
+  if (score >= 60) return 'sm'
+  return 'sl'
+}
+
+export default function Members({ farmers = FARMER_ASSESSMENTS }) {
   return (
     <>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -55,6 +66,23 @@ export default function Members({ members, onAddMember }) {
             <span className={`bdg ${DUE_CLS[m.dues]}`}>{m.dues}</span>
             <span className={`score-bdg ${m.tier}`}>{m.score}</span>
             <span className="admin-card-action" style={{ fontSize: 11 }}>View →</span>
+          {['Member','Phone','Region','Dues','Agro-AI','Review'].map(h => (
+            <span key={h} className="pt-lbl">{h}</span>
+          ))}
+        </div>
+        {farmers.map((farmer) => (
+          <div key={farmer.farmer_id} className="mt-row">
+            <div>
+              <div className="pt-name">{farmer.name}</div>
+              <div className="pt-id">{farmer.farmer_id} · {farmer.crop}</div>
+            </div>
+            <span className="pt-m" style={{ fontSize: 11 }}>{farmer.phone}</span>
+            <span className="pt-m">{farmer.region}</span>
+            <span className={`bdg ${DUE_CLS[farmer.dues_status]}`}>{farmer.dues_status}</span>
+            <span className={`score-bdg ${scoreTier(farmer.score)}`}>{farmer.score}</span>
+            <span className="admin-card-action" style={{ fontSize: 11 }}>
+              {farmer.eligible ? 'Eligible' : 'Review'}
+            </span>
           </div>
         ))}
       </div>

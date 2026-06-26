@@ -1,5 +1,6 @@
 // src/pages/DashboardPage.jsx
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { fetchAgroAiDashboard } from '../api/agroAi'
 import Overview from '../components/dashboard/Overview'
 import Members  from '../components/dashboard/Members'
 import Payments from '../components/dashboard/Payments'
@@ -11,7 +12,7 @@ const NAV_ITEMS = [
   { key: 'overview', icon: '📊', label: 'Overview' },
   { key: 'members',  icon: '👥', label: 'Members' },
   { key: 'payments', icon: '💳', label: 'Payments' },
-  { key: 'scores',   icon: '⭐', label: 'AgroCredit scores' },
+  { key: 'scores',   icon: '⭐', label: 'Agro-AI scores' },
   { key: 'sms',      icon: '📱', label: 'SMS broadcasts' },
 ]
 
@@ -19,7 +20,7 @@ const TITLES = {
   overview: 'Overview',
   members:  'Members',
   payments: 'Payments',
-  scores:   'AgroCredit scores',
+  scores:   'Agro-AI credit scores',
   sms:      'SMS broadcasts',
   settings: 'Settings',
 }
@@ -77,6 +78,21 @@ export default function DashboardPage({ user, onLogout }) {
   }
 
   const initials = user?.initials ?? '??'
+export default function DashboardPage() {
+  const [section, setSection] = useState('overview')
+  const [agroAi, setAgroAi] = useState(null)
+
+  useEffect(() => {
+    let mounted = true
+
+    fetchAgroAiDashboard().then((data) => {
+      if (mounted) setAgroAi(data)
+    })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   return (
     <>
@@ -153,6 +169,18 @@ export default function DashboardPage({ user, onLogout }) {
               <div>
                 <div className="modal-title serif">Add new member</div>
                 <div className="modal-sub">Fill in the farmer's details to register them to the cooperative.</div>
+        <div className="admin-content">
+          {section === 'overview'  && <Overview agroAi={agroAi} />}
+          {section === 'members'   && <Members farmers={agroAi?.farmers} />}
+          {section === 'payments'  && <Payments />}
+          {section === 'scores'    && <Scores agroAi={agroAi} />}
+          {section === 'sms'       && <SMS />}
+          {section === 'settings'  && (
+            <div className="admin-card" style={{ padding: 48, textAlign: 'center' }}>
+              <div style={{ fontSize: 48, marginBottom: 14 }}>⚙️</div>
+              <div className="serif" style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Settings</div>
+              <div style={{ fontSize: 14, color: 'var(--muted)' }}>
+                Cooperative profile, team roles, USSD configuration, and Moolre integration settings.
               </div>
               <button className="modal-close" onClick={closeModal}>✕</button>
             </div>

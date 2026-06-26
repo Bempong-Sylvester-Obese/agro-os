@@ -4,7 +4,7 @@
 
 Built for the **Moolre Cup Hackathon**, AgroOS shifts the conversation from fragmented agricultural apps to a unified ecosystem. It empowers farmer organizations to manage members, process bulk disbursements, and generate AI-driven credit scores using offline-first Moolre USSD integration.
 
-By bridging the gap between unconnected rural farmers and formal financial ecosystems, AgroOS provides enterprise-grade infrastructure tailored for the agricultural value chain.
+By bridging the gap between unconnected rural farmers and formal financial ecosystems, AgroOS provides enterprise-grade infrastructure tailored for the agricultural value chain
 
 ---
 
@@ -21,7 +21,7 @@ By bridging the gap between unconnected rural farmers and formal financial ecosy
 
 ## Technology Stack
 
-* **Frontend:** Next.js (React), Tailwind CSS, shadcn/ui
+* **Frontend:** Vite, React, custom CSS
 * **Backend API & Webhooks:** Python, FastAPI
 * **Database:** Supabase (PostgreSQL)
 * **Payments, USSD & Messaging Infrastructure:** Moolre APIs
@@ -38,7 +38,7 @@ agroos/
 |   +-- README.md
 +-- docs/                      # Product strategy and planning notes
 |   +-- product-strategy.md
-+-- frontend/                  # Next.js web dashboard
++-- frontend/                  # Vite + React web dashboard
 |   +-- README.md
 +-- supabase/                  # Database schema, migrations, and seed data
 |   +-- README.md
@@ -70,7 +70,7 @@ Resources:
 
 ## Getting Started
 
-This repository is currently initialized as a team scaffold. The implementation folders are intentionally lightweight so each teammate can build their assigned area from a shared structure.
+This repository is an active monorepo: the Vite + React dashboard and FastAPI backend are both implemented, including production, communications, transactions, loans, webhooks, and Agro-AI routes backed by a tested backend service.
 
 ### Prerequisites
 
@@ -81,11 +81,43 @@ This repository is currently initialized as a team scaffold. The implementation 
 
 ### 1. Clone and Configure
 
-1. Copy `.env.example` to your local environment file when implementation work begins.
+1. Copy `backend/.env.example` to `backend/.env` for backend local development.
 2. Read `docs/product-strategy.md` for the product vision and Golden Path demo.
 3. Choose a feature branch before making changes.
+4. For deeper backend setup and API details, see `backend/README.md`.
 
-### 2. Team Work Areas
+### Environment files
+
+- **`backend/.env`**: runtime env file for the FastAPI backend. `backend/app/config.py` loads `.env` from the backend working directory, so copy from `backend/.env.example`.
+- **`frontend/.env`**: local env file for the Vite app when running frontend commands from `frontend/` (for example `VITE_API_URL=http://localhost:8000`).
+- **Root `.env` / `.env.example`**: shared reference for workspace-level variables. Keep Moolre keys aligned with backend names (for example `MOOLRE_API_URL`). `NEXT_PUBLIC_API_URL` is deprecated and not used by this Vite frontend.
+
+### 2. Local Development
+
+From the repository root:
+
+```bash
+npm run setup:backend
+npm run setup:frontend
+npm run api
+npm run dev
+```
+
+Additional root scripts:
+
+```bash
+npm run test:backend   # Run backend pytest suite
+npm run train:ai       # Train/evaluate Agro-AI model
+npm run build          # Build Vite frontend
+```
+
+Reference docs:
+
+- `docs/` for strategy, demo, and planning documents
+- `docs/moolre-setup.md` for sandbox/live credential setup and local webhook testing
+- `backend/README.md` for backend endpoints, environment variables, linting, and test commands
+
+### 3. Team Work Areas
 
 * `frontend/` owns the cooperative admin dashboard.
 * `backend/` owns FastAPI routes, webhook handling, and Trust Score logic.
@@ -96,7 +128,7 @@ This repository is currently initialized as a team scaffold. The implementation 
 
 ## The AgroCredit AI Engine
 
-For the hackathon MVP, AgroCredit can start as a transparent rules-based Trust Score that uses dues consistency, historical crop yields, and cooperative attendance. If time allows, the scoring logic can later evolve into a Scikit-learn model trained on synthesized agritech data.
+For the hackathon MVP, AgroCredit now includes `agro-ai`: a Scikit-learn Random Forest model trained on deterministic synthetic cooperative data. It uses dues consistency, payment timeliness, historical crop yields, cooperative attendance, loan history, outstanding balances, and savings behavior to generate an administrator-friendly credit-worthiness recommendation.
 
 When a farmer makes a USSD payment via Moolre, a webhook should trigger the FastAPI backend to record the transaction and recalculate their Trust Score in Supabase.
 
@@ -109,3 +141,4 @@ To ensure rapid development and zero merge conflicts during the hackathon:
 1. **Never push directly to `main`.**
 2. Branch naming convention: `feat/feature-name`, `fix/bug-name`, `docs/update-name`.
 3. Ensure backend code passes `ruff` linting and frontend code passes `eslint` before opening a Pull Request.
+4. Use `docs/` and `backend/README.md` for detailed implementation and setup guidance while contributing

@@ -1007,6 +1007,30 @@ body {
   color: var(--muted);
 }
 
+.score-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, .9fr); gap: 20px; align-items: start; }
+.sc-row-btn { width: 100%; border: none; background: #fff; cursor: pointer; text-align: left; font-family: 'DM Sans', sans-serif; }
+.sc-row-btn:hover, .sc-row-btn.on { background: var(--sage); }
+.score-detail-card { padding: 20px; }
+.score-detail-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+.score-detail-name { font-size: 26px; font-weight: 900; margin: 4px 0; }
+.score-detail-sub { font-size: 12px; color: var(--muted); }
+.score-bdg-lg { width: 58px; height: 42px; font-size: 18px; border-radius: 10px; }
+.decision-card { background: var(--sage); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 18px; }
+.decision-label { font-size: 10px; font-weight: 700; color: var(--g); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+.decision-title { font-size: 19px; font-weight: 800; margin-bottom: 6px; }
+.decision-copy { font-size: 12px; color: var(--muted); line-height: 1.6; }
+.feature-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 10px; margin-bottom: 18px; }
+.feature-pill { border: 1px solid var(--border); border-radius: 10px; padding: 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.feature-pill span { font-size: 11px; color: var(--muted); }
+.feature-pill strong { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--g); }
+.reason-list { display: grid; gap: 8px; }
+.reason-item { background: #fff; border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; font-size: 12px; line-height: 1.5; }
+.review-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; padding: 18px; }
+.review-card { border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: #fff; }
+.review-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.review-rec { font-size: 13px; font-weight: 700; color: var(--g); margin-bottom: 6px; }
+.review-reason { font-size: 12px; color: var(--muted); line-height: 1.5; }
+
 /* ── Score items ── */
 .score-item {
   display: flex;
