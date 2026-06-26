@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     moolre_api_url: str = "https://sandbox.moolre.com"
     moolre_api_user: str = ""
     moolre_api_key: str = ""
+    moolre_api_vaskey: str = ""
 
     # Moolre Merchant / Account
     moolre_account_number: str = ""

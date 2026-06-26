@@ -42,6 +42,13 @@ class MoolreService:
             headers["X-API-KEY"] = self.settings.moolre_api_key
         return headers
 
+    def _vaskey_headers(self) -> dict:
+        """Build headers specifically for VAS endpoints like SMS."""
+        headers = self._build_base_headers()
+        if self.settings.moolre_api_vaskey:
+            headers["X-API-VASKEY"] = self.settings.moolre_api_vaskey
+        return headers
+
 
 
     # ------------------------------------------------------------------
@@ -289,7 +296,7 @@ class MoolreService:
             "senderid": sid,
             "messages": recipients,
         }
-        raw = await self._post("/open/sms/send", payload, headers=self._base_headers)
+        raw = await self._post("/open/sms/send", payload, headers=self._vaskey_headers())
         return {
             "success": raw.get("status") in (1, "1"),
             "code": raw.get("code"),
