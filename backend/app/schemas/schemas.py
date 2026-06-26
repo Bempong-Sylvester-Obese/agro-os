@@ -129,6 +129,8 @@ class DuesCollectRequest(BaseModel):
     amount: float = Field(..., gt=0)
     channel: str = Field("13", description="Moolre channel code. 13=MTN Ghana, 6=Telecel, 7=AT")
     description: Optional[str] = "Cooperative dues payment"
+    external_ref: Optional[str] = Field(None, description="Provide this if retrying a payment push after OTP verification")
+    otp_code: Optional[str] = Field(None, description="Provide this if retrying after receiving OTP")
 
 
 class DuesCollectResponse(BaseModel):
@@ -136,6 +138,7 @@ class DuesCollectResponse(BaseModel):
     moolre_reference: Optional[str] = None
     status: str
     message: str
+    verification_required: bool = False
 
 
 # ===========================================================================

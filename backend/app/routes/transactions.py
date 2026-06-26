@@ -106,6 +106,7 @@ def update_transaction_status(
 async def collect_dues(request: DuesCollectRequest, db: Session = Depends(get_db)):
     """
     Initiate cooperative dues collection via Moolre USSD payment push.
+    Supports OTP verification retry if `external_ref` and `otp_code` are provided.
     Creates a pending Transaction record and fires the Moolre payment request.
     The webhook will later update the status to 'completed' or 'failed'.
     """
@@ -113,23 +114,28 @@ async def collect_dues(request: DuesCollectRequest, db: Session = Depends(get_db
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")
 
-    ext_ref = str(uuid.uuid4())
+    tx = None
+    if request.external_ref:
+        tx = db.query(Transaction).filter(Transaction.moolre_reference == request.external_ref).first()
 
-    # Create a pending transaction record first
-    tx = Transaction(
-        farmer_id=farmer.id,
-        transaction_type=TransactionType.dues,
-        amount=request.amount,
-        currency="GHS",
-        status=TransactionStatus.pending,
-        moolre_reference=ext_ref,
-        payer_phone=farmer.phone,
-        channel=request.channel,
-        description=request.description,
-    )
-    db.add(tx)
-    db.commit()
-    db.refresh(tx)
+    ext_ref = request.external_ref or str(uuid.uuid4())
+
+    if not tx:
+        # Create a pending transaction record first
+        tx = Transaction(
+            farmer_id=farmer.id,
+            transaction_type=TransactionType.dues,
+            amount=request.amount,
+            currency="GHS",
+            status=TransactionStatus.pending,
+            moolre_reference=ext_ref,
+            payer_phone=farmer.phone,
+            channel=request.channel,
+            description=request.description,
+        )
+        db.add(tx)
+        db.commit()
+        db.refresh(tx)
 
     # Trigger Moolre payment
     moolre = MoolreService()
@@ -139,6 +145,7 @@ async def collect_dues(request: DuesCollectRequest, db: Session = Depends(get_db
         currency="GHS",
         channel=request.channel,
         external_ref=ext_ref,
+        otpcode=request.otp_code,
         reference=request.description or "Cooperative dues",
     )
 
@@ -147,11 +154,15 @@ async def collect_dues(request: DuesCollectRequest, db: Session = Depends(get_db
         tx.moolre_reference = result["moolre_reference"]
         db.commit()
 
+    verification_required = result.get("verification_required", False)
+    status = "pending" if (result["success"] or verification_required) else "failed"
+
     return DuesCollectResponse(
         transaction_id=tx.id,
         moolre_reference=tx.moolre_reference,
-        status="pending" if result["success"] else "failed",
+        status=status,
         message=result["message"] or ("Payment request sent" if result["success"] else "Moolre request failed"),
+        verification_required=verification_required,
     )
 
 

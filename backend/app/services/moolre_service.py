@@ -98,6 +98,7 @@ class MoolreService:
         currency: str = "GHS",
         channel: str = "13",
         external_ref: str | None = None,
+        otpcode: str | None = None,
         reference: str = "Cooperative dues",
         account_number: str | None = None,
     ) -> dict[str, Any]:
@@ -120,13 +121,18 @@ class MoolreService:
             "reference": reference,
             "accountnumber": acc,
         }
+        if otpcode:
+            payload["otpcode"] = otpcode
 
         raw = await self._post("/open/transact/payment", payload)
 
         # Moolre returns code "TR099" on a successful payment request
-        success = raw.get("code") in ("TR099",) or raw.get("status") in (1, "1")
+        # TP14 means SMS OTP verification is required
+        verification_required = raw.get("code") == "TP14"
+        success = (raw.get("code") in ("TR099",) or raw.get("status") in (1, "1")) and not verification_required
         return {
             "success": success,
+            "verification_required": verification_required,
             "moolre_reference": raw.get("data") or ext_ref,
             "external_ref": ext_ref,
             "message": raw.get("message") or raw.get("error", ""),
