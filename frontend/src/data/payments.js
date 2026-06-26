@@ -7,14 +7,18 @@ export const PAYMENTS = [
   ['Akosua Boateng', 'GH-0056', 'GHS 120', 'USSD',  'Jun 03, 2026', 'Failed',  'bdg-red'],
 ]
 
-export const MEMBERS = [
-  ['Abena Mensah',   'GH-0042', '055 234 xxxx', 'Ashanti',     'Paid',    '87', 'sh'],
-  ['Kwame Asante',   'GH-0081', '024 891 xxxx', 'Northern',    'Paid',    '74', 'sm'],
-  ['Ama Osei',       'GH-0017', '059 441 xxxx', 'Gr. Accra',   'Pending', '61', 'sm'],
-  ['Kofi Darko',     'GH-0103', '020 773 xxxx', 'Brong-Ahafo', 'Paid',    '92', 'sh'],
-  ['Akosua Boateng', 'GH-0056', '026 558 xxxx', 'Eastern',     'Overdue', '43', 'sl'],
-  ['Yaw Frimpong',   'GH-0128', '050 362 xxxx', 'Volta',       'Paid',    '79', 'sm'],
+// Initial seed — DashboardPage manages live state on top of this
+export const MEMBERS_SEED = [
+  { id: 'GH-0042', name: 'Abena Mensah',   phone: '055 234 xxxx', region: 'Ashanti',     dues: 'Paid',    score: '87', tier: 'sh' },
+  { id: 'GH-0081', name: 'Kwame Asante',   phone: '024 891 xxxx', region: 'Northern',    dues: 'Paid',    score: '74', tier: 'sm' },
+  { id: 'GH-0017', name: 'Ama Osei',       phone: '059 441 xxxx', region: 'Gr. Accra',   dues: 'Pending', score: '61', tier: 'sm' },
+  { id: 'GH-0103', name: 'Kofi Darko',     phone: '020 773 xxxx', region: 'Brong-Ahafo', dues: 'Paid',    score: '92', tier: 'sh' },
+  { id: 'GH-0056', name: 'Akosua Boateng', phone: '026 558 xxxx', region: 'Eastern',     dues: 'Overdue', score: '43', tier: 'sl' },
+  { id: 'GH-0128', name: 'Yaw Frimpong',   phone: '050 362 xxxx', region: 'Volta',       dues: 'Paid',    score: '79', tier: 'sm' },
 ]
+
+// Keep legacy tuple export so Scores/other components still work
+export const MEMBERS = MEMBERS_SEED.map(m => [m.name, m.id, m.phone, m.region, m.dues, m.score, m.tier])
 
 export const SCORES = [
   ['Kofi Darko',     'Brong-Ahafo', '95', '88', '90', '92', 'sh'],

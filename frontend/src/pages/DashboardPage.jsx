@@ -5,6 +5,7 @@ import Members  from '../components/dashboard/Members'
 import Payments from '../components/dashboard/Payments'
 import Scores   from '../components/dashboard/Scores'
 import SMS      from '../components/dashboard/SMS'
+import { MEMBERS_SEED } from '../data/payments'
 
 const NAV_ITEMS = [
   { key: 'overview', icon: '📊', label: 'Overview' },
@@ -23,68 +24,215 @@ const TITLES = {
   settings: 'Settings',
 }
 
-export default function DashboardPage() {
-  const [section, setSection] = useState('overview')
+const REGIONS = ['Ashanti', 'Northern', 'Gr. Accra', 'Brong-Ahafo', 'Eastern', 'Volta', 'Western', 'Central', 'Upper East', 'Upper West']
+
+function scoreTier(score) {
+  const n = parseInt(score, 10)
+  if (n >= 80) return 'sh'
+  if (n >= 60) return 'sm'
+  return 'sl'
+}
+
+function nextId(members) {
+  const nums = members.map(m => parseInt(m.id.replace('GH-', ''), 10)).filter(Boolean)
+  const max  = nums.length ? Math.max(...nums) : 0
+  return `GH-${String(max + 1).padStart(4, '0')}`
+}
+
+const EMPTY_FORM = { name: '', phone: '', region: 'Ashanti', dues: 'Pending', score: '50' }
+
+export default function DashboardPage({ user, onLogout }) {
+  const [section, setSection]   = useState('overview')
+  const [members, setMembers]   = useState(MEMBERS_SEED)
+  const [modal, setModal]       = useState(false)
+  const [form, setForm]         = useState(EMPTY_FORM)
+  const [formErr, setFormErr]   = useState('')
+
+  function openModal()  { setForm(EMPTY_FORM); setFormErr(''); setModal(true) }
+  function closeModal() { setModal(false) }
+
+  function handleField(e) {
+    setForm(f => ({ ...f, [e.target.name]: e.target.value }))
+  }
+
+  function handleAddMember(e) {
+    e.preventDefault()
+    setFormErr('')
+    if (!form.name.trim())  { setFormErr('Full name is required.'); return }
+    if (!form.phone.trim()) { setFormErr('Phone number is required.'); return }
+    const score = parseInt(form.score, 10)
+    if (isNaN(score) || score < 0 || score > 100) { setFormErr('Score must be between 0 and 100.'); return }
+
+    const newMember = {
+      id:     nextId(members),
+      name:   form.name.trim(),
+      phone:  form.phone.trim(),
+      region: form.region,
+      dues:   form.dues,
+      score:  String(score),
+      tier:   scoreTier(score),
+    }
+    setMembers(prev => [...prev, newMember])
+    setModal(false)
+  }
+
+  const initials = user?.initials ?? '??'
 
   return (
-    <div className="admin-shell">
-      {/* ── Sidebar ── */}
-      <div className="admin-side">
-        <div className="admin-side-head">
-          <div className="admin-side-title">AgroOS</div>
-          <div className="admin-side-sub">Ashanti Farmers Co-op</div>
-        </div>
+    <>
+      <div className="admin-shell">
+        {/* ── Sidebar ── */}
+        <div className="admin-side">
+          <div className="admin-side-head">
+            <div className="admin-side-title">AgroOS</div>
+            <div className="admin-side-sub">{user?.cooperative ?? 'Cooperative'}</div>
+          </div>
 
-        <div className="admin-nav">
-          <div className="admin-nav-lbl">Main</div>
-          {NAV_ITEMS.map(({ key, icon, label }) => (
+          <div className="admin-nav">
+            <div className="admin-nav-lbl">Main</div>
+            {NAV_ITEMS.map(({ key, icon, label }) => (
+              <button
+                key={key}
+                className={`admin-nav-item${section === key ? ' on' : ''}`}
+                onClick={() => setSection(key)}
+              >
+                {icon} {label}
+              </button>
+            ))}
+
+            <div className="admin-nav-lbl">Account</div>
             <button
-              key={key}
-              className={`admin-nav-item${section === key ? ' on' : ''}`}
-              onClick={() => setSection(key)}
+              className={`admin-nav-item${section === 'settings' ? ' on' : ''}`}
+              onClick={() => setSection('settings')}
             >
-              {icon} {label}
+              ⚙️ Settings
             </button>
-          ))}
-
-          <div className="admin-nav-lbl">Account</div>
-          <button
-            className={`admin-nav-item${section === 'settings' ? ' on' : ''}`}
-            onClick={() => setSection('settings')}
-          >
-            ⚙️ Settings
-          </button>
-        </div>
-      </div>
-
-      {/* ── Main panel ── */}
-      <div className="admin-main">
-        <div className="admin-topbar">
-          <div className="admin-page-title serif">{TITLES[section]}</div>
-          <div className="admin-topbar-r">
-            <button className="btn-nav" style={{ fontSize: 12, padding: '6px 14px' }}>+ Add member</button>
-            <span style={{ fontSize: 20, cursor: 'pointer' }}>🔔</span>
-            <div className="admin-avatar">KA</div>
+            <button className="admin-nav-item" onClick={onLogout}>
+              🚪 Sign out
+            </button>
           </div>
         </div>
 
-        <div className="admin-content">
-          {section === 'overview'  && <Overview />}
-          {section === 'members'   && <Members />}
-          {section === 'payments'  && <Payments />}
-          {section === 'scores'    && <Scores />}
-          {section === 'sms'       && <SMS />}
-          {section === 'settings'  && (
-            <div className="admin-card" style={{ padding: 48, textAlign: 'center' }}>
-              <div style={{ fontSize: 48, marginBottom: 14 }}>⚙️</div>
-              <div className="serif" style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Settings</div>
-              <div style={{ fontSize: 14, color: 'var(--muted)' }}>
-                Cooperative profile, team roles, USSD configuration, and Moolre integration settings.
-              </div>
+        {/* ── Main panel ── */}
+        <div className="admin-main">
+          <div className="admin-topbar">
+            <div className="admin-page-title serif">{TITLES[section]}</div>
+            <div className="admin-topbar-r">
+              <button className="btn-nav" style={{ fontSize: 12, padding: '6px 14px' }} onClick={openModal}>
+                + Add member
+              </button>
+              <span style={{ fontSize: 20, cursor: 'pointer' }}>🔔</span>
+              <div className="admin-avatar">{initials}</div>
             </div>
-          )}
+          </div>
+
+          <div className="admin-content">
+            {section === 'overview'  && <Overview members={members} />}
+            {section === 'members'   && <Members  members={members} onAddMember={openModal} />}
+            {section === 'payments'  && <Payments />}
+            {section === 'scores'    && <Scores />}
+            {section === 'sms'       && <SMS />}
+            {section === 'settings'  && (
+              <div className="admin-card" style={{ padding: 48, textAlign: 'center' }}>
+                <div style={{ fontSize: 48, marginBottom: 14 }}>⚙️</div>
+                <div className="serif" style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Settings</div>
+                <div style={{ fontSize: 14, color: 'var(--muted)' }}>
+                  Cooperative profile, team roles, USSD configuration, and Moolre integration settings.
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* ── Add Member Modal ── */}
+      {modal && (
+        <div className="modal-overlay" onClick={closeModal}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <div>
+                <div className="modal-title serif">Add new member</div>
+                <div className="modal-sub">Fill in the farmer's details to register them to the cooperative.</div>
+              </div>
+              <button className="modal-close" onClick={closeModal}>✕</button>
+            </div>
+
+            {formErr && <div className="auth-error" style={{ margin: '0 0 16px' }}>{formErr}</div>}
+
+            <form onSubmit={handleAddMember} className="modal-form">
+              <div className="modal-row">
+                <div className="auth-field">
+                  <label className="auth-label">Full name *</label>
+                  <input
+                    className="auth-input"
+                    name="name"
+                    placeholder="e.g. Kwame Boateng"
+                    value={form.name}
+                    onChange={handleField}
+                    required
+                  />
+                </div>
+                <div className="auth-field">
+                  <label className="auth-label">Phone number *</label>
+                  <input
+                    className="auth-input"
+                    name="phone"
+                    placeholder="e.g. 024 xxx xxxx"
+                    value={form.phone}
+                    onChange={handleField}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="modal-row">
+                <div className="auth-field">
+                  <label className="auth-label">Region</label>
+                  <select className="auth-input auth-select" name="region" value={form.region} onChange={handleField}>
+                    {REGIONS.map(r => <option key={r}>{r}</option>)}
+                  </select>
+                </div>
+                <div className="auth-field">
+                  <label className="auth-label">Dues status</label>
+                  <select className="auth-input auth-select" name="dues" value={form.dues} onChange={handleField}>
+                    <option>Paid</option>
+                    <option>Pending</option>
+                    <option>Overdue</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="auth-field">
+                <label className="auth-label">
+                  Initial AgroCredit score <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(0 – 100)</span>
+                </label>
+                <div className="score-slider-wrap">
+                  <input
+                    type="range"
+                    min="0" max="100"
+                    name="score"
+                    value={form.score}
+                    onChange={handleField}
+                    className="score-slider"
+                  />
+                  <span className={`score-bdg ${scoreTier(form.score)}`} style={{ minWidth: 40, fontSize: 14 }}>
+                    {form.score}
+                  </span>
+                </div>
+              </div>
+
+              <div className="modal-actions">
+                <button type="button" className="btn-out-lg" style={{ fontSize: 13, padding: '10px 22px' }} onClick={closeModal}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-lg" style={{ fontSize: 13, padding: '10px 22px' }}>
+                  Add member →
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
