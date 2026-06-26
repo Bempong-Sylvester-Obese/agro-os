@@ -6,19 +6,44 @@ import SolutionsPage from './pages/SolutionsPage'
 import FeaturesPage  from './pages/FeaturesPage'
 import PricingPage   from './pages/PricingPage'
 import DashboardPage from './pages/DashboardPage'
+import LoginPage     from './pages/LoginPage'
 
 export default function App() {
-  const [page, setPage] = useState('home')
+  const [page, setPage]     = useState('home')
+  const [user, setUser]     = useState(null)   // null = not logged in
+
+  function handleSetPage(p) {
+    if (p === 'dashboard' && !user) {
+      setPage('login')
+    } else {
+      setPage(p)
+    }
+  }
+
+  function handleAuth(u) {
+    setUser(u)
+    setPage('dashboard')
+  }
+
+  function handleLogout() {
+    setUser(null)
+    setPage('home')
+  }
 
   return (
     <>
-      <Navbar activePage={page} setPage={setPage} />
+      {page !== 'login' && (
+        <Navbar activePage={page} setPage={handleSetPage} />
+      )}
 
-      {page === 'home'      && <HomePage      setPage={setPage} />}
-      {page === 'solutions' && <SolutionsPage setPage={setPage} />}
-      {page === 'features'  && <FeaturesPage  setPage={setPage} />}
-      {page === 'pricing'   && <PricingPage   setPage={setPage} />}
-      {page === 'dashboard' && <DashboardPage />}
+      {page === 'home'      && <HomePage      setPage={handleSetPage} />}
+      {page === 'solutions' && <SolutionsPage setPage={handleSetPage} />}
+      {page === 'features'  && <FeaturesPage  setPage={handleSetPage} />}
+      {page === 'pricing'   && <PricingPage   setPage={handleSetPage} />}
+      {page === 'login'     && <LoginPage     onAuth={handleAuth} />}
+      {page === 'dashboard' && user && (
+        <DashboardPage user={user} onLogout={handleLogout} />
+      )}
     </>
   )
 }
