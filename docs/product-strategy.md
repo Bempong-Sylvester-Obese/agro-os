@@ -75,3 +75,25 @@ Select option: _
 ## MVP Principle
 
 Build the smallest complete system that tells the end-to-end story. A simulated Moolre webhook and rules-based Trust Score are acceptable for the first version if real sandbox access or ML training takes too long.
+
+---
+
+## Compliance and Data Privacy
+
+AgroOS processes personally identifiable information (PII) belonging to
+farmers, including names, phone numbers, financial transactions, credit
+scores, and SMS message content.
+
+### Current Status (Hackathon)
+- A data privacy policy covering PII categories, access scope, demo data
+  rules, SMS consent, and retention windows has been documented at
+  [docs/data-privacy.md](data-privacy.md)
+- Only synthetic demo data may be used in the current build
+
+### Pre-Production Dependencies
+- [ ] Implement RBAC before onboarding real farmers
+- [ ] Register with Ghana's Data Protection Commission (DPC) under Act 843
+- [ ] Appoint a Data Protection Officer (DPO) and publish contact details
+- [ ] Legal review of docs/data-privacy.md by qualified Ghanaian counsel
+
+> See [docs/data-privacy.md](data-privacy.md) for the full policy.

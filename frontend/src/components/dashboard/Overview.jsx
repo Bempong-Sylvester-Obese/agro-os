@@ -1,6 +1,17 @@
 // src/components/dashboard/Overview.jsx
 import { CREDIT_SUMMARY, FARMER_ASSESSMENTS, PAYMENTS } from '../../data/payments'
 
+export default function Overview({ members }) {
+  const total   = members.length
+  const paid    = members.filter(m => m.dues === 'Paid').length
+  const avgScore = members.length
+    ? (members.reduce((s, m) => s + parseInt(m.score, 10), 0) / members.length).toFixed(1)
+    : '—'
+
+  const topScores = [...members]
+    .sort((a, b) => parseInt(b.score, 10) - parseInt(a.score, 10))
+    .slice(0, 4)
+    .map((m, i) => [`#${i + 1} ${m.name}`, m.region, m.score, m.tier])
 const scoreTier = (score) => {
   if (score >= 82) return 'sh'
   if (score >= 60) return 'sm'
@@ -20,6 +31,10 @@ export default function Overview({ agroAi }) {
     <>
       <div className="stat-row">
         {[
+          ['Total members',          String(total),           `+${Math.max(0, total - 6)} this month`],
+          ['Dues collected',         'GHS 29,760',            'June 2026'],
+          ['Pending disbursements',  'GHS 4,200',             '3 pending'],
+          ['Avg trust score',        avgScore,                '+3.1 vs last month'],
           ['Total members',          '248',        '+12 this month'],
           ['Dues collected',         'GHS 29,760', 'June 2026'],
           ['Credit eligible',        summary.eligible_count, `${summary.total_farmers} farmers assessed`],
@@ -41,7 +56,7 @@ export default function Overview({ agroAi }) {
             <span className="admin-card-action">View all →</span>
           </div>
           <div className="pt-head">
-            {['Member','Amount','Method','Date','Status'].map(h => (
+            {['Member', 'Amount', 'Method', 'Date', 'Status'].map(h => (
               <span key={h} className="pt-lbl">{h}</span>
             ))}
           </div>
@@ -65,6 +80,8 @@ export default function Overview({ agroAi }) {
             <span className="admin-card-title serif">Top Agro-AI approvals</span>
             <span className="admin-card-action">{agroAi?.source === 'api' ? 'Live API' : 'Demo data'}</span>
           </div>
+          {topScores.map(([name, region, score, tier]) => (
+            <div key={name} className="score-item">
           {topScores.map((farmer) => (
             <div key={farmer.farmer_id} className="score-item">
               <div>

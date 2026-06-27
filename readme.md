@@ -114,6 +114,7 @@ npm run build          # Build Vite frontend
 Reference docs:
 
 - `docs/` for strategy, demo, and planning documents
+- `docs/moolre-setup.md` for sandbox/live credential setup and local webhook testing
 - `backend/README.md` for backend endpoints, environment variables, linting, and test commands
 
 ### 3. Team Work Areas
@@ -132,11 +133,8 @@ For the hackathon MVP, AgroCredit now includes `agro-ai`: a Scikit-learn Random 
 When a farmer makes a USSD payment via Moolre, a webhook should trigger the FastAPI backend to record the transaction and recalculate their Trust Score in Supabase.
 
 ---
-
-## Contribution Guidelines
-
 See **[CONTRIBUTING.md](./CONTRIBUTING.md)** for branch naming, PR checklists, test commands, and secrets policy.
 
 1. **Never push directly to `main`.**
-2. Branch naming convention: `feat/feature-name`, `fix/bug-name`, `docs/update-name`.
+2. Branch naming convention: `feat/feature-name`, `fix/bug-name`, `docs/update-name`, `integrate/system-wiring`.
 3. Ensure backend code passes `ruff` linting and frontend code passes `eslint` before opening a Pull Request.
