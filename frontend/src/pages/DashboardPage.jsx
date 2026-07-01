@@ -4,6 +4,7 @@ import { fetchAgroAiDashboard } from '../api/agroAi'
 import Overview from '../components/dashboard/Overview'
 import Members  from '../components/dashboard/Members'
 import Payments from '../components/dashboard/Payments'
+import Loans    from '../components/dashboard/Loans'
 import Scores   from '../components/dashboard/Scores'
 import SMS      from '../components/dashboard/SMS'
 import { MEMBERS_SEED } from '../data/payments'
@@ -12,6 +13,7 @@ const NAV_ITEMS = [
   { key: 'overview', icon: '📊', label: 'Overview' },
   { key: 'members',  icon: '👥', label: 'Members' },
   { key: 'payments', icon: '💳', label: 'Payments' },
+  { key: 'loans',    icon: '🌾', label: 'Loans' },
   { key: 'scores',   icon: '⭐', label: 'Agro-AI scores' },
   { key: 'sms',      icon: '📱', label: 'SMS broadcasts' },
 ]
@@ -20,6 +22,7 @@ const TITLES = {
   overview: 'Overview',
   members:  'Members',
   payments: 'Payments',
+  loans:    'Input loans',
   scores:   'Agro-AI credit scores',
   sms:      'SMS broadcasts',
   settings: 'Settings',
@@ -44,10 +47,23 @@ const EMPTY_FORM = { name: '', phone: '', region: 'Ashanti', dues: 'Pending', sc
 
 export default function DashboardPage({ user, onLogout }) {
   const [section, setSection]   = useState('overview')
+  const [agroAi, setAgroAi]     = useState(null)
   const [members, setMembers]   = useState(MEMBERS_SEED)
   const [modal, setModal]       = useState(false)
   const [form, setForm]         = useState(EMPTY_FORM)
   const [formErr, setFormErr]   = useState('')
+
+  useEffect(() => {
+    let mounted = true
+
+    fetchAgroAiDashboard().then((data) => {
+      if (mounted) setAgroAi(data)
+    })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   function openModal()  { setForm(EMPTY_FORM); setFormErr(''); setModal(true) }
   function closeModal() { setModal(false) }
@@ -78,26 +94,11 @@ export default function DashboardPage({ user, onLogout }) {
   }
 
   const initials = user?.initials ?? '??'
-export default function DashboardPage() {
-  const [section, setSection] = useState('overview')
-  const [agroAi, setAgroAi] = useState(null)
-
-  useEffect(() => {
-    let mounted = true
-
-    fetchAgroAiDashboard().then((data) => {
-      if (mounted) setAgroAi(data)
-    })
-
-    return () => {
-      mounted = false
-    }
-  }, [])
+  const approverName = user?.name ?? 'Cooperative Admin'
 
   return (
     <>
       <div className="admin-shell">
-        {/* ── Sidebar ── */}
         <div className="admin-side">
           <div className="admin-side-head">
             <div className="admin-side-title">AgroOS</div>
@@ -129,24 +130,26 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* ── Main panel ── */}
         <div className="admin-main">
           <div className="admin-topbar">
             <div className="admin-page-title serif">{TITLES[section]}</div>
             <div className="admin-topbar-r">
-              <button className="btn-nav" style={{ fontSize: 12, padding: '6px 14px' }} onClick={openModal}>
-                + Add member
-              </button>
+              {section !== 'loans' && (
+                <button className="btn-nav" style={{ fontSize: 12, padding: '6px 14px' }} onClick={openModal}>
+                  + Add member
+                </button>
+              )}
               <span style={{ fontSize: 20, cursor: 'pointer' }}>🔔</span>
               <div className="admin-avatar">{initials}</div>
             </div>
           </div>
 
           <div className="admin-content">
-            {section === 'overview'  && <Overview members={members} />}
-            {section === 'members'   && <Members  members={members} onAddMember={openModal} />}
+            {section === 'overview'  && <Overview agroAi={agroAi} />}
+            {section === 'members'   && <Members farmers={agroAi?.farmers} onAddMember={openModal} />}
             {section === 'payments'  && <Payments />}
-            {section === 'scores'    && <Scores />}
+            {section === 'loans'     && <Loans approverName={approverName} />}
+            {section === 'scores'    && <Scores agroAi={agroAi} />}
             {section === 'sms'       && <SMS />}
             {section === 'settings'  && (
               <div className="admin-card" style={{ padding: 48, textAlign: 'center' }}>
@@ -161,7 +164,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Add Member Modal ── */}
       {modal && (
         <div className="modal-overlay" onClick={closeModal}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -169,18 +171,6 @@ export default function DashboardPage() {
               <div>
                 <div className="modal-title serif">Add new member</div>
                 <div className="modal-sub">Fill in the farmer's details to register them to the cooperative.</div>
-        <div className="admin-content">
-          {section === 'overview'  && <Overview agroAi={agroAi} />}
-          {section === 'members'   && <Members farmers={agroAi?.farmers} />}
-          {section === 'payments'  && <Payments />}
-          {section === 'scores'    && <Scores agroAi={agroAi} />}
-          {section === 'sms'       && <SMS />}
-          {section === 'settings'  && (
-            <div className="admin-card" style={{ padding: 48, textAlign: 'center' }}>
-              <div style={{ fontSize: 48, marginBottom: 14 }}>⚙️</div>
-              <div className="serif" style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Settings</div>
-              <div style={{ fontSize: 14, color: 'var(--muted)' }}>
-                Cooperative profile, team roles, USSD configuration, and Moolre integration settings.
               </div>
               <button className="modal-close" onClick={closeModal}>✕</button>
             </div>
