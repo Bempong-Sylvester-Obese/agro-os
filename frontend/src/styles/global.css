@@ -1078,6 +1078,48 @@ body {
   border-bottom: none;
 }
 
+/* ── Loans ── */
+.loan-head {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1.4fr 0.9fr 1.2fr 1.4fr;
+  gap: 10px;
+  padding: 10px 20px;
+  background: var(--sage);
+}
+.loan-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1.4fr 0.9fr 1.2fr 1.4fr;
+  gap: 10px;
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+}
+.loan-row:last-child {
+  border-bottom: none;
+}
+.loan-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.loan-btn {
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: "DM Sans", sans-serif;
+  white-space: nowrap;
+}
+.loan-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.loan-btn-muted {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
 /* ── SMS ── */
 .sms-grid {
   display: grid;
