@@ -1,12 +1,8 @@
 // src/components/dashboard/Scores.jsx
 import { useState } from 'react'
+import { DB_FARMERS_FALLBACK } from '../../api/farmers'
 import { FARMER_ASSESSMENTS } from '../../data/payments'
-
-const scoreTier = (score) => {
-  if (score >= 82) return 'sh'
-  if (score >= 60) return 'sm'
-  return 'sl'
-}
+import { findFarmerByName, formatTrustScore, scoreTier } from '../../utils/scores'
 
 const pct = (value) => `${Math.round(value * 100)}%`
 
@@ -18,34 +14,35 @@ const FEATURE_LABELS = {
   savings_rate: 'Savings rate',
 }
 
-export default function Scores({ agroAi }) {
-  const farmers = agroAi?.farmers || FARMER_ASSESSMENTS
-  const [selectedId, setSelectedId] = useState(farmers[0]?.farmer_id)
-  const selectedFarmer = farmers.find((farmer) => farmer.farmer_id === selectedId) || farmers[0]
+export default function Scores({ agroAi, dbFarmers }) {
+  const agroAiFarmers = agroAi?.farmers || FARMER_ASSESSMENTS
+  const trustFarmers = dbFarmers?.farmers || DB_FARMERS_FALLBACK
+  const [selectedId, setSelectedId] = useState(agroAiFarmers[0]?.farmer_id)
+  const selectedFarmer = agroAiFarmers.find((farmer) => farmer.farmer_id === selectedId) || agroAiFarmers[0]
+  const selectedTrustFarmer = selectedFarmer ? findFarmerByName(trustFarmers, selectedFarmer.name) : null
 
   return (
     <>
       <div className="info-banner">
-        <strong>About Agro-AI</strong> — a Random Forest credit model trained on synthetic cooperative data for this
-        hackathon. It estimates farmer creditworthiness from dues consistency, on-time payments, yield performance,
-        attendance, tenure, loan history, outstanding balance, and savings behavior.
+        <strong>Trust Score</strong> is rules-based and stored in the database — it recalculates when Moolre payment
+        webhooks confirm dues. <strong>Agro-AI credit</strong> is a separate Random Forest model for loan decisions.
       </div>
 
       <div className="score-layout">
         <div className="admin-card">
           <div className="admin-card-head">
-            <span className="admin-card-title serif">Credit decision queue</span>
-            <span className="admin-card-action">{agroAi?.source === 'api' ? 'Live API' : 'Demo fallback'}</span>
+            <span className="admin-card-title serif">Agro-AI credit queue</span>
+            <span className="admin-card-action">{agroAi?.source === 'api' ? 'ML model · live' : 'Demo fallback'}</span>
           </div>
           <div className="sc-head">
-            {['Member','Payment','Yield','Decision','Score'].map(h => (
+            {['Member', 'Payment', 'Yield', 'Decision', 'Agro-AI'].map((h) => (
               <span key={h} className="pt-lbl">{h}</span>
             ))}
           </div>
-          {farmers.map((farmer) => (
+          {agroAiFarmers.map((farmer) => (
             <button
               key={farmer.farmer_id}
-              className={`sc-row sc-row-btn${farmer.farmer_id === selectedFarmer.farmer_id ? ' on' : ''}`}
+              className={`sc-row sc-row-btn${farmer.farmer_id === selectedFarmer?.farmer_id ? ' on' : ''}`}
               onClick={() => setSelectedId(farmer.farmer_id)}
             >
               <div>
@@ -68,9 +65,20 @@ export default function Scores({ agroAi }) {
               <div>
                 <div className="pt-id">{selectedFarmer.farmer_id} · {selectedFarmer.region}</div>
                 <div className="score-detail-name serif">{selectedFarmer.name}</div>
-                <div className="score-detail-sub">{selectedFarmer.crop} farmer requesting GHS {selectedFarmer.requested_credit_amount}</div>
+                <div className="score-detail-sub">
+                  {selectedFarmer.crop} farmer requesting GHS {selectedFarmer.requested_credit_amount}
+                </div>
               </div>
-              <span className={`score-bdg score-bdg-lg ${scoreTier(selectedFarmer.score)}`}>{selectedFarmer.score}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
+                <span className={`score-bdg score-bdg-lg ${scoreTier(selectedTrustFarmer?.trust_score)}`} title="Trust Score">
+                  {formatTrustScore(selectedTrustFarmer?.trust_score)}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>Trust Score</span>
+                <span className={`score-bdg ${scoreTier(selectedFarmer.score)}`} title="Agro-AI credit score">
+                  {selectedFarmer.score}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>Agro-AI credit</span>
+              </div>
             </div>
 
             <div className="decision-card">
@@ -98,6 +106,35 @@ export default function Scores({ agroAi }) {
             </div>
           </div>
         )}
+      </div>
+
+      <div className="admin-card" style={{ marginTop: 20 }}>
+        <div className="admin-card-head">
+          <span className="admin-card-title serif">Trust Score leaderboard</span>
+          <span className="admin-card-action">
+            {dbFarmers?.source === 'api' ? 'Rules-based · live · refreshes every 15s' : 'Rules-based · demo'}
+          </span>
+        </div>
+        <div className="sc-head">
+          {['Member', 'Region', 'Status', 'Trust Score'].map((h) => (
+            <span key={h} className="pt-lbl">{h}</span>
+          ))}
+        </div>
+        {[...trustFarmers]
+          .sort((a, b) => Number(b.trust_score) - Number(a.trust_score))
+          .map((farmer) => (
+            <div key={farmer.id} className="sc-row">
+              <div>
+                <div className="pt-name">{farmer.name}</div>
+                <div className="pt-id">#{farmer.id}</div>
+              </div>
+              <span className="pt-m">{farmer.location || '—'}</span>
+              <span className="pt-m">{farmer.membership_status}</span>
+              <span className={`score-bdg ${scoreTier(farmer.trust_score)}`}>
+                {formatTrustScore(farmer.trust_score)}
+              </span>
+            </div>
+          ))}
       </div>
     </>
   )
