@@ -7,6 +7,9 @@ import Members from '../components/dashboard/Members'
 import Payments from '../components/dashboard/Payments'
 import Scores from '../components/dashboard/Scores'
 import SMS from '../components/dashboard/SMS'
+import Loans    from '../components/dashboard/Loans'
+import Scores   from '../components/dashboard/Scores'
+import SMS      from '../components/dashboard/SMS'
 import { MEMBERS_SEED } from '../data/payments'
 import { scoreTier } from '../utils/scores'
 
@@ -18,6 +21,9 @@ const NAV_ITEMS = [
   { key: 'payments', icon: '💳', label: 'Payments' },
   { key: 'scores', icon: '⭐', label: 'Scores' },
   { key: 'sms', icon: '📱', label: 'SMS broadcasts' },
+  { key: 'loans',    icon: '🌾', label: 'Loans' },
+  { key: 'scores',   icon: '⭐', label: 'Agro-AI scores' },
+  { key: 'sms',      icon: '📱', label: 'SMS broadcasts' },
 ]
 
 const TITLES = {
@@ -26,6 +32,9 @@ const TITLES = {
   payments: 'Payments',
   scores: 'Trust & Agro-AI scores',
   sms: 'SMS broadcasts',
+  loans:    'Input loans',
+  scores:   'Agro-AI credit scores',
+  sms:      'SMS broadcasts',
   settings: 'Settings',
 }
 
@@ -57,6 +66,27 @@ export default function DashboardPage({ user, onLogout }) {
   function closeModal() {
     setModal(false)
   }
+  const [section, setSection]   = useState('overview')
+  const [agroAi, setAgroAi]     = useState(null)
+  const [members, setMembers]   = useState(MEMBERS_SEED)
+  const [modal, setModal]       = useState(false)
+  const [form, setForm]         = useState(EMPTY_FORM)
+  const [formErr, setFormErr]   = useState('')
+
+  useEffect(() => {
+    let mounted = true
+
+    fetchAgroAiDashboard().then((data) => {
+      if (mounted) setAgroAi(data)
+    })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  function openModal()  { setForm(EMPTY_FORM); setFormErr(''); setModal(true) }
+  function closeModal() { setModal(false) }
 
   function handleField(e) {
     setForm((f) => ({ ...f, [e.target.name]: e.target.value }))
@@ -103,6 +133,8 @@ export default function DashboardPage({ user, onLogout }) {
       mounted = false
     }
   }, [])
+  const initials = user?.initials ?? '??'
+  const approverName = user?.name ?? 'Cooperative Admin'
 
   useEffect(() => {
     let mounted = true
@@ -162,9 +194,11 @@ export default function DashboardPage({ user, onLogout }) {
           <div className="admin-topbar">
             <div className="admin-page-title serif">{TITLES[section]}</div>
             <div className="admin-topbar-r">
-              <button className="btn-nav" style={{ fontSize: 12, padding: '6px 14px' }} onClick={openModal}>
-                + Add member
-              </button>
+              {section !== 'loans' && (
+                <button className="btn-nav" style={{ fontSize: 12, padding: '6px 14px' }} onClick={openModal}>
+                  + Add member
+                </button>
+              )}
               <span style={{ fontSize: 20, cursor: 'pointer' }}>🔔</span>
               <div className="admin-avatar">{initials}</div>
             </div>
@@ -183,6 +217,13 @@ export default function DashboardPage({ user, onLogout }) {
             {section === 'scores' && <Scores agroAi={agroAi} dbFarmers={dbFarmers} />}
             {section === 'sms' && <SMS />}
             {section === 'settings' && (
+            {section === 'overview'  && <Overview agroAi={agroAi} />}
+            {section === 'members'   && <Members farmers={agroAi?.farmers} onAddMember={openModal} />}
+            {section === 'payments'  && <Payments />}
+            {section === 'loans'     && <Loans approverName={approverName} />}
+            {section === 'scores'    && <Scores agroAi={agroAi} />}
+            {section === 'sms'       && <SMS />}
+            {section === 'settings'  && (
               <div className="admin-card" style={{ padding: 48, textAlign: 'center' }}>
                 <div style={{ fontSize: 48, marginBottom: 14 }}>⚙️</div>
                 <div className="serif" style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>Settings</div>
@@ -202,6 +243,7 @@ export default function DashboardPage({ user, onLogout }) {
               <div>
                 <div className="modal-title serif">Add new member</div>
                 <div className="modal-sub">Fill in the farmer&apos;s details to register them to the cooperative.</div>
+                <div className="modal-sub">Fill in the farmer's details to register them to the cooperative.</div>
               </div>
               <button className="modal-close" onClick={closeModal}>✕</button>
             </div>

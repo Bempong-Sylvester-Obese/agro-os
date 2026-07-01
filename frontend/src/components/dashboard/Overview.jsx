@@ -16,6 +16,17 @@ export default function Overview({ agroAi, dbFarmers }) {
     .sort((a, b) => b.score - a.score)
     .slice(0, 4)
   const reviewQueue = agroAiFarmers.filter((farmer) => !farmer.eligible).slice(0, 3)
+const scoreTier = (score) => {
+  if (score >= 82) return 'sh'
+  if (score >= 60) return 'sm'
+  return 'sl'
+}
+
+export default function Overview({ agroAi }) {
+  const farmers = agroAi?.farmers || FARMER_ASSESSMENTS
+  const summary = agroAi?.summary || CREDIT_SUMMARY
+  const topScores = [...farmers].sort((a, b) => b.score - a.score).slice(0, 4)
+  const reviewQueue = farmers.filter((farmer) => !farmer.eligible).slice(0, 3)
 
   return (
     <>
@@ -25,6 +36,10 @@ export default function Overview({ agroAi, dbFarmers }) {
           ['Dues collected', 'GHS 29,760', 'June 2026'],
           ['Avg Trust Score', avgTrustScore, dbFarmers?.source === 'api' ? 'Rules-based · live' : 'Rules-based · demo'],
           ['Avg Agro-AI score', summary.average_score, summary.model_version],
+          ['Total members',          '248',        '+12 this month'],
+          ['Dues collected',         'GHS 29,760', 'June 2026'],
+          ['Credit eligible',        summary.eligible_count, `${summary.total_farmers} farmers assessed`],
+          ['Avg Agro-AI score',      summary.average_score,  summary.model_version],
         ].map(([lbl, val, sub]) => (
           <div key={lbl} className="stat-card">
             <div className="stat-lbl">{lbl}</div>
@@ -42,6 +57,7 @@ export default function Overview({ agroAi, dbFarmers }) {
           </div>
           <div className="pt-head">
             {['Member', 'Amount', 'Method', 'Date', 'Status'].map((h) => (
+            {['Member','Amount','Method','Date','Status'].map(h => (
               <span key={h} className="pt-lbl">{h}</span>
             ))}
           </div>
@@ -87,6 +103,7 @@ export default function Overview({ agroAi, dbFarmers }) {
             <span className="admin-card-action">{agroAi?.source === 'api' ? 'ML model · live' : 'ML model · demo'}</span>
           </div>
           {topAgroAiScores.map((farmer) => (
+          {topScores.map((farmer) => (
             <div key={farmer.farmer_id} className="score-item">
               <div>
                 <div className="score-item-name">{farmer.name}</div>
