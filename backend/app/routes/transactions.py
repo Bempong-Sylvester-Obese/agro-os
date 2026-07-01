@@ -10,6 +10,7 @@ from app.models.models import Farmer, Transaction, TransactionStatus, Transactio
 from app.schemas.schemas import (
     DuesCollectRequest,
     DuesCollectResponse,
+    DuesCollectVerifyRequest,
     TransactionCreate,
     TransactionResponse,
     TransactionStatusUpdate,
@@ -102,11 +103,37 @@ def update_transaction_status(
 # ---------------------------------------------------------------------------
 
 
+def _dues_collect_response(tx: Transaction, result: dict) -> DuesCollectResponse:
+    """Map a Moolre initiate_payment result to an API response."""
+    outcome = result.get("outcome", "failed")
+    if outcome == "verification_required":
+        status = "verification_required"
+        default_message = "SMS verification required. Submit OTP via /transactions/dues/collect/verify."
+    elif outcome == "push_sent":
+        status = "pending"
+        default_message = "Payment request sent. Awaiting farmer approval on phone."
+    else:
+        status = "failed"
+        default_message = "Moolre request failed"
+
+    return DuesCollectResponse(
+        transaction_id=tx.id,
+        moolre_reference=tx.moolre_reference,
+        status=status,
+        message=result.get("message") or default_message,
+        moolre_code=result.get("moolre_code"),
+        outcome=outcome,
+    )
+
+
 @router.post("/dues/collect", response_model=DuesCollectResponse)
 async def collect_dues(request: DuesCollectRequest, db: Session = Depends(get_db)):
     """
     Initiate cooperative dues collection via Moolre USSD payment push.
     Creates a pending Transaction record and fires the Moolre payment request.
+
+    On first use of a sandbox payer phone, Moolre may return TP14 (SMS OTP required).
+    Call POST /transactions/dues/collect/verify with the returned transaction_id and OTP.
     The webhook will later update the status to 'completed' or 'failed'.
     """
     farmer = db.query(Farmer).filter(Farmer.id == request.farmer_id).first()
@@ -115,7 +142,6 @@ async def collect_dues(request: DuesCollectRequest, db: Session = Depends(get_db
 
     ext_ref = str(uuid.uuid4())
 
-    # Create a pending transaction record first
     tx = Transaction(
         farmer_id=farmer.id,
         transaction_type=TransactionType.dues,
@@ -131,7 +157,6 @@ async def collect_dues(request: DuesCollectRequest, db: Session = Depends(get_db
     db.commit()
     db.refresh(tx)
 
-    # Trigger Moolre payment
     moolre = MoolreService()
     result = await moolre.initiate_payment(
         payer_phone=farmer.phone,
@@ -142,17 +167,47 @@ async def collect_dues(request: DuesCollectRequest, db: Session = Depends(get_db
         reference=request.description or "Cooperative dues",
     )
 
-    # Update moolre_reference if Moolre returned a different one
     if result.get("moolre_reference") and result["moolre_reference"] != ext_ref:
         tx.moolre_reference = result["moolre_reference"]
         db.commit()
 
-    return DuesCollectResponse(
-        transaction_id=tx.id,
-        moolre_reference=tx.moolre_reference,
-        status="pending" if result["success"] else "failed",
-        message=result["message"] or ("Payment request sent" if result["success"] else "Moolre request failed"),
+    return _dues_collect_response(tx, result)
+
+
+@router.post("/dues/collect/verify", response_model=DuesCollectResponse)
+async def verify_dues_collect(request: DuesCollectVerifyRequest, db: Session = Depends(get_db)):
+    """
+    Retry a dues payment push with the OTP sent to the payer by Moolre (TP14 flow).
+    Reuses the same externalref from the original collect call.
+    """
+    tx = db.query(Transaction).filter(Transaction.id == request.transaction_id).first()
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    if tx.transaction_type != TransactionType.dues:
+        raise HTTPException(status_code=400, detail="Transaction is not a dues collection")
+    if tx.status != TransactionStatus.pending:
+        raise HTTPException(status_code=409, detail="Transaction is not pending OTP verification")
+    if not tx.moolre_reference:
+        raise HTTPException(status_code=400, detail="Transaction has no Moolre reference")
+    if not tx.payer_phone:
+        raise HTTPException(status_code=400, detail="Transaction has no payer phone")
+
+    moolre = MoolreService()
+    result = await moolre.initiate_payment(
+        payer_phone=tx.payer_phone,
+        amount=tx.amount,
+        currency=tx.currency or "GHS",
+        channel=tx.channel or "13",
+        external_ref=tx.moolre_reference,
+        reference=tx.description or "Cooperative dues",
+        otp_code=request.otp_code,
     )
+
+    if result.get("moolre_reference") and result["moolre_reference"] != tx.moolre_reference:
+        tx.moolre_reference = result["moolre_reference"]
+        db.commit()
+
+    return _dues_collect_response(tx, result)
 
 
 # ---------------------------------------------------------------------------

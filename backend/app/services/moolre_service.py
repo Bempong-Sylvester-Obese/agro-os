@@ -100,12 +100,18 @@ class MoolreService:
         external_ref: str | None = None,
         reference: str = "Cooperative dues",
         account_number: str | None = None,
+        otp_code: str | None = None,
     ) -> dict[str, Any]:
         """
         Trigger a USSD payment prompt on the payer's phone.
 
         channel codes: 13=MTN Ghana, 6=Telecel, 7=AT
-        Returns a normalised dict with ``success``, ``moolre_reference``, ``message``.
+        Returns a normalised dict with ``success``, ``outcome``, ``moolre_code``,
+        ``moolre_reference``, and ``message``.
+
+        Moolre codes:
+          - TR099: USSD push sent (success)
+          - TP14: OTP SMS sent; retry with same externalref + otpcode
         """
         ext_ref = external_ref or str(uuid.uuid4())
         acc = account_number or self.settings.moolre_account_number
@@ -120,16 +126,42 @@ class MoolreService:
             "reference": reference,
             "accountnumber": acc,
         }
+        if otp_code:
+            payload["otpcode"] = otp_code
 
         raw = await self._post("/open/transact/payment", payload)
 
-        # Moolre returns code "TR099" on a successful payment request
-        success = raw.get("code") in ("TR099",) or raw.get("status") in (1, "1")
+        if raw.get("success") is False:
+            return {
+                "success": False,
+                "outcome": "failed",
+                "moolre_code": None,
+                "moolre_reference": ext_ref,
+                "external_ref": ext_ref,
+                "message": raw.get("error", "Moolre request failed"),
+                "raw": raw,
+            }
+
+        code = raw.get("code", "")
+        if code == "TR099":
+            outcome = "push_sent"
+        elif code == "TP14":
+            outcome = "verification_required"
+        else:
+            outcome = "failed"
+
+        success = outcome == "push_sent"
+        message = raw.get("message") or raw.get("error", "")
+        if isinstance(message, list):
+            message = " ".join(message)
+
         return {
             "success": success,
+            "outcome": outcome,
+            "moolre_code": code or None,
             "moolre_reference": raw.get("data") or ext_ref,
             "external_ref": ext_ref,
-            "message": raw.get("message") or raw.get("error", ""),
+            "message": str(message),
             "raw": raw,
         }
 

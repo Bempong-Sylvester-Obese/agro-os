@@ -136,6 +136,13 @@ class DuesCollectResponse(BaseModel):
     moolre_reference: Optional[str] = None
     status: str
     message: str
+    moolre_code: Optional[str] = None
+    outcome: Optional[str] = None
+
+
+class DuesCollectVerifyRequest(BaseModel):
+    transaction_id: int
+    otp_code: str = Field(..., min_length=1)
 
 
 # ===========================================================================
