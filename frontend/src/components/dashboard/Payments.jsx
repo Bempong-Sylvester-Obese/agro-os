@@ -1,43 +1,91 @@
 // src/components/dashboard/Payments.jsx
-import { PAYMENTS } from '../../data/payments'
+import { useEffect, useState } from 'react'
+import { fetchPaymentsDashboard } from '../../api/transactions'
 
 export default function Payments() {
+  const [loading, setLoading] = useState(true)
+  const [dashboard, setDashboard] = useState(null)
+
+  useEffect(() => {
+    let mounted = true
+
+    fetchPaymentsDashboard()
+      .then((data) => {
+        if (mounted) setDashboard(data)
+      })
+      .finally(() => {
+        if (mounted) setLoading(false)
+      })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const stats = dashboard?.stats ?? []
+  const rows = dashboard?.rows ?? []
+  const sourceLabel = dashboard?.source === 'api' ? 'Live API' : 'Demo data'
+
   return (
     <>
       <div className="pay-stats">
-        {[
-          ['Total collected', 'GHS 29,760', 'June 2026'],
-          ['Via MoMo',        'GHS 18,240', '61% of total'],
-          ['Via USSD',        'GHS 7,800',  '26% of total'],
-        ].map(([lbl, val, sub]) => (
-          <div key={lbl} className="stat-card">
-            <div className="stat-lbl">{lbl}</div>
-            <div className="stat-val serif">{val}</div>
-            <div className="stat-sub">{sub}</div>
-          </div>
-        ))}
+        {loading
+          ? ['Total collected', 'Via MoMo', 'Via USSD'].map((lbl) => (
+              <div key={lbl} className="stat-card">
+                <div className="stat-lbl">{lbl}</div>
+                <div className="stat-val serif">…</div>
+                <div className="stat-sub">Loading</div>
+              </div>
+            ))
+          : stats.map(([lbl, val, sub]) => (
+              <div key={lbl} className="stat-card">
+                <div className="stat-lbl">{lbl}</div>
+                <div className="stat-val serif">{val}</div>
+                <div className="stat-sub">{sub}</div>
+              </div>
+            ))}
       </div>
 
       <div className="admin-card">
         <div className="admin-card-head">
           <span className="admin-card-title serif">Payment history</span>
-          <span className="admin-card-action">Export CSV →</span>
+          <span className="admin-card-action">{loading ? 'Loading…' : sourceLabel}</span>
         </div>
+
+        {dashboard?.source === 'demo' && !loading && (
+          <div className="auth-error" style={{ margin: '0 0 16px' }}>
+            API unreachable — showing demo payment data.
+          </div>
+        )}
+
         <div className="pay-head">
-          {['Member','Amount','Method','Date','Status'].map(h => (
+          {['Member', 'Amount', 'Method', 'Date', 'Status'].map((h) => (
             <span key={h} className="pt-lbl">{h}</span>
           ))}
         </div>
-        {PAYMENTS.map(([name, id, amt, method, date, status, cls]) => (
-          <div key={name + date} className="pay-row">
+
+        {loading && (
+          <div className="pay-row">
+            <div className="pt-name">Loading payment history…</div>
+          </div>
+        )}
+
+        {!loading && rows.length === 0 && (
+          <div className="pay-row">
+            <div className="pt-name">No transactions recorded yet.</div>
+          </div>
+        )}
+
+        {!loading && rows.map((row) => (
+          <div key={row.key} className="pay-row">
             <div>
-              <div className="pt-name">{name}</div>
-              <div className="pt-id">{id}</div>
+              <div className="pt-name">{row.name}</div>
+              <div className="pt-id">{row.memberId}</div>
             </div>
-            <span className="pt-v">{amt}</span>
-            <span className="pt-m">{method}</span>
-            <span className="pt-m">{date}</span>
-            <span className={`bdg ${cls}`}>{status}</span>
+            <span className="pt-v">{row.amount}</span>
+            <span className="pt-m">{row.method}</span>
+            <span className="pt-m">{row.date}</span>
+            <span className={`bdg ${row.statusClass}`}>{row.status}</span>
           </div>
         ))}
       </div>
