@@ -6,11 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database.db import get_db
-from app.models.models import Farmer, Transaction, TransactionStatus, TransactionType
+from app.models.models import Farmer, PaymentWebhookEvent, Transaction, TransactionStatus, TransactionType
 from app.schemas.schemas import (
     DuesCollectRequest,
     DuesCollectResponse,
     DuesCollectVerifyRequest,
+    PaymentLinkRequest,
+    PaymentLinkResponse,
+    PaymentWebhookEventResponse,
     TransactionCreate,
     TransactionResponse,
     TransactionStatusUpdate,
@@ -59,13 +62,15 @@ def list_transactions(
     return query.order_by(Transaction.created_at.desc()).offset(skip).limit(limit).all()
 
 
-@router.get("/{transaction_id}", response_model=TransactionResponse)
-def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
-    """Get a transaction by ID."""
-    tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
-    if not tx:
-        raise HTTPException(status_code=404, detail="Transaction not found")
-    return tx
+@router.get("/webhook-events", response_model=list[PaymentWebhookEventResponse])
+def list_webhook_events(limit: int = 50, db: Session = Depends(get_db)):
+    """Recent payment webhook audit events for finance reconciliation."""
+    return (
+        db.query(PaymentWebhookEvent)
+        .order_by(PaymentWebhookEvent.received_at.desc())
+        .limit(limit)
+        .all()
+    )
 
 
 @router.get("/farmer/{farmer_id}", response_model=list[TransactionResponse])
@@ -80,6 +85,15 @@ def get_farmer_transactions(farmer_id: int, db: Session = Depends(get_db)):
         .order_by(Transaction.created_at.desc())
         .all()
     )
+
+
+@router.get("/{transaction_id}", response_model=TransactionResponse)
+def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
+    """Get a transaction by ID."""
+    tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return tx
 
 
 @router.patch("/{transaction_id}/status", response_model=TransactionResponse)
@@ -238,3 +252,50 @@ async def get_wallet_balance():
     """Check cooperative Moolre wallet balance."""
     moolre = MoolreService()
     return await moolre.account_status()
+
+
+@router.post("/payment-link", response_model=PaymentLinkResponse)
+async def create_payment_link(request: PaymentLinkRequest, db: Session = Depends(get_db)):
+    """Generate a hosted Moolre payment page for cooperative dues or loan repayment."""
+    farmer = db.query(Farmer).filter(Farmer.id == request.farmer_id).first()
+    if not farmer:
+        raise HTTPException(status_code=404, detail="Farmer not found")
+
+    ext_ref = str(uuid.uuid4())
+    tx = Transaction(
+        farmer_id=farmer.id,
+        transaction_type=TransactionType.dues,
+        amount=request.amount,
+        currency="GHS",
+        status=TransactionStatus.pending,
+        moolre_reference=ext_ref,
+        payer_phone=farmer.phone,
+        channel="13",
+        description=request.description or "Cooperative payment",
+    )
+    db.add(tx)
+    db.commit()
+    db.refresh(tx)
+
+    moolre = MoolreService()
+    result = await moolre.generate_payment_link(
+        amount=request.amount,
+        email=request.email,
+        external_ref=ext_ref,
+        callback_url=request.callback_url,
+        redirect_url=request.redirect_url,
+        metadata={"farmer_id": farmer.id, "transaction_id": tx.id},
+    )
+
+    if result.get("reference") and result["reference"] != ext_ref:
+        tx.moolre_reference = result["reference"]
+        db.commit()
+
+    success = bool(result.get("success"))
+    return PaymentLinkResponse(
+        transaction_id=tx.id,
+        moolre_reference=tx.moolre_reference or ext_ref,
+        payment_url=result.get("payment_url"),
+        success=success,
+        message="Payment link generated" if success else "Moolre payment link request failed",
+    )

@@ -1,5 +1,6 @@
 // src/pages/LoginPage.jsx
 import { useState } from 'react'
+import { loginAdmin, storeAuthToken } from '../api/auth'
 import { USERS } from '../data/users'
 
 export default function LoginPage({ onAuth }) {
@@ -11,14 +12,27 @@ export default function LoginPage({ onAuth }) {
   const [error, setError]       = useState('')
   const [accounts, setAccounts] = useState(USERS)
 
-  function handleLogin(e) {
+  async function handleLogin(e) {
     e.preventDefault()
     setError('')
+    try {
+      const result = await loginAdmin(email, password)
+      storeAuthToken(result.access_token)
+      onAuth({
+        ...result.user,
+        email: result.user.email || email.trim(),
+        cooperative: 'Kuapa Kokoo Demo Cooperative',
+      })
+      return
+    } catch {
+      // Fall back to local demo accounts when backend auth is unavailable.
+    }
+
     const user = accounts.find(
       u => u.email.toLowerCase() === email.trim().toLowerCase() && u.password === password
     )
     if (!user) {
-      setError('Invalid email or password. Please try again.')
+      setError('Invalid email or password. Try admin@agroos.demo / demo1234 when the API is running.')
       return
     }
     onAuth(user)
