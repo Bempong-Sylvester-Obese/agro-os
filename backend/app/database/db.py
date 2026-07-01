@@ -47,3 +47,9 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def create_session():
+    """Return a standalone DB session (for startup tasks such as seeding)."""
+    _init_db()
+    return _SessionLocal()

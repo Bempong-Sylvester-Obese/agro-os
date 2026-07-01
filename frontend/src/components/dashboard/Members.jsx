@@ -10,7 +10,7 @@ const STATUS_CLS = {
   suspended: 'bdg-red',
 }
 
-export default function Members({ dbFarmers, agroAi, onAddMember }) {
+export default function Members({ dbFarmers, agroAi, onAddMember, loading = false, source = 'demo' }) {
   const [query, setQuery] = useState('')
   const farmers = dbFarmers?.farmers || DB_FARMERS_FALLBACK
   const agroAiFarmers = agroAi?.farmers || FARMER_ASSESSMENTS
@@ -55,6 +55,8 @@ export default function Members({ dbFarmers, agroAi, onAddMember }) {
       <div className="info-banner" style={{ marginBottom: 20 }}>
         <strong>Trust Score</strong> comes from verified cooperative records and updates after payment webhooks.
         <strong> Agro-AI credit</strong> is a separate ML assessment for loan decisions.
+        {' '}
+        {loading ? 'Loading members…' : source === 'api' ? 'Live CRM data.' : 'Showing demo fallback.'}
       </div>
 
       <div className="admin-card">

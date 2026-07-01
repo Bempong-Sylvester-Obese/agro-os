@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     app_env: str = "development"
     debug: bool = True
     secret_key: str = "your-secret-key-change-in-production"
+    auth_enabled: bool = False
+    admin_email: str = "admin@agroos.demo"
+    admin_password: str = "demo1234"
+    seed_demo_data: bool = False
 
     # Database
     database_url: str = "postgresql://user:password@localhost:5432/agro_os"

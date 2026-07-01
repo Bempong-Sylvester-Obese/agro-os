@@ -90,7 +90,7 @@ def test_create_agro_ai_model_falls_back_to_default_artifact(tmp_path, monkeypat
 
 
 def test_credit_summary_handles_empty_assessments(monkeypatch) -> None:
-    monkeypatch.setattr("app.agro_ai.runtime.agro_ai.list_farmer_assessments", lambda: [])
+    monkeypatch.setattr("app.routes.agro_ai.list_assessments_from_db", lambda db, model: [])
 
     client = TestClient(app)
     response = client.get("/api/agro-ai/credit-summary")

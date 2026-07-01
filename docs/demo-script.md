@@ -113,3 +113,74 @@ AgroOS is not just a payment app. It is cooperative infrastructure: member recor
 - If SMS sending is unavailable, show the prepared message and log it as a sent notification.
 - If live USSD is unavailable, show the menu as a mock interaction and store it as a USSD session.
 - If the Trust Score model is not trained, use the rules-based scoring formula.
+
+## Presenter Runbook
+
+### Pre-flight checklist (5 minutes before pitch)
+
+1. Backend running: `npm run api` — confirm `GET /health` returns healthy.
+2. Frontend running: `npm run dev` — confirm dashboard loads at `http://localhost:5173`.
+3. Seed data present: `GET /farmers/` should list **Abena Mensah** (DB id `1` when freshly seeded).
+4. Pending dues: note Abena's pending transaction id from `GET /transactions/?status=pending`.
+5. Moolre sandbox OR plan to use **USSD activity → Simulate payment webhook** in the dashboard.
+6. Login: `admin@agroos.demo` / `demo1234` (backend) or local demo user from login page.
+
+### Start commands
+
+```bash
+npm run setup:backend   # first time only
+npm run setup:frontend  # first time only
+npm run api             # terminal 1 — port 8000
+npm run dev             # terminal 2 — port 5173
+```
+
+Set `VITE_API_URL=http://localhost:8000` in `frontend/.env` for local wiring.
+
+### Screen-by-screen click path (~5 minutes)
+
+| Step | Tab | Action | Judge one-liner |
+|------|-----|--------|-----------------|
+| 1 | SMS broadcasts | Send dues reminder to cooperative | "AgroOS nudges farmers to pay through familiar SMS channels." |
+| 2 | USSD activity | Show menu log or describe *203* flow | "Farmers without smartphones reach the cooperative through USSD." |
+| 3 | USSD activity | Simulate payment on pending tx id | "Moolre confirms payment and AgroOS updates records instantly." |
+| 4 | Overview / Scores | Show Trust Score movement for Abena | "Every payment builds alternative credit data for farmers." |
+| 5 | Loans | Approve Abena's input loan | "Cooperative admins decide loans with trust and ML scores side by side." |
+| 6 | Payments | Show completed transaction + webhook audit | "Finance teams reconcile Moolre payments in one dashboard." |
+
+### Fallback: simulate webhook without Moolre
+
+**Dashboard:** USSD activity tab → enter pending `transaction_id` → **Simulate payment**.
+
+**curl:**
+
+```bash
+curl -X POST "$VITE_API_URL/webhooks/moolre/payment/simulate" \
+  -H "Content-Type: application/json" \
+  -d '{"transaction_id": 1}'
+```
+
+### Fallback: USSD without live short code
+
+```bash
+curl -X POST "$VITE_API_URL/webhooks/moolre/ussd" \
+  -H "Content-Type: application/json" \
+  -d '{"sessionid":"demo-1","phone":"+233552341234","input":"2"}'
+```
+
+Then refresh **USSD activity** tab.
+
+### Seed character reference
+
+| Character | DB farmer id | Phone | Notes |
+|-----------|--------------|-------|-------|
+| Abena Mensah | 1 (when seeded first) | +233552341234 | Pending dues, loan requested |
+| Kuapa Kokoo Demo Cooperative | cooperative id 1 | — | Sidebar name source |
+
+If ids differ, use `GET /farmers/` and match by name.
+
+### Recovery lines
+
+- **API down:** "You're seeing our offline demo mode — the same UI works live once the API connects." (topbar shows Demo data)
+- **Moolre sandbox delay:** "We'll simulate the webhook — this is the same code path production uses."
+- **Score unchanged:** "Trust scores refresh every 15 seconds after webhook processing."
+

@@ -2,15 +2,19 @@
 
 import logging
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from contextlib import asynccontextmanager
 
-from app.database.db import Base, _init_db
+from app.database.db import Base, create_session, _init_db
+from app.database.seed import seed_golden_path
+from app.dependencies.auth import decode_access_token
 from app.routes import (
     agro_ai,
+    auth,
     communications,
     cooperatives,
     farmers,
@@ -32,6 +36,14 @@ async def lifespan(app: FastAPI):
     _init_db()
     from app.database.db import engine  # engine is ready after _init_db()
     Base.metadata.create_all(bind=engine)
+
+    if settings.seed_demo_data or settings.app_env == "development":
+        db = create_session()
+        try:
+            seed_golden_path(db)
+        finally:
+            db.close()
+
     yield
 
 
@@ -60,7 +72,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def optional_admin_auth(request: Request, call_next):
+    """Protect mutating API routes when AUTH_ENABLED=true."""
+    if not settings.auth_enabled or request.method in {"GET", "HEAD", "OPTIONS"}:
+        return await call_next(request)
+
+    path = request.url.path
+    if path.startswith("/auth/login") or path.startswith("/webhooks/"):
+        return await call_next(request)
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return JSONResponse(status_code=401, content={"detail": "Authentication required"})
+
+    try:
+        decode_access_token(auth_header.split(" ", 1)[1])
+    except HTTPException as exc:
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+    return await call_next(request)
+
 # Register all routers
+app.include_router(auth.router)
 app.include_router(cooperatives.router)
 app.include_router(farmers.router)
 app.include_router(transactions.router)
@@ -80,6 +115,7 @@ def root():
         "environment": settings.app_env,
         "currency": settings.default_currency,
         "docs": "/docs",
+        "auth_enabled": settings.auth_enabled,
     }
 
 

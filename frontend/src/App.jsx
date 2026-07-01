@@ -1,5 +1,6 @@
 // src/App.jsx
 import { useState } from 'react'
+import { clearAuthToken } from './api/auth'
 import Navbar        from './components/Navbar'
 import HomePage      from './pages/HomePage'
 import SolutionsPage from './pages/SolutionsPage'
@@ -26,6 +27,7 @@ export default function App() {
   }
 
   function handleLogout() {
+    clearAuthToken()
     setUser(null)
     setPage('home')
   }
