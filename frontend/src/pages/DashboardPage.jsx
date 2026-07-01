@@ -1,18 +1,26 @@
 // src/pages/DashboardPage.jsx
 import { useEffect, useState } from 'react'
 import { fetchAgroAiDashboard } from '../api/agroAi'
+import { fetchFarmers } from '../api/farmers'
 import Overview from '../components/dashboard/Overview'
-import Members  from '../components/dashboard/Members'
+import Members from '../components/dashboard/Members'
 import Payments from '../components/dashboard/Payments'
+import Scores from '../components/dashboard/Scores'
+import SMS from '../components/dashboard/SMS'
 import Loans    from '../components/dashboard/Loans'
 import Scores   from '../components/dashboard/Scores'
 import SMS      from '../components/dashboard/SMS'
 import { MEMBERS_SEED } from '../data/payments'
+import { scoreTier } from '../utils/scores'
+
+const TRUST_SCORE_POLL_MS = 15000
 
 const NAV_ITEMS = [
   { key: 'overview', icon: '📊', label: 'Overview' },
-  { key: 'members',  icon: '👥', label: 'Members' },
+  { key: 'members', icon: '👥', label: 'Members' },
   { key: 'payments', icon: '💳', label: 'Payments' },
+  { key: 'scores', icon: '⭐', label: 'Scores' },
+  { key: 'sms', icon: '📱', label: 'SMS broadcasts' },
   { key: 'loans',    icon: '🌾', label: 'Loans' },
   { key: 'scores',   icon: '⭐', label: 'Agro-AI scores' },
   { key: 'sms',      icon: '📱', label: 'SMS broadcasts' },
@@ -20,8 +28,10 @@ const NAV_ITEMS = [
 
 const TITLES = {
   overview: 'Overview',
-  members:  'Members',
+  members: 'Members',
   payments: 'Payments',
+  scores: 'Trust & Agro-AI scores',
+  sms: 'SMS broadcasts',
   loans:    'Input loans',
   scores:   'Agro-AI credit scores',
   sms:      'SMS broadcasts',
@@ -30,22 +40,32 @@ const TITLES = {
 
 const REGIONS = ['Ashanti', 'Northern', 'Gr. Accra', 'Brong-Ahafo', 'Eastern', 'Volta', 'Western', 'Central', 'Upper East', 'Upper West']
 
-function scoreTier(score) {
-  const n = parseInt(score, 10)
-  if (n >= 80) return 'sh'
-  if (n >= 60) return 'sm'
-  return 'sl'
-}
-
 function nextId(members) {
-  const nums = members.map(m => parseInt(m.id.replace('GH-', ''), 10)).filter(Boolean)
-  const max  = nums.length ? Math.max(...nums) : 0
+  const nums = members.map((m) => parseInt(m.id.replace('GH-', ''), 10)).filter(Boolean)
+  const max = nums.length ? Math.max(...nums) : 0
   return `GH-${String(max + 1).padStart(4, '0')}`
 }
 
 const EMPTY_FORM = { name: '', phone: '', region: 'Ashanti', dues: 'Pending', score: '50' }
 
 export default function DashboardPage({ user, onLogout }) {
+  const [section, setSection] = useState('overview')
+  const [members, setMembers] = useState(MEMBERS_SEED)
+  const [agroAi, setAgroAi] = useState(null)
+  const [dbFarmers, setDbFarmers] = useState(null)
+  const [modal, setModal] = useState(false)
+  const [form, setForm] = useState(EMPTY_FORM)
+  const [formErr, setFormErr] = useState('')
+
+  function openModal() {
+    setForm(EMPTY_FORM)
+    setFormErr('')
+    setModal(true)
+  }
+
+  function closeModal() {
+    setModal(false)
+  }
   const [section, setSection]   = useState('overview')
   const [agroAi, setAgroAi]     = useState(null)
   const [members, setMembers]   = useState(MEMBERS_SEED)
@@ -69,32 +89,72 @@ export default function DashboardPage({ user, onLogout }) {
   function closeModal() { setModal(false) }
 
   function handleField(e) {
-    setForm(f => ({ ...f, [e.target.name]: e.target.value }))
+    setForm((f) => ({ ...f, [e.target.name]: e.target.value }))
   }
 
   function handleAddMember(e) {
     e.preventDefault()
     setFormErr('')
-    if (!form.name.trim())  { setFormErr('Full name is required.'); return }
-    if (!form.phone.trim()) { setFormErr('Phone number is required.'); return }
+    if (!form.name.trim()) {
+      setFormErr('Full name is required.')
+      return
+    }
+    if (!form.phone.trim()) {
+      setFormErr('Phone number is required.')
+      return
+    }
     const score = parseInt(form.score, 10)
-    if (isNaN(score) || score < 0 || score > 100) { setFormErr('Score must be between 0 and 100.'); return }
+    if (Number.isNaN(score) || score < 0 || score > 100) {
+      setFormErr('Score must be between 0 and 100.')
+      return
+    }
 
     const newMember = {
-      id:     nextId(members),
-      name:   form.name.trim(),
-      phone:  form.phone.trim(),
+      id: nextId(members),
+      name: form.name.trim(),
+      phone: form.phone.trim(),
       region: form.region,
-      dues:   form.dues,
-      score:  String(score),
-      tier:   scoreTier(score),
+      dues: form.dues,
+      score: String(score),
+      tier: scoreTier(score),
     }
-    setMembers(prev => [...prev, newMember])
+    setMembers((prev) => [...prev, newMember])
     setModal(false)
   }
 
+  useEffect(() => {
+    let mounted = true
+
+    fetchAgroAiDashboard().then((data) => {
+      if (mounted) setAgroAi(data)
+    })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
   const initials = user?.initials ?? '??'
   const approverName = user?.name ?? 'Cooperative Admin'
+
+  useEffect(() => {
+    let mounted = true
+
+    const loadFarmers = () => {
+      fetchFarmers().then((data) => {
+        if (mounted) setDbFarmers(data)
+      })
+    }
+
+    loadFarmers()
+    const intervalId = setInterval(loadFarmers, TRUST_SCORE_POLL_MS)
+
+    return () => {
+      mounted = false
+      clearInterval(intervalId)
+    }
+  }, [])
+
+  const initials = user?.initials ?? '??'
 
   return (
     <>
@@ -145,6 +205,18 @@ export default function DashboardPage({ user, onLogout }) {
           </div>
 
           <div className="admin-content">
+            {section === 'overview' && <Overview agroAi={agroAi} dbFarmers={dbFarmers} />}
+            {section === 'members' && (
+              <Members
+                dbFarmers={dbFarmers}
+                agroAi={agroAi}
+                onAddMember={openModal}
+              />
+            )}
+            {section === 'payments' && <Payments />}
+            {section === 'scores' && <Scores agroAi={agroAi} dbFarmers={dbFarmers} />}
+            {section === 'sms' && <SMS />}
+            {section === 'settings' && (
             {section === 'overview'  && <Overview agroAi={agroAi} />}
             {section === 'members'   && <Members farmers={agroAi?.farmers} onAddMember={openModal} />}
             {section === 'payments'  && <Payments />}
@@ -166,10 +238,11 @@ export default function DashboardPage({ user, onLogout }) {
 
       {modal && (
         <div className="modal-overlay" onClick={closeModal}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-head">
               <div>
                 <div className="modal-title serif">Add new member</div>
+                <div className="modal-sub">Fill in the farmer&apos;s details to register them to the cooperative.</div>
                 <div className="modal-sub">Fill in the farmer's details to register them to the cooperative.</div>
               </div>
               <button className="modal-close" onClick={closeModal}>✕</button>
@@ -207,7 +280,7 @@ export default function DashboardPage({ user, onLogout }) {
                 <div className="auth-field">
                   <label className="auth-label">Region</label>
                   <select className="auth-input auth-select" name="region" value={form.region} onChange={handleField}>
-                    {REGIONS.map(r => <option key={r}>{r}</option>)}
+                    {REGIONS.map((r) => <option key={r}>{r}</option>)}
                   </select>
                 </div>
                 <div className="auth-field">
@@ -222,12 +295,13 @@ export default function DashboardPage({ user, onLogout }) {
 
               <div className="auth-field">
                 <label className="auth-label">
-                  Initial AgroCredit score <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(0 – 100)</span>
+                  Initial Trust Score <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(0 – 100)</span>
                 </label>
                 <div className="score-slider-wrap">
                   <input
                     type="range"
-                    min="0" max="100"
+                    min="0"
+                    max="100"
                     name="score"
                     value={form.score}
                     onChange={handleField}
