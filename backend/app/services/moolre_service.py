@@ -40,6 +40,8 @@ class MoolreService:
         }
         if self.settings.moolre_api_key:
             headers["X-API-KEY"] = self.settings.moolre_api_key
+        if self.settings.moolre_env == "live" and self.settings.moolre_api_pubkey:
+            headers["X-API-PUBKEY"] = self.settings.moolre_api_pubkey
         return headers
 
     def _vaskey_headers(self) -> dict:

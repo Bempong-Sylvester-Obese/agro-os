@@ -129,3 +129,8 @@ def test_list_attendance(client, farmer):
     resp = client.get(f"/farmers/{farmer['id']}/attendance")
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
+
+
+def test_list_farmers_rejects_excessive_limit(client):
+    resp = client.get("/farmers/?limit=101")
+    assert resp.status_code == 422

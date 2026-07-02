@@ -12,10 +12,11 @@ import hmac
 import json
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.models.models import Farmer, PaymentWebhookEvent, Transaction, TransactionStatus, UssdSession
 from app.schemas.schemas import SimulateWebhookRequest, UssdSessionResponse
@@ -85,6 +86,8 @@ def _process_payment_payload(
     payload: dict,
     db: Session,
     background_tasks: BackgroundTasks,
+    *,
+    signature_valid: bool,
 ) -> dict:
     moolre_status: int = payload.get("status", 0)
     data: dict = payload.get("data") or {}
@@ -109,7 +112,7 @@ def _process_payment_payload(
         _record_webhook_event(
             db,
             payload=payload,
-            signature_valid=True,
+            signature_valid=signature_valid,
             processed=False,
             message="reference not found",
         )
@@ -125,7 +128,7 @@ def _process_payment_payload(
         _record_webhook_event(
             db,
             payload=payload,
-            signature_valid=True,
+            signature_valid=signature_valid,
             transaction=tx,
             processed=True,
             message="Payment confirmed",
@@ -156,7 +159,7 @@ def _process_payment_payload(
     _record_webhook_event(
         db,
         payload=payload,
-        signature_valid=True,
+        signature_valid=signature_valid,
         transaction=tx,
         processed=True,
         message="Payment failure recorded",
@@ -237,7 +240,12 @@ async def handle_moolre_payment_webhook(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
-    return _process_payment_payload(payload, db, background_tasks)
+    return _process_payment_payload(
+        payload,
+        db,
+        background_tasks,
+        signature_valid=signature_valid,
+    )
 
 
 @router.post("/moolre/payment/simulate")
@@ -282,7 +290,12 @@ async def simulate_moolre_payment_webhook(
         },
         "simulated": True,
     }
-    return _process_payment_payload(payload, db, background_tasks)
+    return _process_payment_payload(
+        payload,
+        db,
+        background_tasks,
+        signature_valid=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +334,10 @@ def _log_ussd_session(
 
 
 @router.get("/ussd/logs", response_model=list[UssdSessionResponse])
-def list_ussd_logs(limit: int = 50, db: Session = Depends(get_db)):
+def list_ussd_logs(
+    limit: int = Query(default=50, le=MAX_PAGE_SIZE),
+    db: Session = Depends(get_db),
+):
     """Recent USSD interactions for dashboard visibility."""
     return (
         db.query(UssdSession)

@@ -43,17 +43,23 @@ Copy from `backend/.env.example` before running locally or deploying.
 | `DEFAULT_CURRENCY` | Platform currency | `GHS` |
 | `MOOLRE_API_URL` | Moolre base API URL | `https://api.moolre.com` |
 | `MOOLRE_API_KEY` | Moolre API key | `mk_live_...` |
+| `MOOLRE_API_PUBKEY` | Moolre live public key (required for live API calls) | `mpk_live_...` |
 | `MOOLRE_WEBHOOK_SECRET` | Secret for verifying webhook signatures | `whsec_...` |
-| `MOOLRE_SENDER_ID` | Approved SMS sender ID | `AgroOS` |
+| `DEFAULT_SMS_SENDER_ID` | Approved SMS sender ID | `AgroOS` |
+| `SENTRY_DSN` | Optional Sentry DSN for backend error tracking | `https://...@sentry.io/...` |
+| `AGRO_AI_REQUIRE_ARTIFACT` | Fail health check when synthetic model is used | `true` / `false` |
 
 > ⚠️ Never commit `.env` to the repository. It is in `.gitignore`.
 > Use Render's environment variable dashboard for production secrets.
 
 ### 2.2 Frontend (`frontend/.env`)
 
+Copy from `frontend/.env.example` before running locally or deploying.
+
 | Variable | Description | Example |
 |---|---|---|
 | `VITE_API_URL` | Backend API base URL | `https://agro-os-api.onrender.com` |
+| `VITE_COOPERATIVE_ID` | Default cooperative ID for dashboard API calls | `1` |
 
 For local development:
 ```
@@ -63,6 +69,7 @@ VITE_API_URL=http://localhost:8000
 For production (set in Vercel dashboard):
 ```
 VITE_API_URL=https://agro-os-api.onrender.com
+VITE_COOPERATIVE_ID=1
 ```
 
 > `NEXT_PUBLIC_API_URL` is deprecated — do not use it. This is a Vite
@@ -277,17 +284,22 @@ Expected response:
   "version": "1.0.0",
   "environment": "production",
   "currency": "GHS",
-  "docs": "/docs"
+  "docs": null
 }
 ```
 
-### 9.3 Interactive API docs
-Open in browser:
+> When `APP_ENV=production`, `/docs` and `/redoc` are disabled. The `docs`
+> field in the root response is `null`.
+
+### 9.3 Interactive API docs (development only)
+
+Open in browser when running locally or with `APP_ENV=development`:
+
 ```
-https://agro-os-api.onrender.com/docs
+http://localhost:8000/docs
 ```
-All routers should be visible: cooperatives, farmers, transactions, loans,
-production, communications, webhooks, agro-ai.
+
+In production (`APP_ENV=production`), `/docs` and `/redoc` return 404.
 
 ### 9.4 Farmers list (Agro-AI)
 ```bash
@@ -322,6 +334,6 @@ a 200 response.
 - `backend/main.py` — CORS configuration, router registration, health endpoints
 - `backend/app/config.py` — settings loaded from `.env`
 - `backend/.env.example` — full environment variable reference
-- `readme.md` — technology stack and monorepo structure
+- `README.md` — technology stack and monorepo structure
 - `docs/scoring-systems.md` — Trust Score webhook flow
 - `docs/data-privacy.md` — data handling for production deployments

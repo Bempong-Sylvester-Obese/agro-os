@@ -2,9 +2,10 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.models.models import Farmer, PaymentWebhookEvent, Transaction, TransactionStatus, TransactionType
 from app.schemas.schemas import (
@@ -48,7 +49,7 @@ def list_transactions(
     status: TransactionStatus | None = None,
     transaction_type: TransactionType | None = None,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = Query(default=100, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
     """List transactions with optional filters."""
@@ -63,7 +64,10 @@ def list_transactions(
 
 
 @router.get("/webhook-events", response_model=list[PaymentWebhookEventResponse])
-def list_webhook_events(limit: int = 50, db: Session = Depends(get_db)):
+def list_webhook_events(
+    limit: int = Query(default=50, le=MAX_PAGE_SIZE),
+    db: Session = Depends(get_db),
+):
     """Recent payment webhook audit events for finance reconciliation."""
     return (
         db.query(PaymentWebhookEvent)
@@ -233,7 +237,7 @@ async def verify_dues_collect(request: DuesCollectVerifyRequest, db: Session = D
 async def list_moolre_transactions(
     start_date: str | None = None,
     end_date: str | None = None,
-    limit: int = 50,
+    limit: int = Query(default=50, le=MAX_PAGE_SIZE),
 ):
     """
     Proxy to Moolre List Transactions API for the cooperative wallet.

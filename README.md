@@ -44,7 +44,7 @@ agroos/
 |   +-- README.md
 +-- .env.example
 +-- .gitignore
-+-- readme.md
++-- README.md
 
 ```
 
@@ -81,7 +81,7 @@ This repository is an active monorepo: the Vite + React dashboard and FastAPI ba
 
 ### 1. Clone and Configure
 
-1. Copy `backend/.env.example` to `backend/.env` for backend local development.
+1. Copy `backend/.env.example` to `backend/.env` and `frontend/.env.example` to `frontend/.env` for local development.
 2. Read `docs/product-strategy.md` for the product vision and Golden Path demo.
 3. Choose a feature branch before making changes.
 4. For deeper backend setup and API details, see `backend/README.md`.
@@ -89,8 +89,8 @@ This repository is an active monorepo: the Vite + React dashboard and FastAPI ba
 ### Environment files
 
 - **`backend/.env`**: runtime env file for the FastAPI backend. `backend/app/config.py` loads `.env` from the backend working directory, so copy from `backend/.env.example`.
-- **`frontend/.env`**: local env file for the Vite app when running frontend commands from `frontend/` (for example `VITE_API_URL=http://localhost:8000`).
-- **Root `.env` / `.env.example`**: shared reference for workspace-level variables. Keep Moolre keys aligned with backend names (for example `MOOLRE_API_URL`). `NEXT_PUBLIC_API_URL` is deprecated and not used by this Vite frontend.
+- **`frontend/.env`**: local env file for the Vite app. Copy from `frontend/.env.example` (for example `VITE_API_URL=http://localhost:8000`, `VITE_COOPERATIVE_ID=1`).
+- **Root `.env` / `.env.example`**: shared reference for workspace-level variables. Keep Moolre keys aligned with backend names (for example `MOOLRE_API_URL`, `DEFAULT_SMS_SENDER_ID`). `NEXT_PUBLIC_API_URL` is deprecated and not used by this Vite frontend.
 
 ### 2. Local Development
 

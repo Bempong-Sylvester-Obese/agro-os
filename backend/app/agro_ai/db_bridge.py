@@ -73,8 +73,6 @@ def get_assessment_from_db(
     farmer = None
     if db_id is not None:
         farmer = db.query(Farmer).filter(Farmer.id == db_id).first()
-    if farmer is None:
-        farmer = db.query(Farmer).filter(Farmer.name.ilike(f"%{farmer_id}%")).first()
 
     if farmer:
         return model.assess_farmer(farmer_to_assessment_input(farmer, db))
