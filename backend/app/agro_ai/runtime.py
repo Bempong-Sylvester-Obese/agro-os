@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 
 from app.agro_ai.audit import PredictionAuditLogger
-from app.agro_ai.model import AgroAiCreditModel
+from app.agro_ai.model import AgroAiCreditModel, SYNTHETIC_ARTIFACT_SOURCE
 from app.agro_ai.train import DEFAULT_MODEL_PATH
+from app.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_path(raw_path: str | None) -> Path | None:
@@ -39,6 +43,15 @@ def create_agro_ai_model() -> AgroAiCreditModel:
     for candidate_path in candidate_paths:
         if candidate_path and candidate_path.exists():
             return AgroAiCreditModel.from_artifact(candidate_path)
+
+    settings = get_settings()
+    if settings.app_env not in {"development", "test"}:
+        logger.warning(
+            "Agro-AI model artifact not found; using in-memory synthetic fallback "
+            "(artifact_source=%s, app_env=%s)",
+            SYNTHETIC_ARTIFACT_SOURCE,
+            settings.app_env,
+        )
 
     return AgroAiCreditModel()
 

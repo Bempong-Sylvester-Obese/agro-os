@@ -2,13 +2,13 @@
 
 import logging
 
+import sentry_sdk
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import get_settings
-from contextlib import asynccontextmanager
-
 from app.database.db import Base, create_session, _init_db
 from app.database.seed import seed_golden_path
 from app.dependencies.auth import decode_access_token
@@ -29,6 +29,13 @@ logging.basicConfig(level=logging.INFO)
 
 settings = get_settings()
 
+if settings.sentry_dsn:
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.app_env,
+        send_default_pii=False,
+    )
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -47,6 +54,10 @@ async def lifespan(app: FastAPI):
     yield
 
 
+_is_production = settings.app_env == "production"
+_docs_url = None if _is_production else "/docs"
+_redoc_url = None if _is_production else "/redoc"
+
 app = FastAPI(
     title="AgroOS API",
     description=(
@@ -54,8 +65,8 @@ app = FastAPI(
         "Powered by Moolre for payments, SMS, and USSD access."
     ),
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url=_docs_url,
+    redoc_url=_redoc_url,
     lifespan=lifespan,
 )
 
@@ -114,7 +125,7 @@ def root():
         "version": "1.0.0",
         "environment": settings.app_env,
         "currency": settings.default_currency,
-        "docs": "/docs",
+        "docs": _docs_url,
         "auth_enabled": settings.auth_enabled,
     }
 
@@ -122,9 +133,15 @@ def root():
 @app.get("/health", tags=["health"])
 def health_check():
     """Health check endpoint for deployment monitors."""
+    model_meta = agro_ai_runtime.metadata
+    require_artifact = settings.agro_ai_require_artifact or settings.app_env == "production"
+    model_ready = not (require_artifact and model_meta["is_synthetic_fallback"])
+    status = "healthy" if model_ready else "degraded"
+
     return {
-        "status": "healthy",
-        **agro_ai_runtime.metadata,
+        "status": status,
+        "model_ready": model_ready,
+        **model_meta,
     }
 
 

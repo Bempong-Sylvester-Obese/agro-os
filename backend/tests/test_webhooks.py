@@ -19,12 +19,50 @@ def _make_payment_payload(external_ref: str, status: int = 1, amount: str = "50.
     }
 
 
-def test_webhook_unknown_reference(client):
+def test_webhook_unknown_reference(client, db):
     """A webhook for an unknown reference should return 200 (Moolre must not retry)."""
+    from app.models.models import PaymentWebhookEvent
+
     payload = _make_payment_payload("UNKNOWN-REF-XYZ")
     resp = client.post("/webhooks/moolre/payment", json=payload)
     assert resp.status_code == 200
     assert "acknowledged" in resp.json()["message"]
+
+    event = (
+        db.query(PaymentWebhookEvent)
+        .filter(PaymentWebhookEvent.message == "reference not found")
+        .order_by(PaymentWebhookEvent.received_at.desc())
+        .first()
+    )
+    assert event is not None
+    assert event.signature_valid is True
+
+
+def test_webhook_audit_stores_signature_valid_false(db):
+    """Processing helpers must persist the actual signature_valid flag."""
+    from fastapi import BackgroundTasks
+
+    from app.routes.webhooks import _process_payment_payload
+
+    payload = _make_payment_payload("AUDIT-SIG-TEST")
+    result = _process_payment_payload(
+        payload,
+        db,
+        BackgroundTasks(),
+        signature_valid=False,
+    )
+    assert "acknowledged" in result["message"]
+
+    from app.models.models import PaymentWebhookEvent
+
+    event = (
+        db.query(PaymentWebhookEvent)
+        .filter(PaymentWebhookEvent.message == "reference not found")
+        .order_by(PaymentWebhookEvent.received_at.desc())
+        .first()
+    )
+    assert event is not None
+    assert event.signature_valid is False
 
 
 def test_webhook_payment_success(client, farmer):

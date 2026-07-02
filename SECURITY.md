@@ -19,11 +19,41 @@ areas are in scope for security review:
 - Moolre webhook signature verification
 - Environment variable and secret handling (.env.example hygiene)
 
+## Authentication Model
+
+The backend ships with JWT-based admin login (`POST /auth/login`) and an
+optional auth middleware controlled by `AUTH_ENABLED` (default: `false`).
+
+| Setting | Default | Behaviour |
+|---|---|---|
+| `AUTH_ENABLED=false` | Demo / local dev | GET routes are open; mutating routes are not blocked by JWT |
+| `AUTH_ENABLED=true` | Staging / production | Mutating API routes require `Authorization: Bearer <token>` |
+
+Routes always excluded from JWT middleware: `/auth/login` and `/webhooks/*`.
+
+**RBAC and cooperative scoping are not yet enforced.** Any authenticated
+admin can access all cooperatives until role-based access is implemented.
+
+## Webhook Security
+
+| Endpoint | Verification |
+|---|---|
+| `POST /webhooks/moolre/payment` | HMAC-SHA256 via `X-Moolre-Signature` when `MOOLRE_WEBHOOK_SECRET` is set |
+| `POST /webhooks/moolre/ussd` | No signature verification today (see open issues) |
+| `POST /webhooks/moolre/payment/simulate` | Disabled when `APP_ENV=production` |
+
+When `MOOLRE_WEBHOOK_SECRET` is unset, payment webhook signature checks are
+skipped (development/sandbox only). Production deployments must set the secret.
+
 ## Known Limitations (Hackathon Phase)
 
-- No authentication or RBAC is enforced in the current demo build
-- The system must only be run with synthetic demo data until auth is implemented
+- Cooperative-scoped RBAC is not enforced on API routes
+- USSD webhook callbacks are not authenticated
 - No rate limiting is currently applied to API endpoints
+- Supabase row-level security policies are not yet deployed
+
+For production hardening work in progress, see the open GitHub issues labeled
+`priority: p0` and `priority: p1`.
 
 ## Data Privacy
 

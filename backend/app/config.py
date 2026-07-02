@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     moolre_api_url: str = "https://sandbox.moolre.com"
     moolre_api_user: str = ""
     moolre_api_key: str = ""
+    moolre_api_pubkey: str = ""
     moolre_api_vaskey: str = ""
 
     # Moolre Merchant / Account
@@ -44,6 +45,8 @@ class Settings(BaseSettings):
     # Agro-AI
     agro_ai_model_path: str = "backend/model_artifacts/agro-ai-rf-v1.joblib"
     agro_ai_audit_log_path: str = "backend/logs/agro_ai_predictions.jsonl"
+    agro_ai_require_artifact: bool = False
+    sentry_dsn: str = ""
     wandb_project: str = "agro-os"
     wandb_entity: str = ""
     wandb_mode: str = "offline"

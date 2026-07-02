@@ -101,6 +101,26 @@ def test_credit_summary_handles_empty_assessments(monkeypatch) -> None:
     assert payload["average_score"] == 0.0
 
 
+def test_get_assessment_rejects_fuzzy_name_lookup(client, farmer):
+    resp = client.get(f"/api/farmers/{farmer['name']}/credit-assessment")
+    assert resp.status_code == 404
+
+
+def test_health_includes_synthetic_model_metadata(client):
+    resp = client.get("/health")
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert "is_synthetic_fallback" in payload
+    assert "artifact_source" in payload
+    assert "model_ready" in payload
+
+
+def test_synthetic_model_metadata_flag() -> None:
+    synthetic = AgroAiCreditModel()
+    assert synthetic.is_synthetic_fallback is True
+    assert synthetic.metadata["is_synthetic_fallback"] is True
+
+
 def test_predict_endpoint_returns_score_and_audits(tmp_path) -> None:
     original_audit_path = prediction_audit.path
     audit_path = tmp_path / "api_predictions.jsonl"
