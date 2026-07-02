@@ -111,9 +111,13 @@ FastAPI returns `{ "detail": "message" }` for 4xx/5xx responses.
 
 ## Demo fallback policy
 
-Frontend API helpers (`frontend/src/api/*.js`) use a 10s timeout. On network failure or non-2xx responses they return static demo data from `frontend/src/data/payments.js` and set `source: 'demo'`. The dashboard topbar shows **Live API** vs **Demo data** based on aggregated fetch results.
+The frontend **always prefers live API data** when the backend is reachable, but **never fails closed** when it is not — including in production.
 
-Payments and Overview tabs show an inline banner when demo fallback is active.
+API helpers (`frontend/src/api/*.js`, shared config in `frontend/src/api/config.js`) use a 10s timeout. On network failure, timeout, or non-2xx responses they return static demo data from `frontend/src/data/payments.js` and set `source: 'demo'`. The dashboard topbar and per-tab badges show **Live API** vs **Demo data** so operators know which source is active.
+
+Login follows the same pattern: it tries `POST /auth/login` first, then falls back to local demo accounts in `frontend/src/data/users.js` when auth is unavailable.
+
+There is no `VITE_REQUIRE_API` or production-only strict mode — outages should degrade gracefully to demo data, not blank screens or blocking errors.
 
 ## Golden Path seed data
 

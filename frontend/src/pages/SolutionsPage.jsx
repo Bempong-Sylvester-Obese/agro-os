@@ -1,8 +1,10 @@
 // src/pages/SolutionsPage.jsx
 import Footer from '../components/Footer'
 import CTASection from '../components/CTASection'
+import { useAppNavigate } from '../hooks/useAppNavigate'
 
-export default function SolutionsPage({ setPage }) {
+export default function SolutionsPage() {
+  const setPage = useAppNavigate()
   return (
     <>
       {/* ── Hero ── */}
@@ -47,7 +49,7 @@ export default function SolutionsPage({ setPage }) {
       </div>
 
       {/* ── Farmers / USSD ── */}
-      <div className="sol-sec">
+      <div className="sol-sec" id="ussd-section">
         <div className="sol-inner rev">
           <div>
             <div className="sol-tag">Farmers</div>
@@ -56,7 +58,7 @@ export default function SolutionsPage({ setPage }) {
               Farmers interact with AgroOS through a native Moolre USSD menu — check balances, pay dues, and receive
               alerts directly from their basic phones. Designed for Ghana's rural reality.
             </p>
-            <button className="btn-sol">See how USSD works →</button>
+            <button className="btn-sol" onClick={() => setPage('dashboard', { dashboardSection: 'ussd' })}>See how USSD works →</button>
           </div>
           <div style={{ display: 'flex', justifyContent: 'center' }}>
             <div className="ussd-phone">
@@ -87,7 +89,7 @@ export default function SolutionsPage({ setPage }) {
               Access AgroCredit Trust Scores for individual farmers — built from payment history, production output,
               and cooperative tenure. Make lending decisions backed by real behavioral data.
             </p>
-            <button className="btn-sol">Explore AgroCredit →</button>
+            <button className="btn-sol" onClick={() => setPage('dashboard', { dashboardSection: 'scores' })}>Explore AgroCredit →</button>
           </div>
           <div>
             <div className="sol-visual">
@@ -119,10 +121,10 @@ export default function SolutionsPage({ setPage }) {
         primaryLabel="See pricing"
         secondaryLabel="Talk to us"
         onPrimary={() => setPage('pricing')}
-        onSecondary={() => {}}
+        onSecondary={() => setPage('login', { loginMode: 'signup' })}
       />
 
-      <Footer setPage={setPage} />
+      <Footer />
     </>
   )
 }

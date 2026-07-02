@@ -1,5 +1,16 @@
 // src/components/Footer.jsx
-export default function Footer({ setPage }) {
+import { useAppNavigate } from '../hooks/useAppNavigate'
+
+export default function Footer() {
+  const setPage = useAppNavigate()
+
+  function go(page, options) {
+    return (e) => {
+      e.preventDefault()
+      setPage(page, options)
+    }
+  }
+
   return (
     <footer className="footer">
       <div className="footer-grid">
@@ -13,32 +24,32 @@ export default function Footer({ setPage }) {
 
         <div>
           <div className="footer-col-title">Product</div>
-          <a href="#" className="footer-link" onClick={(e) => { e.preventDefault(); setPage('features') }}>Features</a>
-          <a href="#" className="footer-link" onClick={(e) => { e.preventDefault(); setPage('pricing') }}>Pricing</a>
-          <a href="#" className="footer-link" onClick={(e) => e.preventDefault()}>USSD integration</a>
-          <a href="#" className="footer-link" onClick={(e) => e.preventDefault()}>API docs</a>
+          <a href="/features" className="footer-link" onClick={go('features')}>Features</a>
+          <a href="/pricing" className="footer-link" onClick={go('pricing')}>Pricing</a>
+          <a href="/solutions#ussd-section" className="footer-link" onClick={go('solutions', { scrollTo: 'ussd-section' })}>USSD integration</a>
+          <a href="/features" className="footer-link" onClick={go('features')}>API docs</a>
         </div>
 
         <div>
           <div className="footer-col-title">Solutions</div>
-          <a href="#" className="footer-link" onClick={(e) => { e.preventDefault(); setPage('solutions') }}>Cooperatives</a>
-          <a href="#" className="footer-link" onClick={(e) => { e.preventDefault(); setPage('solutions') }}>Smallholders</a>
-          <a href="#" className="footer-link" onClick={(e) => { e.preventDefault(); setPage('solutions') }}>Field agents</a>
-          <a href="#" className="footer-link" onClick={(e) => { e.preventDefault(); setPage('solutions') }}>Lenders</a>
+          <a href="/solutions" className="footer-link" onClick={go('solutions')}>Cooperatives</a>
+          <a href="/solutions#ussd-section" className="footer-link" onClick={go('solutions', { scrollTo: 'ussd-section' })}>Smallholders</a>
+          <a href="/dashboard/production" className="footer-link" onClick={go('dashboard', { dashboardSection: 'production' })}>Field agents</a>
+          <a href="/dashboard/scores" className="footer-link" onClick={go('dashboard', { dashboardSection: 'scores' })}>Lenders</a>
         </div>
 
         <div>
           <div className="footer-col-title">Moolre</div>
-          <a href="#" className="footer-link" onClick={(e) => e.preventDefault()}>Integration</a>
-          <a href="#" className="footer-link" onClick={(e) => e.preventDefault()}>Payment portal</a>
-          <a href="#" className="footer-link" onClick={(e) => e.preventDefault()}>USSD menu</a>
+          <a href="/#moolre-integration" className="footer-link" onClick={go('home', { scrollTo: 'moolre-integration' })}>Integration</a>
+          <a href="/dashboard/payments" className="footer-link" onClick={go('dashboard', { dashboardSection: 'payments' })}>Payment portal</a>
+          <a href="/dashboard/ussd" className="footer-link" onClick={go('dashboard', { dashboardSection: 'ussd' })}>USSD menu</a>
         </div>
 
         <div>
           <div className="footer-col-title">Company</div>
-          <a href="#" className="footer-link" onClick={(e) => e.preventDefault()}>About</a>
-          <a href="#" className="footer-link" onClick={(e) => e.preventDefault()}>Request access</a>
-          <a href="#" className="footer-link" onClick={(e) => e.preventDefault()}>Help center</a>
+          <a href="/" className="footer-link" onClick={go('home')}>About</a>
+          <a href="/login?mode=signup" className="footer-link" onClick={go('login', { loginMode: 'signup' })}>Request access</a>
+          <a href="/features" className="footer-link" onClick={go('features')}>Help center</a>
         </div>
       </div>
 

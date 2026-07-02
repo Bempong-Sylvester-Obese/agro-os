@@ -52,42 +52,38 @@ export default function Payments() {
           <span className="admin-card-action">{loading ? 'Loading…' : sourceLabel}</span>
         </div>
 
-        {dashboard?.source === 'demo' && !loading && (
-          <div className="auth-error" style={{ margin: '0 0 16px' }}>
-            API unreachable — showing demo payment data.
+        <div className="table-scroll">
+          <div className="pay-head">
+            {['Member', 'Amount', 'Method', 'Date', 'Status'].map((h) => (
+              <span key={h} className="pt-lbl">{h}</span>
+            ))}
           </div>
-        )}
 
-        <div className="pay-head">
-          {['Member', 'Amount', 'Method', 'Date', 'Status'].map((h) => (
-            <span key={h} className="pt-lbl">{h}</span>
+          {loading && (
+            <div className="pay-row">
+              <div className="pt-name">Loading payment history…</div>
+            </div>
+          )}
+
+          {!loading && rows.length === 0 && (
+            <div className="pay-row">
+              <div className="pt-name">No transactions recorded yet.</div>
+            </div>
+          )}
+
+          {!loading && rows.map((row) => (
+            <div key={row.key} className="pay-row">
+              <div>
+                <div className="pt-name">{row.name}</div>
+                <div className="pt-id">{row.memberId}</div>
+              </div>
+              <span className="pt-v">{row.amount}</span>
+              <span className="pt-m">{row.method}</span>
+              <span className="pt-m">{row.date}</span>
+              <span className={`bdg ${row.statusClass}`}>{row.status}</span>
+            </div>
           ))}
         </div>
-
-        {loading && (
-          <div className="pay-row">
-            <div className="pt-name">Loading payment history…</div>
-          </div>
-        )}
-
-        {!loading && rows.length === 0 && (
-          <div className="pay-row">
-            <div className="pt-name">No transactions recorded yet.</div>
-          </div>
-        )}
-
-        {!loading && rows.map((row) => (
-          <div key={row.key} className="pay-row">
-            <div>
-              <div className="pt-name">{row.name}</div>
-              <div className="pt-id">{row.memberId}</div>
-            </div>
-            <span className="pt-v">{row.amount}</span>
-            <span className="pt-m">{row.method}</span>
-            <span className="pt-m">{row.date}</span>
-            <span className={`bdg ${row.statusClass}`}>{row.status}</span>
-          </div>
-        ))}
       </div>
     </>
   )
