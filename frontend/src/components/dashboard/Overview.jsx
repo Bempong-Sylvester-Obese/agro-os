@@ -69,33 +69,35 @@ export default function Overview({ agroAi, dbFarmers }) {
               {paymentsLoading ? 'Loading…' : payments?.source === 'api' ? 'Live API' : 'Demo data'}
             </span>
           </div>
-          <div className="pt-head">
-            {['Member', 'Amount', 'Method', 'Date', 'Status'].map((h) => (
-              <span key={h} className="pt-lbl">{h}</span>
+          <div className="table-scroll">
+            <div className="pt-head">
+              {['Member', 'Amount', 'Method', 'Date', 'Status'].map((h) => (
+                <span key={h} className="pt-lbl">{h}</span>
+              ))}
+            </div>
+            {paymentsLoading && (
+              <div className="pt-row">
+                <div className="pt-name">Loading recent payments…</div>
+              </div>
+            )}
+            {!paymentsLoading && recentPayments.length === 0 && (
+              <div className="pt-row">
+                <div className="pt-name">No transactions recorded yet.</div>
+              </div>
+            )}
+            {!paymentsLoading && recentPayments.map((row) => (
+              <div key={row.key} className="pt-row">
+                <div>
+                  <div className="pt-name">{row.name}</div>
+                  <div className="pt-id">{row.memberId}</div>
+                </div>
+                <span className="pt-v">{row.amount}</span>
+                <span className="pt-m">{row.method}</span>
+                <span className="pt-m">{row.date}</span>
+                <span className={`bdg ${row.statusClass}`}>{row.status}</span>
+              </div>
             ))}
           </div>
-          {paymentsLoading && (
-            <div className="pt-row">
-              <div className="pt-name">Loading recent payments…</div>
-            </div>
-          )}
-          {!paymentsLoading && recentPayments.length === 0 && (
-            <div className="pt-row">
-              <div className="pt-name">No transactions recorded yet.</div>
-            </div>
-          )}
-          {!paymentsLoading && recentPayments.map((row) => (
-            <div key={row.key} className="pt-row">
-              <div>
-                <div className="pt-name">{row.name}</div>
-                <div className="pt-id">{row.memberId}</div>
-              </div>
-              <span className="pt-v">{row.amount}</span>
-              <span className="pt-m">{row.method}</span>
-              <span className="pt-m">{row.date}</span>
-              <span className={`bdg ${row.statusClass}`}>{row.status}</span>
-            </div>
-          ))}
         </div>
 
         <div className="admin-card">

@@ -80,6 +80,8 @@ export async function resolveCooperativeIdForFarmers() {
     const coops = await response.json()
     if (!coops?.length) throw new Error('No cooperative found')
     return coops[0].id
+  } catch {
+    return 1
   } finally {
     clearTimeout(timeoutId)
   }

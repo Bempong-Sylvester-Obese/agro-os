@@ -1,5 +1,7 @@
 // src/pages/DashboardPage.jsx
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { DASHBOARD_SECTIONS, dashboardPath } from '../constants/routes'
 import { fetchAgroAiDashboard } from '../api/agroAi'
 import { fetchCooperative } from '../api/cooperatives'
 import { createFarmer, fetchFarmers, resolveCooperativeIdForFarmers } from '../api/farmers'
@@ -49,7 +51,9 @@ function globalSourceLabel(sources) {
 }
 
 export default function DashboardPage({ user, onLogout }) {
-  const [section, setSection] = useState('overview')
+  const { section: sectionParam } = useParams()
+  const navigate = useNavigate()
+  const section = DASHBOARD_SECTIONS.includes(sectionParam) ? sectionParam : 'overview'
   const [agroAi, setAgroAi] = useState(null)
   const [agroAiState, setAgroAiState] = useState({ loading: true, error: '', source: 'loading' })
   const [dbFarmers, setDbFarmers] = useState(null)
@@ -60,6 +64,27 @@ export default function DashboardPage({ user, onLogout }) {
   const [form, setForm] = useState(EMPTY_FORM)
   const [formErr, setFormErr] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  useEffect(() => {
+    if (sectionParam && !DASHBOARD_SECTIONS.includes(sectionParam)) {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [sectionParam, navigate])
+
+  useEffect(() => {
+    if (sidebarOpen) {
+      document.body.classList.add('no-scroll')
+    } else {
+      document.body.classList.remove('no-scroll')
+    }
+    return () => document.body.classList.remove('no-scroll')
+  }, [sidebarOpen])
+
+  function selectSection(key) {
+    navigate(dashboardPath(key))
+    setSidebarOpen(false)
+  }
 
   const loadAgroAi = useCallback(() => {
     setAgroAiState((state) => ({ ...state, loading: true, error: '' }))
@@ -68,7 +93,7 @@ export default function DashboardPage({ user, onLogout }) {
         setAgroAi(data)
         setAgroAiState({
           loading: false,
-          error: data.source === 'demo' ? 'Agro-AI API unreachable — showing demo assessments.' : '',
+          error: '',
           source: data.source,
         })
       })
@@ -82,7 +107,7 @@ export default function DashboardPage({ user, onLogout }) {
         setFarmersState({ loading: false, error: '', source: data.source })
       })
       .catch(() => {
-        setFarmersState({ loading: false, error: 'Farmers API unreachable.', source: 'demo' })
+        setFarmersState({ loading: false, error: '', source: 'demo' })
       })
   }, [])
 
@@ -94,7 +119,7 @@ export default function DashboardPage({ user, onLogout }) {
       setCooperative(data.cooperative)
       setCoopState({ loading: false, error: '', source: data.source })
     } catch {
-      setCoopState({ loading: false, error: 'Cooperative profile unavailable.', source: 'demo' })
+      setCoopState({ loading: false, error: '', source: 'demo' })
     }
   }, [])
 
@@ -115,7 +140,6 @@ export default function DashboardPage({ user, onLogout }) {
   )
 
   const dashboardLoading = agroAiState.loading || farmersState.loading
-  const dashboardError = agroAiState.error || farmersState.error
 
   function openModal() {
     setForm(EMPTY_FORM)
@@ -168,8 +192,16 @@ export default function DashboardPage({ user, onLogout }) {
 
   return (
     <>
-      <div className="admin-shell">
-        <div className="admin-side">
+      {sidebarOpen && (
+        <div
+          className="admin-backdrop"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <div className={`admin-shell${sidebarOpen ? ' admin-shell--open' : ''}`}>
+        <div className={`admin-side${sidebarOpen ? ' admin-side--open' : ''}`}>
           <div className="admin-side-head">
             <div className="admin-side-title">AgroOS</div>
             <div className="admin-side-sub">{coopState.loading ? 'Loading…' : coopName}</div>
@@ -181,37 +213,55 @@ export default function DashboardPage({ user, onLogout }) {
               <button
                 key={key}
                 className={`admin-nav-item${section === key ? ' on' : ''}`}
-                onClick={() => setSection(key)}
+                onClick={() => selectSection(key)}
               >
-                {icon} {label}
+                <span className="admin-nav-icon" aria-hidden="true">{icon}</span>
+                <span className="admin-nav-text">{label}</span>
               </button>
             ))}
 
             <div className="admin-nav-lbl">Account</div>
             <button
               className={`admin-nav-item${section === 'settings' ? ' on' : ''}`}
-              onClick={() => setSection('settings')}
+              onClick={() => selectSection('settings')}
             >
-              ⚙️ Settings
+              <span className="admin-nav-icon" aria-hidden="true">⚙️</span>
+              Settings
             </button>
             <button className="admin-nav-item" onClick={onLogout}>
-              🚪 Sign out
+              <span className="admin-nav-icon" aria-hidden="true">🚪</span>
+              Sign out
             </button>
           </div>
         </div>
 
         <div className="admin-main">
           <div className="admin-topbar">
-            <div className="admin-page-title serif">{TITLES[section]}</div>
+            <div className="admin-topbar-l">
+              <button
+                type="button"
+                className="admin-menu-btn"
+                onClick={() => setSidebarOpen((open) => !open)}
+                aria-label={sidebarOpen ? 'Close menu' : 'Open menu'}
+                aria-expanded={sidebarOpen}
+              >
+                ☰
+              </button>
+              <div className="admin-page-title serif">{TITLES[section]}</div>
+            </div>
             <div className="admin-topbar-r">
               <span
-                className={`bdg ${globalSource.tone === 'live' ? 'bdg-green' : globalSource.tone === 'demo' ? 'bdg-amber' : 'bdg-amber'}`}
-                style={{ fontSize: 11, marginRight: 8 }}
+                className={`admin-topbar-badge bdg ${globalSource.tone === 'live' ? 'bdg-green' : globalSource.tone === 'demo' ? 'bdg-amber' : 'bdg-amber'}`}
               >
                 {globalSource.label}
               </span>
               {section !== 'loans' && (
-                <button className="btn-nav" style={{ fontSize: 12, padding: '6px 14px' }} onClick={openModal}>
+                <button
+                  type="button"
+                  className="btn-nav admin-topbar-add"
+                  style={{ fontSize: 12, padding: '6px 14px' }}
+                  onClick={openModal}
+                >
                   + Add member
                 </button>
               )}
@@ -224,23 +274,6 @@ export default function DashboardPage({ user, onLogout }) {
             {dashboardLoading && section === 'overview' && (
               <div className="info-banner" style={{ marginBottom: 20 }}>
                 Loading dashboard data from the API…
-              </div>
-            )}
-
-            {dashboardError && (
-              <div className="auth-error" style={{ marginBottom: 20 }}>
-                {dashboardError}
-                <button
-                  type="button"
-                  className="btn-out-lg"
-                  style={{ marginLeft: 12, fontSize: 12, padding: '6px 12px' }}
-                  onClick={() => {
-                    loadAgroAi()
-                    loadFarmers()
-                  }}
-                >
-                  Retry
-                </button>
               </div>
             )}
 

@@ -157,18 +157,20 @@ export default function Loans({ approverName = 'Cooperative Admin' }) {
         ))}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div style={{ fontSize: 13, color: 'var(--muted)' }}>
+      <div className="toolbar">
+        <div className="toolbar-note">
           Golden Path steps 6–7: approve input loans and disburse via Moolre.
         </div>
-        <button className="btn-nav" style={{ fontSize: 12, padding: '7px 14px' }} onClick={openRequestModal}>
-          + Request loan
-        </button>
+        <div className="toolbar-actions">
+          <button className="btn-nav" style={{ fontSize: 12, padding: '7px 14px' }} onClick={openRequestModal}>
+            + Request loan
+          </button>
+        </div>
       </div>
 
       {error && <div className="auth-error" style={{ marginBottom: 16 }}>{error}</div>}
 
-      <div className="admin-card">
+      <div className="admin-card table-cards">
         <div className="admin-card-head">
           <span className="admin-card-title serif">Loan requests</span>
           <span className="admin-card-action">{source === 'api' ? 'Live API' : 'Demo fallback'}</span>
@@ -198,19 +200,19 @@ export default function Loans({ approverName = 'Cooperative Admin' }) {
 
           return (
             <div key={loan.id} className="loan-row">
-              <div>
+              <div data-label="Farmer">
                 <div className="pt-name">{farmer?.name ?? `Farmer #${loan.farmer_id}`}</div>
                 <div className="pt-id">Loan #{loan.id}{farmer?.phone ? ` · ${farmer.phone}` : ''}</div>
               </div>
-              <span className="pt-v">{formatAmount(loan.amount, loan.currency)}</span>
-              <span className="pt-m">{loan.purpose || '—'}</span>
-              <span className={`bdg ${STATUS_CLS[loan.status] ?? 'bdg-amber'}`}>
+              <span className="pt-v" data-label="Amount">{formatAmount(loan.amount, loan.currency)}</span>
+              <span className="pt-m" data-label="Purpose">{loan.purpose || '—'}</span>
+              <span className={`bdg ${STATUS_CLS[loan.status] ?? 'bdg-amber'}`} data-label="Status">
                 {formatStatus(loan.status)}
               </span>
-              <span className="pt-m mono" style={{ fontSize: 11 }}>
+              <span className="pt-m mono" style={{ fontSize: 11 }} data-label="Moolre ref">
                 {loan.moolre_transfer_ref || '—'}
               </span>
-              <div className="loan-actions">
+              <div className="loan-actions" data-label="Actions">
                 {loan.status === 'requested' && (
                   <>
                     <button

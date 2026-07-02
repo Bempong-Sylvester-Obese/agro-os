@@ -31,7 +31,7 @@ export default function Members({ dbFarmers, agroAi, onAddMember, loading = fals
 
   return (
     <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+      <div className="toolbar">
         <div className="search-wrap">
           🔍
           <input
@@ -40,7 +40,7 @@ export default function Members({ dbFarmers, agroAi, onAddMember, loading = fals
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div className="toolbar-actions">
           <button style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 7, fontSize: 12, padding: '7px 14px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
             Filter
           </button>
@@ -59,7 +59,7 @@ export default function Members({ dbFarmers, agroAi, onAddMember, loading = fals
         {loading ? 'Loading members…' : source === 'api' ? 'Live CRM data.' : 'Showing demo fallback.'}
       </div>
 
-      <div className="admin-card">
+      <div className="admin-card table-cards">
         <div className="mt-head">
           {['Member', 'Phone', 'Region', 'Status', 'Trust Score', 'Agro-AI', 'Review'].map((h) => (
             <span key={h} className="pt-lbl">{h}</span>
@@ -75,22 +75,22 @@ export default function Members({ dbFarmers, agroAi, onAddMember, loading = fals
 
           return (
             <div key={farmer.id} className="mt-row">
-              <div>
+              <div data-label="Member">
                 <div className="pt-name">{farmer.name}</div>
                 <div className="pt-id">#{farmer.id}{farmer.crop_type ? ` · ${farmer.crop_type}` : ''}</div>
               </div>
-              <span className="pt-m" style={{ fontSize: 11 }}>{farmer.phone}</span>
-              <span className="pt-m">{farmer.location || '—'}</span>
-              <span className={`bdg ${STATUS_CLS[farmer.membership_status] || 'bdg-amber'}`}>
+              <span className="pt-m" style={{ fontSize: 11 }} data-label="Phone">{farmer.phone}</span>
+              <span className="pt-m" data-label="Region">{farmer.location || '—'}</span>
+              <span className={`bdg ${STATUS_CLS[farmer.membership_status] || 'bdg-amber'}`} data-label="Status">
                 {farmer.membership_status}
               </span>
-              <span className={`score-bdg ${scoreTier(farmer.trust_score)}`} title="Rules-based Trust Score">
+              <span className={`score-bdg ${scoreTier(farmer.trust_score)}`} title="Rules-based Trust Score" data-label="Trust Score">
                 {formatTrustScore(farmer.trust_score)}
               </span>
-              <span className={`score-bdg ${scoreTier(agroAiMatch?.score)}`} title="Agro-AI credit score">
+              <span className={`score-bdg ${scoreTier(agroAiMatch?.score)}`} title="Agro-AI credit score" data-label="Agro-AI">
                 {agroAiMatch ? agroAiMatch.score : '—'}
               </span>
-              <span className="admin-card-action" style={{ fontSize: 11 }}>
+              <span className="admin-card-action" style={{ fontSize: 11 }} data-label="Review">
                 {agroAiMatch ? (agroAiMatch.eligible ? 'Eligible' : 'Review') : '—'}
               </span>
             </div>

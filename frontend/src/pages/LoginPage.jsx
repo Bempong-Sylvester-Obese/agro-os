@@ -1,16 +1,25 @@
 // src/pages/LoginPage.jsx
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { loginAdmin, storeAuthToken } from '../api/auth'
 import { USERS } from '../data/users'
 
 export default function LoginPage({ onAuth }) {
-  const [mode, setMode]         = useState('login')   // 'login' | 'signup'
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const initialMode = searchParams.get('mode') === 'signup' ? 'signup' : 'login'
+  const [mode, setMode]         = useState(initialMode)
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [name, setName]         = useState('')
   const [confirm, setConfirm]   = useState('')
   const [error, setError]       = useState('')
   const [accounts, setAccounts] = useState(USERS)
+
+  useEffect(() => {
+    setMode(initialMode)
+    setError('')
+  }, [initialMode])
 
   async function handleLogin(e) {
     e.preventDefault()
@@ -65,7 +74,17 @@ export default function LoginPage({ onAuth }) {
   }
 
   return (
-    <div className="auth-shell">
+    <div className="auth-page">
+      <header className="auth-nav">
+        <button type="button" className="auth-back-btn" onClick={() => navigate('/')}>
+          ← Back to site
+        </button>
+        <button type="button" className="auth-nav-logo serif" onClick={() => navigate('/')}>
+          AgroOS
+        </button>
+      </header>
+
+      <div className="auth-shell">
       <div className="auth-brand">
         <div className="auth-brand-inner">
           <div className="auth-logo serif">AgroOS</div>
@@ -194,6 +213,7 @@ export default function LoginPage({ onAuth }) {
           )}
         </div>
       </div>
+    </div>
     </div>
   )
 }

@@ -34,29 +34,31 @@ export default function Scores({ agroAi, dbFarmers }) {
             <span className="admin-card-title serif">Agro-AI credit queue</span>
             <span className="admin-card-action">{agroAi?.source === 'api' ? 'ML model · live' : 'Demo fallback'}</span>
           </div>
-          <div className="sc-head">
-            {['Member', 'Payment', 'Yield', 'Decision', 'Agro-AI'].map((h) => (
-              <span key={h} className="pt-lbl">{h}</span>
+          <div className="table-scroll">
+            <div className="sc-head">
+              {['Member', 'Payment', 'Yield', 'Decision', 'Agro-AI'].map((h) => (
+                <span key={h} className="pt-lbl">{h}</span>
+              ))}
+            </div>
+            {agroAiFarmers.map((farmer) => (
+              <button
+                key={farmer.farmer_id}
+                className={`sc-row sc-row-btn${farmer.farmer_id === selectedFarmer?.farmer_id ? ' on' : ''}`}
+                onClick={() => setSelectedId(farmer.farmer_id)}
+              >
+                <div>
+                  <div className="pt-name">{farmer.name}</div>
+                  <div className="pt-id">{farmer.region} · {farmer.crop}</div>
+                </div>
+                <span className="pt-m mono" style={{ fontSize: 11 }}>{pct(farmer.features.dues_payment_rate)}</span>
+                <span className="pt-m mono" style={{ fontSize: 11 }}>{pct(farmer.features.yield_performance)}</span>
+                <span className={`bdg ${farmer.eligible ? 'bdg-green' : 'bdg-amber'}`}>
+                  {farmer.eligible ? 'Eligible' : 'Review'}
+                </span>
+                <span className={`score-bdg ${scoreTier(farmer.score)}`}>{farmer.score}</span>
+              </button>
             ))}
           </div>
-          {agroAiFarmers.map((farmer) => (
-            <button
-              key={farmer.farmer_id}
-              className={`sc-row sc-row-btn${farmer.farmer_id === selectedFarmer?.farmer_id ? ' on' : ''}`}
-              onClick={() => setSelectedId(farmer.farmer_id)}
-            >
-              <div>
-                <div className="pt-name">{farmer.name}</div>
-                <div className="pt-id">{farmer.region} · {farmer.crop}</div>
-              </div>
-              <span className="pt-m mono" style={{ fontSize: 11 }}>{pct(farmer.features.dues_payment_rate)}</span>
-              <span className="pt-m mono" style={{ fontSize: 11 }}>{pct(farmer.features.yield_performance)}</span>
-              <span className={`bdg ${farmer.eligible ? 'bdg-green' : 'bdg-amber'}`}>
-                {farmer.eligible ? 'Eligible' : 'Review'}
-              </span>
-              <span className={`score-bdg ${scoreTier(farmer.score)}`}>{farmer.score}</span>
-            </button>
-          ))}
         </div>
 
         {selectedFarmer && (
@@ -115,26 +117,28 @@ export default function Scores({ agroAi, dbFarmers }) {
             {dbFarmers?.source === 'api' ? 'Rules-based · live · refreshes every 15s' : 'Rules-based · demo'}
           </span>
         </div>
-        <div className="sc-head">
-          {['Member', 'Region', 'Status', 'Trust Score'].map((h) => (
-            <span key={h} className="pt-lbl">{h}</span>
-          ))}
-        </div>
-        {[...trustFarmers]
-          .sort((a, b) => Number(b.trust_score) - Number(a.trust_score))
-          .map((farmer) => (
-            <div key={farmer.id} className="sc-row">
-              <div>
-                <div className="pt-name">{farmer.name}</div>
-                <div className="pt-id">#{farmer.id}</div>
+        <div className="table-scroll">
+          <div className="sc-head sc-head-4">
+            {['Member', 'Region', 'Status', 'Trust Score'].map((h) => (
+              <span key={h} className="pt-lbl">{h}</span>
+            ))}
+          </div>
+          {[...trustFarmers]
+            .sort((a, b) => Number(b.trust_score) - Number(a.trust_score))
+            .map((farmer) => (
+              <div key={farmer.id} className="sc-row sc-row-4">
+                <div>
+                  <div className="pt-name">{farmer.name}</div>
+                  <div className="pt-id">#{farmer.id}</div>
+                </div>
+                <span className="pt-m">{farmer.location || '—'}</span>
+                <span className="pt-m">{farmer.membership_status}</span>
+                <span className={`score-bdg ${scoreTier(farmer.trust_score)}`}>
+                  {formatTrustScore(farmer.trust_score)}
+                </span>
               </div>
-              <span className="pt-m">{farmer.location || '—'}</span>
-              <span className="pt-m">{farmer.membership_status}</span>
-              <span className={`score-bdg ${scoreTier(farmer.trust_score)}`}>
-                {formatTrustScore(farmer.trust_score)}
-              </span>
-            </div>
-          ))}
+            ))}
+        </div>
       </div>
     </>
   )

@@ -1,5 +1,15 @@
 // src/components/Navbar.jsx
-export default function Navbar({ activePage, setPage }) {
+import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
+import { pageKeyFromPath } from '../constants/routes'
+import { useAppNavigate } from '../hooks/useAppNavigate'
+
+export default function Navbar() {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const location = useLocation()
+  const setPage = useAppNavigate()
+  const activePage = pageKeyFromPath(location.pathname)
+
   const links = [
     { key: 'home',      label: 'Home' },
     { key: 'solutions', label: 'Solutions' },
@@ -8,12 +18,26 @@ export default function Navbar({ activePage, setPage }) {
     { key: 'dashboard', label: 'Dashboard' },
   ]
 
+  useEffect(() => {
+    if (menuOpen) {
+      document.body.classList.add('no-scroll')
+    } else {
+      document.body.classList.remove('no-scroll')
+    }
+    return () => document.body.classList.remove('no-scroll')
+  }, [menuOpen])
+
+  function navigate(key, options) {
+    setPage(key, options)
+    setMenuOpen(false)
+  }
+
   return (
-    <nav className="nav">
+    <nav className={`nav${menuOpen ? ' nav--open' : ''}`}>
       <a
         className="nav-logo"
-        href="#"
-        onClick={(e) => { e.preventDefault(); setPage('home') }}
+        href="/"
+        onClick={(e) => { e.preventDefault(); navigate('home') }}
       >
         <div className="nav-logo-mark">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
@@ -30,9 +54,9 @@ export default function Navbar({ activePage, setPage }) {
         {links.map(({ key, label }) => (
           <a
             key={key}
-            href="#"
+            href={key === 'home' ? '/' : `/${key}`}
             className={`nav-tab${activePage === key ? ' active' : ''}`}
-            onClick={(e) => { e.preventDefault(); setPage(key) }}
+            onClick={(e) => { e.preventDefault(); navigate(key) }}
           >
             {label}
           </a>
@@ -40,9 +64,31 @@ export default function Navbar({ activePage, setPage }) {
       </div>
 
       <div className="nav-right">
-        <a href="#" className="btn-ghost" onClick={(e) => e.preventDefault()}>Log in</a>
-        <a href="#" className="btn-nav"   onClick={(e) => e.preventDefault()}>Get started free</a>
+        <a
+          href="/login"
+          className="btn-ghost"
+          onClick={(e) => { e.preventDefault(); navigate('login', { loginMode: 'login' }) }}
+        >
+          Log in
+        </a>
+        <a
+          href="/login?mode=signup"
+          className="btn-nav"
+          onClick={(e) => { e.preventDefault(); navigate('login', { loginMode: 'signup' }) }}
+        >
+          Get started free
+        </a>
       </div>
+
+      <button
+        type="button"
+        className="nav-toggle"
+        onClick={() => setMenuOpen((open) => !open)}
+        aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+        aria-expanded={menuOpen}
+      >
+        {menuOpen ? '✕' : '☰'}
+      </button>
     </nav>
   )
 }
