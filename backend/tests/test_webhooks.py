@@ -1,5 +1,6 @@
 """Tests for /webhooks/moolre/payment and /webhooks/moolre/ussd"""
 
+import json
 from unittest.mock import AsyncMock, patch
 
 
@@ -169,3 +170,30 @@ def test_ussd_invalid_option(client):
     )
     assert resp.status_code == 200
     assert "invalid" in resp.json()["response"].lower()
+
+
+def test_ussd_rejects_invalid_signature_when_secret_configured(client, monkeypatch):
+    import hashlib
+    import hmac
+
+    from app.routes import webhooks as webhooks_module
+
+    monkeypatch.setattr(webhooks_module.settings, "moolre_webhook_secret", "test-webhook-secret")
+
+    payload = {"sessionid": "s006", "phone": "+233551111111", "input": ""}
+    body = json.dumps(payload).encode()
+
+    resp = client.post(
+        "/webhooks/moolre/ussd",
+        content=body,
+        headers={"Content-Type": "application/json", "X-Moolre-Signature": "bad-signature"},
+    )
+    assert resp.status_code == 401
+
+    expected = hmac.new(b"test-webhook-secret", body, hashlib.sha256).hexdigest()
+    ok = client.post(
+        "/webhooks/moolre/ussd",
+        content=body,
+        headers={"Content-Type": "application/json", "X-Moolre-Signature": expected},
+    )
+    assert ok.status_code == 200

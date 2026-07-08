@@ -6,13 +6,15 @@ Interactive OpenAPI docs: `{VITE_API_URL}/docs`
 
 ## ID schemes
 
-| Surface | ID format | Example |
-|---------|-----------|---------|
-| CRM farmers (`/farmers/*`) | Integer DB primary key | `1` |
-| Agro-AI assessments (`/api/farmers`) | Member code string | `GH-0001` |
-| Frontend display | Padded member code | `GH-0001` |
+| Surface | ID format | Example | Notes |
+|---------|-----------|---------|-------|
+| CRM farmers (`/farmers/*`) | Integer DB primary key | `1` | Canonical CRM identifier; used in POST bodies and path params. |
+| Agro-AI assessments (`/api/farmers`) | Zero-padded member code string | `GH-0001` | Backend assigns `GH-{db_id:04d}` when assessments are built from DB farmers (`format_member_code` in `db_bridge.py`). |
+| Frontend display (CRM tabs) | Padded member code (display only) | `GH-0001` | `formatFarmerId()` in `frontend/src/api/transactions.js` pads integer `farmer.id` / `transaction.farmer_id` for Payments and related views. |
 
-When the database is seeded, Agro-AI assessments are built from DB farmer records and use `GH-{db_id}` codes. When the DB is empty, Agro-AI falls back to synthetic demo farmers (`GH-0103`, etc.).
+**Canonical rule:** CRM routes expose the raw integer `id`. Agro-AI routes expose a `farmer_id` string that is already formatted by the backend — never a bare integer. The frontend does not re-pad Agro-AI `farmer_id` values; it renders them as returned. Padding for CRM integer IDs happens only in frontend display helpers, not in API responses from `/farmers/*`.
+
+When the database is seeded, Agro-AI assessments are built from DB farmer records and the backend emits `GH-0001`-style codes (`GH-` + four-digit zero-padded DB id). When the DB is empty, Agro-AI falls back to synthetic demo farmers with fixed member codes (`GH-0103`, `GH-0042`, etc.) that are not tied to a DB row.
 
 ## Dashboard routes
 
@@ -111,13 +113,15 @@ FastAPI returns `{ "detail": "message" }` for 4xx/5xx responses.
 
 ## Demo fallback policy
 
-The frontend **always prefers live API data** when the backend is reachable, but **never fails closed** when it is not — including in production.
+The frontend **always prefers live API data** when the backend is reachable, but **never fails closed** on transport outages — including in production.
 
-API helpers (`frontend/src/api/*.js`, shared config in `frontend/src/api/config.js`) use a 10s timeout. On network failure, timeout, or non-2xx responses they return static demo data from `frontend/src/data/payments.js` and set `source: 'demo'`. The dashboard topbar and per-tab badges show **Live API** vs **Demo data** so operators know which source is active.
+Dashboard read helpers (`frontend/src/api/*.js`, shared config in `frontend/src/api/config.js`) use a 10s timeout via `withDemoFallback`. **Only transport-level failures** (network errors, timeouts) return static demo data from `frontend/src/data/payments.js` and set `source: 'demo'`. HTTP responses from a reachable backend — including `401`, `403`, validation `422`, and other 4xx/5xx — are surfaced to callers as `ApiError` and are **not** replaced with demo data.
 
-Login follows the same pattern: it tries `POST /auth/login` first, then falls back to local demo accounts in `frontend/src/data/users.js` when auth is unavailable.
+The dashboard topbar and per-tab badges show **Live API** vs **Demo data** so operators know which source is active.
 
-There is no `VITE_REQUIRE_API` or production-only strict mode — outages should degrade gracefully to demo data, not blank screens or blocking errors.
+Login is separate: the login page tries `POST /auth/login` first, then falls back to local demo accounts in `frontend/src/data/users.js` when auth is unavailable at the transport layer.
+
+There is no `VITE_REQUIRE_API` or production-only strict mode — transport outages should degrade gracefully to demo data, not blank screens or blocking errors.
 
 ## Golden Path seed data
 

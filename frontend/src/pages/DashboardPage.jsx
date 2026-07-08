@@ -97,6 +97,13 @@ export default function DashboardPage({ user, onLogout }) {
           source: data.source,
         })
       })
+      .catch((err) => {
+        setAgroAiState({
+          loading: false,
+          error: err.message || 'Failed to load Agro-AI data',
+          source: 'error',
+        })
+      })
   }, [])
 
   const loadFarmers = useCallback(() => {
@@ -106,8 +113,12 @@ export default function DashboardPage({ user, onLogout }) {
         setDbFarmers(data)
         setFarmersState({ loading: false, error: '', source: data.source })
       })
-      .catch(() => {
-        setFarmersState({ loading: false, error: '', source: 'demo' })
+      .catch((err) => {
+        setFarmersState({
+          loading: false,
+          error: err.message || 'Failed to load members',
+          source: 'error',
+        })
       })
   }, [])
 
@@ -118,8 +129,12 @@ export default function DashboardPage({ user, onLogout }) {
       const data = await fetchCooperative(coopId)
       setCooperative(data.cooperative)
       setCoopState({ loading: false, error: '', source: data.source })
-    } catch {
-      setCoopState({ loading: false, error: '', source: 'demo' })
+    } catch (err) {
+      setCoopState({
+        loading: false,
+        error: err.message || 'Failed to load cooperative',
+        source: 'error',
+      })
     }
   }, [])
 

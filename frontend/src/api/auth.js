@@ -58,6 +58,51 @@ export function clearAuthToken() {
   sessionStorage.removeItem('agroos_token')
 }
 
+const USER_KEY = 'agroos_user'
+
+export function storeAuthUser(user) {
+  if (!user) return
+  const { password, ...safe } = user
+  sessionStorage.setItem(USER_KEY, JSON.stringify(safe))
+}
+
+export function getAuthUser() {
+  const raw = sessionStorage.getItem(USER_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw)
+  } catch {
+    return null
+  }
+}
+
+export function clearAuthUser() {
+  sessionStorage.removeItem(USER_KEY)
+}
+
+export function clearAuthSession() {
+  clearAuthToken()
+  clearAuthUser()
+}
+
+/** Rebuild a minimal dashboard user when only a JWT is present (pre-persistence sessions). */
+export function userFromAuthToken(token) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    const email = payload.sub
+    if (!email) return null
+    return {
+      email,
+      name: 'Cooperative Admin',
+      initials: 'CA',
+      role: 'Finance Officer',
+      cooperative: 'Kuapa Kokoo Demo Cooperative',
+    }
+  } catch {
+    return null
+  }
+}
+
 export function authHeaders() {
   const token = getAuthToken()
   return token ? { Authorization: `Bearer ${token}` } : {}

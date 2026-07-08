@@ -1,5 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const FETCH_TIMEOUT_MS = 10000
+import { API_URL, apiResult, fetchJson, withDemoFallback } from './config'
 
 const DEMO_USSD = [
   {
@@ -30,43 +29,20 @@ export function formatUssdTime(isoDate) {
   })
 }
 
-export async function fetchUssdLogs() {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-
-  try {
-    const response = await fetch(`${API_URL}/webhooks/ussd/logs`, {
-      signal: controller.signal,
-    })
-    if (!response.ok) throw new Error('USSD logs unavailable')
-    return { logs: await response.json(), source: 'api' }
-  } catch {
-    return { logs: DEMO_USSD, source: 'demo' }
-  } finally {
-    clearTimeout(timeoutId)
-  }
+export function fetchUssdLogs() {
+  return withDemoFallback(
+    async () => apiResult('api', { logs: await fetchJson(`${API_URL}/webhooks/ussd/logs`) }),
+    () => apiResult('demo', { logs: DEMO_USSD }),
+  )
 }
 
-export async function simulatePaymentWebhook({ transactionId, moolreReference }) {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-
-  try {
-    const response = await fetch(`${API_URL}/webhooks/moolre/payment/simulate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
-        transaction_id: transactionId ?? undefined,
-        moolre_reference: moolreReference ?? undefined,
-      }),
-    })
-    if (!response.ok) {
-      const detail = await response.text()
-      throw new Error(detail || 'Simulation failed')
-    }
-    return response.json()
-  } finally {
-    clearTimeout(timeoutId)
-  }
+export function simulatePaymentWebhook({ transactionId, moolreReference }) {
+  return fetchJson(`${API_URL}/webhooks/moolre/payment/simulate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      transaction_id: transactionId ?? undefined,
+      moolre_reference: moolreReference ?? undefined,
+    }),
+  })
 }

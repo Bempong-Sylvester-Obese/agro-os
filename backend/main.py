@@ -29,6 +29,12 @@ logging.basicConfig(level=logging.INFO)
 
 settings = get_settings()
 
+# Moolre callback POSTs must stay unauthenticated; other /webhooks routes do not.
+_MOOLRE_CALLBACK_PATHS = frozenset({
+    "/webhooks/moolre/payment",
+    "/webhooks/moolre/ussd",
+})
+
 if settings.sentry_dsn:
     sentry_sdk.init(
         dsn=settings.sentry_dsn,
@@ -91,7 +97,7 @@ async def optional_admin_auth(request: Request, call_next):
         return await call_next(request)
 
     path = request.url.path
-    if path.startswith("/auth/login") or path.startswith("/webhooks/"):
+    if path.startswith("/auth/login") or path in _MOOLRE_CALLBACK_PATHS:
         return await call_next(request)
 
     auth_header = request.headers.get("Authorization", "")

@@ -1,5 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const FETCH_TIMEOUT_MS = 10000
+import { API_URL, apiResult, fetchJson, withDemoFallback } from './config'
 
 const DEMO_PRODUCTION = [
   {
@@ -36,48 +35,39 @@ function enrichRecords(records, farmers) {
   }))
 }
 
-export async function fetchProductionDashboard() {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-  const fetchOptions = { signal: controller.signal }
+function demoProductionDashboard() {
+  return apiResult('demo', {
+    records: DEMO_PRODUCTION,
+    stats: [
+      ['Active crop cycles', String(DEMO_PRODUCTION.length), 'Demo data'],
+      ['Expected yield', '4,200 kg', 'Current season'],
+      ['Actual harvest', '3,020 kg', '72% of expected'],
+    ],
+  })
+}
 
-  try {
-    const [productionResponse, farmersResponse] = await Promise.all([
-      fetch(`${API_URL}/production/`, fetchOptions),
-      fetch(`${API_URL}/farmers/`, fetchOptions),
-    ])
+export function fetchProductionDashboard() {
+  return withDemoFallback(
+    async () => {
+      const [records, farmers] = await Promise.all([
+        fetchJson(`${API_URL}/production/`),
+        fetchJson(`${API_URL}/farmers/`),
+      ])
 
-    if (!productionResponse.ok) throw new Error('production API unavailable')
+      const enriched = enrichRecords(records, farmers)
+      const totalExpected = enriched.reduce((sum, row) => sum + (Number(row.expected_kg) || 0), 0)
+      const totalActual = enriched.reduce((sum, row) => sum + (Number(row.quantity_kg) || 0), 0)
+      const yieldPct = totalExpected > 0 ? Math.round((totalActual / totalExpected) * 100) : 0
 
-    const records = enrichRecords(
-      await productionResponse.json(),
-      farmersResponse.ok ? await farmersResponse.json() : [],
-    )
-
-    const totalExpected = records.reduce((sum, row) => sum + (Number(row.expected_kg) || 0), 0)
-    const totalActual = records.reduce((sum, row) => sum + (Number(row.quantity_kg) || 0), 0)
-    const yieldPct = totalExpected > 0 ? Math.round((totalActual / totalExpected) * 100) : 0
-
-    return {
-      records,
-      stats: [
-        ['Active crop cycles', String(records.length), 'All farmers'],
-        ['Expected yield', `${totalExpected.toLocaleString()} kg`, 'Current season'],
-        ['Actual harvest', `${totalActual.toLocaleString()} kg`, `${yieldPct}% of expected`],
-      ],
-      source: 'api',
-    }
-  } catch {
-    return {
-      records: DEMO_PRODUCTION,
-      stats: [
-        ['Active crop cycles', String(DEMO_PRODUCTION.length), 'Demo data'],
-        ['Expected yield', '4,200 kg', 'Current season'],
-        ['Actual harvest', '3,020 kg', '72% of expected'],
-      ],
-      source: 'demo',
-    }
-  } finally {
-    clearTimeout(timeoutId)
-  }
+      return apiResult('api', {
+        records: enriched,
+        stats: [
+          ['Active crop cycles', String(enriched.length), 'All farmers'],
+          ['Expected yield', `${totalExpected.toLocaleString()} kg`, 'Current season'],
+          ['Actual harvest', `${totalActual.toLocaleString()} kg`, `${yieldPct}% of expected`],
+        ],
+      })
+    },
+    () => demoProductionDashboard(),
+  )
 }

@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { DB_FARMERS_FALLBACK, recalculateTrustScore } from '../../api/farmers'
 import { FARMER_ASSESSMENTS } from '../../data/payments'
-import { findFarmerByName, formatTrustScore, scoreTier } from '../../utils/scores'
+import { findCrmFarmerForAgroAi, formatTrustScore, scoreTier } from '../../utils/scores'
 
 const pct = (value) => `${Math.round(value * 100)}%`
 
@@ -21,7 +21,7 @@ export default function Scores({ agroAi, dbFarmers, onRecalculated }) {
   const [recalculating, setRecalculating] = useState(null)
   const [recalcError, setRecalcError] = useState('')
   const selectedFarmer = agroAiFarmers.find((farmer) => farmer.farmer_id === selectedId) || agroAiFarmers[0]
-  const selectedTrustFarmer = selectedFarmer ? findFarmerByName(trustFarmers, selectedFarmer.name) : null
+  const selectedTrustFarmer = findCrmFarmerForAgroAi(trustFarmers, selectedFarmer)
 
   async function handleRecalculate(farmerId) {
     setRecalculating(farmerId)

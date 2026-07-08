@@ -1,9 +1,21 @@
 // src/components/GetStartedModal.jsx
 import { useState } from 'react'
+import { signupAdmin, storeAuthToken } from '../api/auth'
 
 const STEPS = ['Account', 'Cooperative', 'Done']
 
-export default function GetStartedModal({ onClose, onLogin }) {
+function buildUserFromForm(form) {
+  const initials = form.name.trim().split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
+  return {
+    name: form.name.trim(),
+    initials,
+    email: form.email.trim(),
+    role: 'Field Officer',
+    cooperative: form.cooperative.trim(),
+  }
+}
+
+export default function GetStartedModal({ onClose, onSignIn, onAuth }) {
   const [step, setStep] = useState(0)
   const [form, setForm] = useState({
     name: '', email: '', password: '', confirmPassword: '',
@@ -11,6 +23,8 @@ export default function GetStartedModal({ onClose, onLogin }) {
   })
   const [err, setErr] = useState('')
   const [agreed, setAgreed] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [signedUpUser, setSignedUpUser] = useState(null)
 
   const REGIONS = ['Ashanti', 'Northern', 'Gr. Accra', 'Brong-Ahafo', 'Eastern', 'Volta', 'Western', 'Central', 'Upper East', 'Upper West']
   const SIZES = ['1-50', '51-200', '201-500', '500+']
@@ -27,12 +41,40 @@ export default function GetStartedModal({ onClose, onLogin }) {
       if (form.password.length < 8) { setErr('Password must be at least 8 characters.'); return }
       if (form.password !== form.confirmPassword) { setErr('Passwords do not match.'); return }
     }
-    if (step === 1) {
-      if (!form.cooperative.trim()) { setErr('Cooperative name is required.'); return }
-      if (!agreed) { setErr('Please agree to the terms to continue.'); return }
-    }
     setErr('')
     setStep((s) => s + 1)
+  }
+
+  async function createAccount() {
+    if (!form.cooperative.trim()) { setErr('Cooperative name is required.'); return }
+    if (!agreed) { setErr('Please agree to the terms to continue.'); return }
+
+    setErr('')
+    setSubmitting(true)
+
+    try {
+      const result = await signupAdmin({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        password: form.password,
+        cooperative_name: form.cooperative.trim(),
+      })
+      storeAuthToken(result.access_token)
+      setSignedUpUser({
+        ...result.user,
+        email: result.user?.email || form.email.trim(),
+        cooperative: form.cooperative.trim(),
+      })
+      setStep(2)
+      return
+    } catch {
+      // Fall back to local demo signup when backend signup is unavailable.
+    } finally {
+      setSubmitting(false)
+    }
+
+    setSignedUpUser(buildUserFromForm(form))
+    setStep(2)
   }
 
   const planFeatures = [
@@ -156,8 +198,10 @@ export default function GetStartedModal({ onClose, onLogin }) {
             </div>
 
             <div className="modal-actions">
-              <button type="button" className="btn-out-lg" style={{ fontSize: 13, padding: '10px 22px' }} onClick={() => { setStep(0); setErr('') }}>← Back</button>
-              <button type="button" className="btn-lg" style={{ fontSize: 13, padding: '10px 22px' }} onClick={next}>Create account →</button>
+              <button type="button" className="btn-out-lg" style={{ fontSize: 13, padding: '10px 22px' }} onClick={() => { setStep(0); setErr('') }} disabled={submitting}>← Back</button>
+              <button type="button" className="btn-lg" style={{ fontSize: 13, padding: '10px 22px' }} onClick={createAccount} disabled={submitting}>
+                {submitting ? 'Creating account…' : 'Create account →'}
+              </button>
             </div>
           </div>
         )}
@@ -170,14 +214,22 @@ export default function GetStartedModal({ onClose, onLogin }) {
             </div>
             <div style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 24, lineHeight: 1.6 }}>
               Your cooperative <strong>{form.cooperative}</strong> is registered on the free plan.<br />
-              Sign in to access your dashboard.
+              Open your dashboard to get started.
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
               <button type="button" className="btn-out-lg" style={{ fontSize: 13, padding: '10px 22px' }} onClick={onClose}>Back to site</button>
-              <button type="button" className="btn-lg" style={{ fontSize: 13, padding: '10px 22px' }} onClick={onLogin}>Go to dashboard →</button>
+              <button
+                type="button"
+                className="btn-lg"
+                style={{ fontSize: 13, padding: '10px 22px' }}
+                onClick={() => signedUpUser && onAuth(signedUpUser)}
+                disabled={!signedUpUser}
+              >
+                Go to dashboard →
+              </button>
             </div>
             <div style={{ marginTop: 16, fontSize: 11, color: 'var(--muted)' }}>
-              We've sent a verification email to <strong>{form.email}</strong>
+              Account created for <strong>{form.email}</strong>
             </div>
           </div>
         )}
@@ -185,7 +237,7 @@ export default function GetStartedModal({ onClose, onLogin }) {
         {step < 2 && (
           <div style={{ textAlign: 'center', marginTop: 16, fontSize: 12, color: 'var(--muted)' }}>
             Already have an account?{' '}
-            <button type="button" onClick={onLogin} style={{ background: 'none', border: 'none', color: 'var(--g)', fontWeight: 600, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
+            <button type="button" onClick={onSignIn} style={{ background: 'none', border: 'none', color: 'var(--g)', fontWeight: 600, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>
               Sign in
             </button>
           </div>

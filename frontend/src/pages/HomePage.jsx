@@ -29,7 +29,7 @@ const WHO = [
   ['🏦', 'Financiers & lenders', 'Access AgroCredit Trust Scores for individual farmers to assess creditworthiness with confidence.'],
 ]
 
-export default function HomePage() {
+export default function HomePage({ onAuth }) {
   const setPage = useAppNavigate()
   const [showGetStarted, setShowGetStarted] = useState(false)
 
@@ -175,9 +175,13 @@ export default function HomePage() {
       {showGetStarted && (
         <GetStartedModal
           onClose={() => setShowGetStarted(false)}
-          onLogin={() => {
+          onSignIn={() => {
             setShowGetStarted(false)
-            setPage('login', { loginMode: 'signup' })
+            setPage('login', { loginMode: 'login' })
+          }}
+          onAuth={(user) => {
+            setShowGetStarted(false)
+            onAuth(user)
           }}
         />
       )}
