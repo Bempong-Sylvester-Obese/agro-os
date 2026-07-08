@@ -1,6 +1,7 @@
 // src/pages/FeaturesPage.jsx
 import Footer from '../components/Footer'
 import CTASection from '../components/CTASection'
+import { useAppNavigate } from '../hooks/useAppNavigate'
 
 const FEATURES = [
   ['👥', 'Member management',        'Full profiles, roles, dues status, and complete history for every farmer. Filter by region, status, or score.'],
@@ -14,7 +15,8 @@ const FEATURES = [
   ['📄', 'Audit trails & receipts',  'Every transaction is logged with a timestamped receipt. Export to CSV for financial reporting.'],
 ]
 
-export default function FeaturesPage({ setPage }) {
+export default function FeaturesPage() {
+  const setPage = useAppNavigate()
   return (
     <>
       <div className="sol-hero">
@@ -45,10 +47,10 @@ export default function FeaturesPage({ setPage }) {
         primaryLabel="Open dashboard"
         secondaryLabel="Book a demo"
         onPrimary={() => setPage('dashboard')}
-        onSecondary={() => {}}
+        onSecondary={() => setPage('login', { loginMode: 'login' })}
       />
 
-      <Footer setPage={setPage} />
+      <Footer />
     </>
   )
 }

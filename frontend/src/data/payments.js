@@ -242,29 +242,3 @@ export const CREDIT_SUMMARY = {
     ).toFixed(1),
   ),
 }
-
-const scoreTier = (score) => {
-  if (score >= 82) return 'sh'
-  if (score >= 60) return 'sm'
-  return 'sl'
-}
-
-export const MEMBERS = FARMER_ASSESSMENTS.map((farmer) => [
-  farmer.name,
-  farmer.farmer_id,
-  farmer.phone,
-  farmer.region,
-  farmer.dues_status,
-  String(farmer.score),
-  scoreTier(farmer.score),
-])
-
-export const SCORES = FARMER_ASSESSMENTS.map((farmer) => [
-  farmer.name,
-  farmer.region,
-  String(Math.round(farmer.features.dues_payment_rate * 100)),
-  String(Math.round(farmer.features.yield_performance * 100)),
-  String(Math.round(farmer.features.attendance_rate * 100)),
-  String(farmer.score),
-  scoreTier(farmer.score),
-])

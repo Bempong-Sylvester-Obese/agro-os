@@ -1,36 +1,87 @@
 // src/pages/LoginPage.jsx
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { loginAdmin, signupAdmin, storeAuthToken } from '../api/auth'
 import { USERS } from '../data/users'
 
 export default function LoginPage({ onAuth }) {
-  const [mode, setMode]         = useState('login')   // 'login' | 'signup'
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const initialMode = searchParams.get('mode') === 'signup' ? 'signup' : 'login'
+  const [mode, setMode]         = useState(initialMode)
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [name, setName]         = useState('')
   const [confirm, setConfirm]   = useState('')
+  const [cooperativeName, setCooperativeName] = useState('')
   const [error, setError]       = useState('')
+  const [loading, setLoading]   = useState(false)
   const [accounts, setAccounts] = useState(USERS)
 
-  function handleLogin(e) {
+  useEffect(() => {
+    setMode(initialMode)
+    setError('')
+  }, [initialMode])
+
+  async function handleLogin(e) {
     e.preventDefault()
     setError('')
+    setLoading(true)
+    try {
+      const result = await loginAdmin(email, password)
+      storeAuthToken(result.access_token)
+      onAuth({
+        ...result.user,
+        email: result.user.email || email.trim(),
+        cooperative: 'Kuapa Kokoo Demo Cooperative',
+      })
+      return
+    } catch {
+      // Fall back to local demo accounts when backend auth is unavailable.
+    } finally {
+      setLoading(false)
+    }
+
     const user = accounts.find(
       u => u.email.toLowerCase() === email.trim().toLowerCase() && u.password === password
     )
     if (!user) {
-      setError('Invalid email or password. Please try again.')
+      setError('Invalid email or password. Try admin@agroos.demo / demo1234 when the API is running.')
       return
     }
     onAuth(user)
   }
 
-  function handleSignup(e) {
+  async function handleSignup(e) {
     e.preventDefault()
     setError('')
     if (!name.trim()) { setError('Please enter your full name.'); return }
     if (!email.trim()) { setError('Please enter your email.'); return }
+    if (!cooperativeName.trim()) { setError('Please enter your cooperative name.'); return }
     if (password.length < 6) { setError('Password must be at least 6 characters.'); return }
     if (password !== confirm) { setError('Passwords do not match.'); return }
+
+    setLoading(true)
+    try {
+      const result = await signupAdmin({
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        cooperative_name: cooperativeName.trim(),
+      })
+      storeAuthToken(result.access_token)
+      onAuth({
+        ...result.user,
+        email: result.user?.email || email.trim(),
+        cooperative: cooperativeName.trim(),
+      })
+      return
+    } catch {
+      // Fall back to local demo signup when backend signup is unavailable.
+    } finally {
+      setLoading(false)
+    }
+
     if (accounts.find(u => u.email.toLowerCase() === email.trim().toLowerCase())) {
       setError('An account with this email already exists.')
       return
@@ -43,7 +94,7 @@ export default function LoginPage({ onAuth }) {
       email: email.trim(),
       password,
       role: 'Field Officer',
-      cooperative: 'Ashanti Farmers Co-op',
+      cooperative: cooperativeName.trim() || 'Ashanti Farmers Co-op',
     }
     const updated = [...accounts, newUser]
     setAccounts(updated)
@@ -51,7 +102,17 @@ export default function LoginPage({ onAuth }) {
   }
 
   return (
-    <div className="auth-shell">
+    <div className="auth-page">
+      <header className="auth-nav">
+        <button type="button" className="auth-back-btn" onClick={() => navigate('/')}>
+          ← Back to site
+        </button>
+        <button type="button" className="auth-nav-logo serif" onClick={() => navigate('/')}>
+          AgroOS
+        </button>
+      </header>
+
+      <div className="auth-shell">
       <div className="auth-brand">
         <div className="auth-brand-inner">
           <div className="auth-logo serif">AgroOS</div>
@@ -139,6 +200,20 @@ export default function LoginPage({ onAuth }) {
 
             {mode === 'signup' && (
               <div className="auth-field">
+                <label className="auth-label">Cooperative name</label>
+                <input
+                  className="auth-input"
+                  type="text"
+                  placeholder="e.g. Ashanti Farmers Co-op"
+                  value={cooperativeName}
+                  onChange={e => setCooperativeName(e.target.value)}
+                  required
+                />
+              </div>
+            )}
+
+            {mode === 'signup' && (
+              <div className="auth-field">
                 <label className="auth-label">Confirm password</label>
                 <input
                   className="auth-input"
@@ -151,8 +226,10 @@ export default function LoginPage({ onAuth }) {
               </div>
             )}
 
-            <button type="submit" className="btn-lg auth-submit">
-              {mode === 'login' ? 'Sign in →' : 'Create account →'}
+            <button type="submit" className="btn-lg auth-submit" disabled={loading}>
+              {loading
+                ? (mode === 'login' ? 'Signing in…' : 'Creating account…')
+                : (mode === 'login' ? 'Sign in →' : 'Create account →')}
             </button>
           </form>
 
@@ -180,6 +257,7 @@ export default function LoginPage({ onAuth }) {
           )}
         </div>
       </div>
+    </div>
     </div>
   )
 }

@@ -1,7 +1,10 @@
 // src/pages/HomePage.jsx
+import { useState } from 'react'
 import Footer from '../components/Footer'
 import DashboardMock from '../components/DashboardMock'
 import CTASection from '../components/CTASection'
+import GetStartedModal from '../components/GetStartedModal'
+import { useAppNavigate } from '../hooks/useAppNavigate'
 
 const PHOTO_STRIP = [
   ['#1A4731', '🌾', 'The team',      'Building AgroOS, in Ghana, for Africa.'],
@@ -26,7 +29,10 @@ const WHO = [
   ['🏦', 'Financiers & lenders', 'Access AgroCredit Trust Scores for individual farmers to assess creditworthiness with confidence.'],
 ]
 
-export default function HomePage({ setPage }) {
+export default function HomePage() {
+  const setPage = useAppNavigate()
+  const [showGetStarted, setShowGetStarted] = useState(false)
+
   return (
     <>
       {/* ── Hero ── */}
@@ -42,7 +48,7 @@ export default function HomePage({ setPage }) {
               leaders one platform to manage everything. No spreadsheets. No paper ledgers.
             </p>
             <div className="hero-ctas">
-              <button className="btn-lg">Get started free</button>
+              <button type="button" className="btn-lg" onClick={() => setShowGetStarted(true)}>Get started free</button>
               <button className="btn-out-lg" onClick={() => setPage('dashboard')}>See the dashboard</button>
             </div>
           </div>
@@ -56,7 +62,9 @@ export default function HomePage({ setPage }) {
       <div className="photo-strip">
         {PHOTO_STRIP.map(([bg, icon, tag, text]) => (
           <div key={tag} className="photo-card" style={{ background: bg }}>
-            <div className="photo-bg">{icon}</div>
+            <div className="photo-bg">
+              <span className="photo-bg-icon" aria-hidden="true">{icon}</span>
+            </div>
             <div className="photo-cap">
               <div className="photo-cap-tag">{tag}</div>
               <div className="photo-cap-text">{text}</div>
@@ -140,7 +148,7 @@ export default function HomePage({ setPage }) {
       </section>
 
       {/* ── Moolre band ── */}
-      <div className="moolre-band">
+      <div className="moolre-band" id="moolre-integration">
         <div className="moolre-inner">
           <div>
             <div className="moolre-tag">Moolre integration</div>
@@ -150,7 +158,7 @@ export default function HomePage({ setPage }) {
               and disbursements flow directly through the Moolre ecosystem. No third-party payment setup required.
             </p>
           </div>
-          <button className="btn-gold">Explore integration →</button>
+          <button className="btn-gold" onClick={() => setPage('solutions', { scrollTo: 'ussd-section' })}>Explore integration →</button>
         </div>
       </div>
 
@@ -160,11 +168,21 @@ export default function HomePage({ setPage }) {
         subtext="Join cooperatives across Ghana who've replaced paper with AgroOS. Start free, upgrade when you're ready."
         primaryLabel="Get started free"
         secondaryLabel="Book a demo"
-        onPrimary={() => {}}
-        onSecondary={() => {}}
+        onPrimary={() => setShowGetStarted(true)}
+        onSecondary={() => setPage('bookDemo')}
       />
 
-      <Footer setPage={setPage} />
+      {showGetStarted && (
+        <GetStartedModal
+          onClose={() => setShowGetStarted(false)}
+          onLogin={() => {
+            setShowGetStarted(false)
+            setPage('login', { loginMode: 'signup' })
+          }}
+        />
+      )}
+
+      <Footer />
     </>
   )
 }

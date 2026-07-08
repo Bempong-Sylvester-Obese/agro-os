@@ -14,6 +14,8 @@ import os
 # --------------------------------------------------------------------------
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ.setdefault("MOOLRE_API_USER", "test-user")
+os.environ.setdefault("AUTH_ENABLED", "false")
+os.environ.setdefault("APP_ENV", "test")
 
 import pytest
 from fastapi.testclient import TestClient
