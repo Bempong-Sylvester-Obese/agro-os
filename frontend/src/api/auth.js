@@ -85,10 +85,19 @@ export function clearAuthSession() {
   clearAuthUser()
 }
 
+/** Decode a JWT payload segment (base64url, possibly unpadded) to a UTF-8 string. */
+function decodeJwtPayloadSegment(segment) {
+  const base64 = segment.replace(/-/g, '+').replace(/_/g, '/')
+  const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4)
+  return atob(padded)
+}
+
 /** Rebuild a minimal dashboard user when only a JWT is present (pre-persistence sessions). */
 export function userFromAuthToken(token) {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]))
+    const segment = token.split('.')[1]
+    if (!segment) return null
+    const payload = JSON.parse(decodeJwtPayloadSegment(segment))
     const email = payload.sub
     if (!email) return null
     return {
