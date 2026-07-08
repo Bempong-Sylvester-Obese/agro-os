@@ -81,7 +81,14 @@ export default function Payments({ dbFarmers }) {
             <select
               className="auth-input auth-select"
               style={{ maxWidth: 260 }}
-              onChange={(e) => e.target.value && handleCollect(parseInt(e.target.value, 10))}
+              onChange={(e) => {
+                const farmerId = parseInt(e.target.value, 10)
+                if (!farmerId) return
+                const farmer = farmers.find((f) => f.id === farmerId)
+                if (window.confirm(`Send a GHS ${collectAmount} dues request to ${farmer?.name}?`)) {
+                  handleCollect(farmerId)
+                }
+              }}
               value=""
               disabled={collecting !== null}
             >
