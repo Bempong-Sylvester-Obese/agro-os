@@ -53,7 +53,10 @@ def extract_features_from_farmer(farmer: Farmer, db: Session) -> dict[str, float
         for record in productions:
             if record.expected_kg and record.quantity_kg:
                 yield_scores.append(record.quantity_kg / record.expected_kg)
-        yield_performance = _ratio(sum(yield_scores), len(yield_scores) if yield_scores else 1)
+        if yield_scores:
+            yield_performance = _ratio(sum(yield_scores), len(yield_scores))
+        else:
+            yield_performance = 0.55
         if not harvested:
             yield_performance = max(yield_performance * 0.7, 0.35)
     else:
