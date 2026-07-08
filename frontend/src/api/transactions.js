@@ -144,7 +144,8 @@ export function fetchPaymentsDashboard() {
       try {
         walletBalance = await fetchJson(`${API_URL}/transactions/moolre/wallet-balance`)
       } catch (err) {
-        if (!isTransportFailure(err)) throw err
+        // Wallet balance is optional; ignore all failures (transport or HTTP)
+        // so the payments dashboard still loads without Moolre configured.
       }
 
       const rows = mapTransactionsToRows(transactions, farmers)
