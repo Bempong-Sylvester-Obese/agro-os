@@ -1,4 +1,5 @@
 import { PAYMENTS } from '../data/payments'
+import { authHeaders } from './auth'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const FETCH_TIMEOUT_MS = 10000
@@ -119,6 +120,32 @@ function demoFallback() {
       ['Via USSD', 'GHS 7,800', '26% of total'],
     ],
     source: 'demo',
+  }
+}
+
+export async function collectDues({ farmer_id, amount, channel = '13', description = 'Cooperative dues payment' }) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(`${API_URL}/transactions/dues/collect`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(),
+      },
+      body: JSON.stringify({ farmer_id, amount, channel, description }),
+    })
+
+    if (!response.ok) {
+      const detail = await response.text()
+      throw new Error(detail || 'Could not initiate dues collection')
+    }
+
+    return response.json()
+  } finally {
+    clearTimeout(timeoutId)
   }
 }
 

@@ -15,6 +15,7 @@ export const MARKETING_PATHS = {
   solutions: '/solutions',
   features: '/features',
   pricing: '/pricing',
+  bookDemo: '/book-demo',
 }
 
 export function dashboardPath(section = 'overview') {

@@ -69,6 +69,31 @@ export async function createFarmer(payload) {
   }
 }
 
+export async function recalculateTrustScore(farmerId) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(`${API_URL}/farmers/${farmerId}/recalculate-trust-score`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...authHeaders(),
+      },
+    })
+
+    if (!response.ok) {
+      const detail = await response.text()
+      throw new Error(detail || 'Could not recalculate trust score')
+    }
+
+    return response.json()
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 export async function resolveCooperativeIdForFarmers() {
   if (DEFAULT_COOP_ID) return Number(DEFAULT_COOP_ID)
 

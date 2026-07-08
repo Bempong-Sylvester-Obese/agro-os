@@ -1,30 +1,48 @@
 // src/components/dashboard/Payments.jsx
-import { useEffect, useState } from 'react'
-import { fetchPaymentsDashboard } from '../../api/transactions'
+import { useCallback, useEffect, useState } from 'react'
+import { collectDues, fetchPaymentsDashboard } from '../../api/transactions'
 
-export default function Payments() {
+export default function Payments({ dbFarmers }) {
   const [loading, setLoading] = useState(true)
   const [dashboard, setDashboard] = useState(null)
+  const [collectError, setCollectError] = useState('')
+  const [collecting, setCollecting] = useState(null)
+  const [collectAmount, setCollectAmount] = useState('50')
+
+  const load = useCallback(() => {
+    setLoading(true)
+    return fetchPaymentsDashboard()
+      .then((data) => setDashboard(data))
+      .finally(() => setLoading(false))
+  }, [])
 
   useEffect(() => {
-    let mounted = true
-
-    fetchPaymentsDashboard()
-      .then((data) => {
-        if (mounted) setDashboard(data)
-      })
-      .finally(() => {
-        if (mounted) setLoading(false)
-      })
-
-    return () => {
-      mounted = false
-    }
-  }, [])
+    load()
+  }, [load])
 
   const stats = dashboard?.stats ?? []
   const rows = dashboard?.rows ?? []
   const sourceLabel = dashboard?.source === 'api' ? 'Live API' : 'Demo data'
+  const farmers = dbFarmers?.farmers ?? dashboard?.farmers ?? []
+  const canCollect = dashboard?.source === 'api' && farmers.length > 0
+
+  async function handleCollect(farmerId) {
+    setCollecting(farmerId)
+    setCollectError('')
+    try {
+      await collectDues({
+        farmer_id: farmerId,
+        amount: parseFloat(collectAmount) || 50,
+        channel: '13',
+        description: 'Cooperative dues payment',
+      })
+      await load()
+    } catch (err) {
+      setCollectError(err.message || 'Could not initiate dues collection. Is MOOLRE_API_USER configured?')
+    } finally {
+      setCollecting(null)
+    }
+  }
 
   return (
     <>
@@ -46,10 +64,50 @@ export default function Payments() {
             ))}
       </div>
 
+      {canCollect && (
+        <div className="admin-card" style={{ marginBottom: 20, padding: 20 }}>
+          <div className="admin-card-title serif" style={{ marginBottom: 12 }}>Collect dues via Moolre USSD push</div>
+          {collectError && <div className="auth-error" style={{ marginBottom: 12 }}>{collectError}</div>}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              className="auth-input"
+              style={{ maxWidth: 120 }}
+              type="number"
+              min="1"
+              value={collectAmount}
+              onChange={(e) => setCollectAmount(e.target.value)}
+            />
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>GHS per member, then pick who to charge:</span>
+            <select
+              className="auth-input auth-select"
+              style={{ maxWidth: 260 }}
+              onChange={(e) => e.target.value && handleCollect(parseInt(e.target.value, 10))}
+              value=""
+              disabled={collecting !== null}
+            >
+              <option value="">{collecting ? 'Sending request…' : 'Select a member…'}</option>
+              {farmers.map((farmer) => (
+                <option key={farmer.id} value={farmer.id}>
+                  {farmer.name} — {farmer.phone}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
       <div className="admin-card">
         <div className="admin-card-head">
           <span className="admin-card-title serif">Payment history</span>
-          <span className="admin-card-action">{loading ? 'Loading…' : sourceLabel}</span>
+          <button
+            type="button"
+            className="admin-card-action"
+            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+            onClick={load}
+            disabled={loading}
+          >
+            {loading ? 'Loading…' : `${sourceLabel} · Refresh →`}
+          </button>
         </div>
 
         <div className="table-scroll">

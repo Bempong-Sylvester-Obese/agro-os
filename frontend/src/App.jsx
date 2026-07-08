@@ -7,6 +7,7 @@ import HomePage from './pages/HomePage'
 import SolutionsPage from './pages/SolutionsPage'
 import FeaturesPage from './pages/FeaturesPage'
 import PricingPage from './pages/PricingPage'
+import BookDemoPage from './pages/BookDemoPage'
 import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
 
@@ -57,6 +58,7 @@ function AppShell({ user, onAuth, onLogout }) {
         <Route path="/solutions" element={<SolutionsPage />} />
         <Route path="/features" element={<FeaturesPage />} />
         <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/book-demo" element={<BookDemoPage />} />
         <Route path="/login" element={<LoginPage onAuth={onAuth} />} />
         <Route path="/dashboard" element={<DashboardGate user={user} onLogout={onLogout} />} />
         <Route path="/dashboard/:section" element={<DashboardGate user={user} onLogout={onLogout} />} />

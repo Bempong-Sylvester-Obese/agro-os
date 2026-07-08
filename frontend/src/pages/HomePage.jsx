@@ -1,7 +1,9 @@
 // src/pages/HomePage.jsx
+import { useState } from 'react'
 import Footer from '../components/Footer'
 import DashboardMock from '../components/DashboardMock'
 import CTASection from '../components/CTASection'
+import GetStartedModal from '../components/GetStartedModal'
 import { useAppNavigate } from '../hooks/useAppNavigate'
 
 const PHOTO_STRIP = [
@@ -29,6 +31,8 @@ const WHO = [
 
 export default function HomePage() {
   const setPage = useAppNavigate()
+  const [showGetStarted, setShowGetStarted] = useState(false)
+
   return (
     <>
       {/* ── Hero ── */}
@@ -44,7 +48,7 @@ export default function HomePage() {
               leaders one platform to manage everything. No spreadsheets. No paper ledgers.
             </p>
             <div className="hero-ctas">
-              <button className="btn-lg" onClick={() => setPage('login', { loginMode: 'signup' })}>Get started free</button>
+              <button type="button" className="btn-lg" onClick={() => setShowGetStarted(true)}>Get started free</button>
               <button className="btn-out-lg" onClick={() => setPage('dashboard')}>See the dashboard</button>
             </div>
           </div>
@@ -164,9 +168,19 @@ export default function HomePage() {
         subtext="Join cooperatives across Ghana who've replaced paper with AgroOS. Start free, upgrade when you're ready."
         primaryLabel="Get started free"
         secondaryLabel="Book a demo"
-        onPrimary={() => setPage('login', { loginMode: 'signup' })}
-        onSecondary={() => setPage('login', { loginMode: 'login' })}
+        onPrimary={() => setShowGetStarted(true)}
+        onSecondary={() => setPage('bookDemo')}
       />
+
+      {showGetStarted && (
+        <GetStartedModal
+          onClose={() => setShowGetStarted(false)}
+          onLogin={() => {
+            setShowGetStarted(false)
+            setPage('login', { loginMode: 'signup' })
+          }}
+        />
+      )}
 
       <Footer />
     </>

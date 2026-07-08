@@ -1,7 +1,7 @@
 // src/pages/LoginPage.jsx
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { loginAdmin, storeAuthToken } from '../api/auth'
+import { loginAdmin, signupAdmin, storeAuthToken } from '../api/auth'
 import { USERS } from '../data/users'
 
 export default function LoginPage({ onAuth }) {
@@ -13,7 +13,9 @@ export default function LoginPage({ onAuth }) {
   const [password, setPassword] = useState('')
   const [name, setName]         = useState('')
   const [confirm, setConfirm]   = useState('')
+  const [cooperativeName, setCooperativeName] = useState('')
   const [error, setError]       = useState('')
+  const [loading, setLoading]   = useState(false)
   const [accounts, setAccounts] = useState(USERS)
 
   useEffect(() => {
@@ -24,6 +26,7 @@ export default function LoginPage({ onAuth }) {
   async function handleLogin(e) {
     e.preventDefault()
     setError('')
+    setLoading(true)
     try {
       const result = await loginAdmin(email, password)
       storeAuthToken(result.access_token)
@@ -35,6 +38,8 @@ export default function LoginPage({ onAuth }) {
       return
     } catch {
       // Fall back to local demo accounts when backend auth is unavailable.
+    } finally {
+      setLoading(false)
     }
 
     const user = accounts.find(
@@ -47,13 +52,36 @@ export default function LoginPage({ onAuth }) {
     onAuth(user)
   }
 
-  function handleSignup(e) {
+  async function handleSignup(e) {
     e.preventDefault()
     setError('')
     if (!name.trim()) { setError('Please enter your full name.'); return }
     if (!email.trim()) { setError('Please enter your email.'); return }
+    if (!cooperativeName.trim()) { setError('Please enter your cooperative name.'); return }
     if (password.length < 6) { setError('Password must be at least 6 characters.'); return }
     if (password !== confirm) { setError('Passwords do not match.'); return }
+
+    setLoading(true)
+    try {
+      const result = await signupAdmin({
+        name: name.trim(),
+        email: email.trim(),
+        password,
+        cooperative_name: cooperativeName.trim(),
+      })
+      storeAuthToken(result.access_token)
+      onAuth({
+        ...result.user,
+        email: result.user?.email || email.trim(),
+        cooperative: cooperativeName.trim(),
+      })
+      return
+    } catch {
+      // Fall back to local demo signup when backend signup is unavailable.
+    } finally {
+      setLoading(false)
+    }
+
     if (accounts.find(u => u.email.toLowerCase() === email.trim().toLowerCase())) {
       setError('An account with this email already exists.')
       return
@@ -66,7 +94,7 @@ export default function LoginPage({ onAuth }) {
       email: email.trim(),
       password,
       role: 'Field Officer',
-      cooperative: 'Ashanti Farmers Co-op',
+      cooperative: cooperativeName.trim() || 'Ashanti Farmers Co-op',
     }
     const updated = [...accounts, newUser]
     setAccounts(updated)
@@ -172,6 +200,20 @@ export default function LoginPage({ onAuth }) {
 
             {mode === 'signup' && (
               <div className="auth-field">
+                <label className="auth-label">Cooperative name</label>
+                <input
+                  className="auth-input"
+                  type="text"
+                  placeholder="e.g. Ashanti Farmers Co-op"
+                  value={cooperativeName}
+                  onChange={e => setCooperativeName(e.target.value)}
+                  required
+                />
+              </div>
+            )}
+
+            {mode === 'signup' && (
+              <div className="auth-field">
                 <label className="auth-label">Confirm password</label>
                 <input
                   className="auth-input"
@@ -184,8 +226,10 @@ export default function LoginPage({ onAuth }) {
               </div>
             )}
 
-            <button type="submit" className="btn-lg auth-submit">
-              {mode === 'login' ? 'Sign in →' : 'Create account →'}
+            <button type="submit" className="btn-lg auth-submit" disabled={loading}>
+              {loading
+                ? (mode === 'login' ? 'Signing in…' : 'Creating account…')
+                : (mode === 'login' ? 'Sign in →' : 'Create account →')}
             </button>
           </form>
 

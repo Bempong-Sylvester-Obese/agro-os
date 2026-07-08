@@ -287,10 +287,10 @@ export default function DashboardPage({ user, onLogout }) {
                 source={farmersState.source}
               />
             )}
-            {section === 'payments' && <Payments />}
+            {section === 'payments' && <Payments dbFarmers={dbFarmers} />}
             {section === 'loans' && <Loans approverName={approverName} />}
             {section === 'production' && <Production />}
-            {section === 'scores' && <Scores agroAi={agroAi} dbFarmers={dbFarmers} />}
+            {section === 'scores' && <Scores agroAi={agroAi} dbFarmers={dbFarmers} onRecalculated={loadFarmers} />}
             {section === 'sms' && <SMS />}
             {section === 'ussd' && <USSD />}
             {section === 'settings' && (
