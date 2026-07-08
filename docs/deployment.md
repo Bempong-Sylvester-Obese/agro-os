@@ -24,7 +24,7 @@ Render (Backend)           ← FastAPI
      ▼
 Supabase (PostgreSQL)      ← farmer records, transactions, scores
 
-Moolre ──webhook──▶ Render /webhooks/moolre
+Moolre ──webhook──▶ Render /webhooks/moolre/payment
 ```
 
 ---
@@ -43,17 +43,23 @@ Copy from `backend/.env.example` before running locally or deploying.
 | `DEFAULT_CURRENCY` | Platform currency | `GHS` |
 | `MOOLRE_API_URL` | Moolre base API URL | `https://api.moolre.com` |
 | `MOOLRE_API_KEY` | Moolre API key | `mk_live_...` |
+| `MOOLRE_API_PUBKEY` | Moolre live public key (required for live API calls) | `mpk_live_...` |
 | `MOOLRE_WEBHOOK_SECRET` | Secret for verifying webhook signatures | `whsec_...` |
-| `MOOLRE_SENDER_ID` | Approved SMS sender ID | `AgroOS` |
+| `DEFAULT_SMS_SENDER_ID` | Approved SMS sender ID | `AgroOS` |
+| `SENTRY_DSN` | Optional Sentry DSN for backend error tracking | `https://...@sentry.io/...` |
+| `AGRO_AI_REQUIRE_ARTIFACT` | Fail health check when synthetic model is used | `true` / `false` |
 
 > ⚠️ Never commit `.env` to the repository. It is in `.gitignore`.
 > Use Render's environment variable dashboard for production secrets.
 
 ### 2.2 Frontend (`frontend/.env`)
 
+Copy from `frontend/.env.example` before running locally or deploying.
+
 | Variable | Description | Example |
 |---|---|---|
 | `VITE_API_URL` | Backend API base URL | `https://agro-os-api.onrender.com` |
+| `VITE_COOPERATIVE_ID` | Default cooperative ID for dashboard API calls | `1` |
 
 For local development:
 ```
@@ -63,6 +69,7 @@ VITE_API_URL=http://localhost:8000
 For production (set in Vercel dashboard):
 ```
 VITE_API_URL=https://agro-os-api.onrender.com
+VITE_COOPERATIVE_ID=1
 ```
 
 > `NEXT_PUBLIC_API_URL` is deprecated — do not use it. This is a Vite
@@ -166,19 +173,19 @@ farmer's Trust Score.
 
 ### Webhook endpoint
 ```
-POST /webhooks/moolre
+POST /webhooks/moolre/payment
 ```
 
 ### Full callback URL (production)
 ```
-https://agro-os-api.onrender.com/webhooks/moolre
+https://agro-os-api.onrender.com/webhooks/moolre/payment
 ```
 
 ### Steps to register in the Moolre portal
 1. Log in to the Moolre merchant/developer portal
 2. Navigate to **Webhooks** or **Developer Settings**
 3. Add a new webhook endpoint:
-   - **URL:** `https://agro-os-api.onrender.com/webhooks/moolre`
+   - **URL:** `https://agro-os-api.onrender.com/webhooks/moolre/payment`
    - **Events:** payment completed, transfer completed (select all relevant)
 4. Copy the webhook secret provided by Moolre
 5. Set `MOOLRE_WEBHOOK_SECRET` in the Render environment variable dashboard
@@ -215,7 +222,7 @@ Forwarding  https://abc123.ngrok-free.app -> http://localhost:8000
 ### Register the ngrok URL with Moolre
 Use this as your temporary webhook callback URL in the Moolre portal:
 ```
-https://abc123.ngrok-free.app/webhooks/moolre
+https://abc123.ngrok-free.app/webhooks/moolre/payment
 ```
 
 Update `MOOLRE_WEBHOOK_SECRET` in your local `backend/.env` with the
@@ -277,17 +284,22 @@ Expected response:
   "version": "1.0.0",
   "environment": "production",
   "currency": "GHS",
-  "docs": "/docs"
+  "docs": null
 }
 ```
 
-### 9.3 Interactive API docs
-Open in browser:
+> When `APP_ENV=production`, `/docs` and `/redoc` are disabled. The `docs`
+> field in the root response is `null`.
+
+### 9.3 Interactive API docs (development only)
+
+Open in browser when running locally or with `APP_ENV=development`:
+
 ```
-https://agro-os-api.onrender.com/docs
+http://localhost:8000/docs
 ```
-All routers should be visible: cooperatives, farmers, transactions, loans,
-production, communications, webhooks, agro-ai.
+
+In production (`APP_ENV=production`), `/docs` and `/redoc` return 404.
 
 ### 9.4 Farmers list (Agro-AI)
 ```bash
@@ -312,7 +324,7 @@ return 200).
 
 ### 9.7 Webhook reachability (production)
 Send a test event from the Moolre portal to
-`https://agro-os-api.onrender.com/webhooks/moolre`. Check Render logs for
+`https://agro-os-api.onrender.com/webhooks/moolre/payment`. Check Render logs for
 a 200 response.
 
 ---
@@ -322,6 +334,6 @@ a 200 response.
 - `backend/main.py` — CORS configuration, router registration, health endpoints
 - `backend/app/config.py` — settings loaded from `.env`
 - `backend/.env.example` — full environment variable reference
-- `readme.md` — technology stack and monorepo structure
+- `README.md` — technology stack and monorepo structure
 - `docs/scoring-systems.md` — Trust Score webhook flow
 - `docs/data-privacy.md` — data handling for production deployments
