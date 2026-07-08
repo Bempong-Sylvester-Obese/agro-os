@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -17,8 +17,8 @@ bearer_scheme = HTTPBearer(auto_error=False)
 def create_access_token(subject: str, *, expires_hours: int = 12) -> str:
     payload = {
         "sub": subject,
-        "exp": datetime.now(UTC) + timedelta(hours=expires_hours),
-        "iat": datetime.now(UTC),
+        "exp": datetime.now(timezone.utc) + timedelta(hours=expires_hours),
+        "iat": datetime.now(timezone.utc),
     }
     return jwt.encode(payload, settings.secret_key, algorithm="HS256")
 

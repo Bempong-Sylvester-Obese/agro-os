@@ -119,7 +119,7 @@ On **first use** of a payer phone number in the Moolre sandbox, payment push ret
 
 > Please complete the verification process sent to you via SMS and try again.
 
-Moolre sends an OTP SMS directly to the payer phone (not via AgroOS). The payment push only completes after OTP verification and retry.
+Moolre sends an OTP SMS directly to the payer phone (not via AgroOS). This is a one-time phone verification step — it does **not** mean you should call `POST /transactions/dues/collect` again. Submit the OTP via `POST /transactions/dues/collect/verify` using the **same** `transaction_id` and `moolre_reference` returned in the TP14 response; AgroOS reuses that reference internally to complete the original payment push.
 
 ### Two-step AgroOS API flow
 

@@ -1,8 +1,6 @@
 import { PAYMENTS } from '../data/payments'
 import { authHeaders } from './auth'
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const FETCH_TIMEOUT_MS = 10000
+import { API_URL, apiResult, fetchJson, isTransportFailure, withDemoFallback } from './config'
 
 export function formatFarmerId(farmerId) {
   return `GH-${String(farmerId).padStart(4, '0')}`
@@ -123,73 +121,41 @@ function demoFallback() {
   }
 }
 
-export async function collectDues({ farmer_id, amount, channel = '13', description = 'Cooperative dues payment' }) {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-
-  try {
-    const response = await fetch(`${API_URL}/transactions/dues/collect`, {
-      method: 'POST',
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders(),
-      },
-      body: JSON.stringify({ farmer_id, amount, channel, description }),
-    })
-
-    if (!response.ok) {
-      const detail = await response.text()
-      throw new Error(detail || 'Could not initiate dues collection')
-    }
-
-    return response.json()
-  } finally {
-    clearTimeout(timeoutId)
-  }
+export function collectDues({ farmer_id, amount, channel = '13', description = 'Cooperative dues payment' }) {
+  return fetchJson(`${API_URL}/transactions/dues/collect`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ farmer_id, amount, channel, description }),
+  })
 }
 
-export async function fetchPaymentsDashboard() {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-  const fetchOptions = { signal: controller.signal }
+export function fetchPaymentsDashboard() {
+  return withDemoFallback(
+    async () => {
+      const [transactions, farmers] = await Promise.all([
+        fetchJson(`${API_URL}/transactions/`),
+        fetchJson(`${API_URL}/farmers/`),
+      ])
 
-  try {
-    const [transactionsResponse, farmersResponse] = await Promise.all([
-      fetch(`${API_URL}/transactions/`, fetchOptions),
-      fetch(`${API_URL}/farmers/`, fetchOptions),
-    ])
-
-    if (!transactionsResponse.ok) {
-      throw new Error('transactions API unavailable')
-    }
-
-    const transactions = await transactionsResponse.json()
-    const farmers = farmersResponse.ok ? await farmersResponse.json() : []
-
-    let walletBalance = null
-    try {
-      const walletResponse = await fetch(`${API_URL}/transactions/moolre/wallet-balance`, fetchOptions)
-      if (walletResponse.ok) {
-        walletBalance = await walletResponse.json()
+      let walletBalance = null
+      try {
+        walletBalance = await fetchJson(`${API_URL}/transactions/moolre/wallet-balance`)
+      } catch (err) {
+        if (!isTransportFailure(err)) throw err
       }
-    } catch {
-      // Wallet balance is optional for the dashboard.
-    }
 
-    const rows = mapTransactionsToRows(transactions, farmers)
-
-    return {
-      transactions,
-      farmers,
-      walletBalance,
-      rows,
-      stats: computePaymentStats(rows),
-      source: 'api',
-    }
-  } catch {
-    return demoFallback()
-  } finally {
-    clearTimeout(timeoutId)
-  }
+      const rows = mapTransactionsToRows(transactions, farmers)
+      return apiResult('api', {
+        transactions,
+        farmers,
+        walletBalance,
+        rows,
+        stats: computePaymentStats(rows),
+      })
+    },
+    () => demoFallback(),
+  )
 }

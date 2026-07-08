@@ -1,5 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const FETCH_TIMEOUT_MS = 10000
+import { API_URL, apiResult, fetchJson, withDemoFallback } from './config'
 
 const DEMO_LOANS = [
   {
@@ -55,48 +54,27 @@ const DEMO_FARMERS = [
   { id: 3, name: 'Ama Osei', phone: '0594410003', location: 'Gr. Accra' },
 ]
 
-async function apiFetch(path, options = {}) {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-
-  try {
-    const response = await fetch(`${API_URL}${path}`, {
-      ...options,
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-    })
-
-    if (!response.ok) {
-      let detail = response.statusText
-      try {
-        const body = await response.json()
-        detail = typeof body.detail === 'string' ? body.detail : JSON.stringify(body.detail)
-      } catch {
-        // ignore parse errors
-      }
-      throw new Error(detail || 'Request failed')
-    }
-
-    if (response.status === 204) return null
-    return response.json()
-  } finally {
-    clearTimeout(timeoutId)
-  }
+function apiFetch(path, options = {}) {
+  return fetchJson(`${API_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    },
+  })
 }
 
-export async function fetchLoansDashboard() {
-  try {
-    const [loans, farmers] = await Promise.all([
-      apiFetch('/loans/'),
-      apiFetch('/farmers/'),
-    ])
-    return { loans, farmers, source: 'api' }
-  } catch {
-    return { loans: DEMO_LOANS, farmers: DEMO_FARMERS, source: 'demo' }
-  }
+export function fetchLoansDashboard() {
+  return withDemoFallback(
+    async () => {
+      const [loans, farmers] = await Promise.all([
+        apiFetch('/loans/'),
+        apiFetch('/farmers/'),
+      ])
+      return apiResult('api', { loans, farmers })
+    },
+    () => apiResult('demo', { loans: DEMO_LOANS, farmers: DEMO_FARMERS }),
+  )
 }
 
 export function createLoan(payload) {

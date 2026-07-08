@@ -348,14 +348,22 @@ def list_ussd_logs(
 
 
 @router.post("/moolre/ussd")
-async def handle_ussd_session(request: Request, db: Session = Depends(get_db)):
+async def handle_ussd_session(
+    request: Request,
+    db: Session = Depends(get_db),
+    x_moolre_signature: str | None = Header(default=None),
+):
     """
     Handle USSD session callbacks from Moolre.
     Moolre posts session data; we respond with the next menu string.
     """
+    body = await request.body()
+    if not _verify_signature(body, x_moolre_signature):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
     try:
-        payload = await request.json()
-    except Exception:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
     session_id: str = payload.get("sessionid", "")

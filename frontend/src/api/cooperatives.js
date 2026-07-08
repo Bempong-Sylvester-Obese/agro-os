@@ -1,42 +1,23 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
-const FETCH_TIMEOUT_MS = 10000
+import { API_URL, apiResult, fetchJson, withDemoFallback } from './config'
 
-export async function fetchCooperatives() {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-
-  try {
-    const response = await fetch(`${API_URL}/cooperatives/`, { signal: controller.signal })
-    if (!response.ok) throw new Error('cooperatives API unavailable')
-    return { cooperatives: await response.json(), source: 'api' }
-  } catch {
-    return {
-      cooperatives: [{
-        id: 1,
-        name: 'Kuapa Kokoo Demo Cooperative',
-        location: 'Kumasi, Ashanti Region',
-        currency: 'GHS',
-        moolre_account_number: 'DEMO-WALLET-001',
-      }],
-      source: 'demo',
-    }
-  } finally {
-    clearTimeout(timeoutId)
-  }
+const DEMO_COOPERATIVE = {
+  id: 1,
+  name: 'Kuapa Kokoo Demo Cooperative',
+  location: 'Kumasi, Ashanti Region',
+  currency: 'GHS',
+  moolre_account_number: 'DEMO-WALLET-001',
 }
 
-export async function fetchCooperative(id) {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+export function fetchCooperatives() {
+  return withDemoFallback(
+    async () => apiResult('api', { cooperatives: await fetchJson(`${API_URL}/cooperatives/`) }),
+    () => apiResult('demo', { cooperatives: [DEMO_COOPERATIVE] }),
+  )
+}
 
-  try {
-    const response = await fetch(`${API_URL}/cooperatives/${id}`, { signal: controller.signal })
-    if (!response.ok) throw new Error('cooperative not found')
-    return { cooperative: await response.json(), source: 'api' }
-  } catch {
-    const fallback = (await fetchCooperatives()).cooperatives[0]
-    return { cooperative: fallback, source: 'demo' }
-  } finally {
-    clearTimeout(timeoutId)
-  }
+export function fetchCooperative(id) {
+  return withDemoFallback(
+    async () => apiResult('api', { cooperative: await fetchJson(`${API_URL}/cooperatives/${id}`) }),
+    () => apiResult('demo', { cooperative: DEMO_COOPERATIVE }),
+  )
 }

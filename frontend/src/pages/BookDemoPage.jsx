@@ -8,7 +8,7 @@ const TOPICS = ['Full platform walkthrough', 'Payment & MoMo setup', 'AgroCredit
 
 function getDates() {
   const dates = []
-  const d = new Date('2026-06-29')
+  const d = new Date()
   for (let i = 0; i < 10; i++) {
     if (d.getDay() !== 0 && d.getDay() !== 6) dates.push(new Date(d))
     d.setDate(d.getDate() + 1)

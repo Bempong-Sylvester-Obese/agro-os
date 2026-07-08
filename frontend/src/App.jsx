@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { clearAuthToken } from './api/auth'
+import { clearAuthSession, getAuthToken, getAuthUser, storeAuthUser, userFromAuthToken } from './api/auth'
 import Navbar from './components/Navbar'
 import { pageKeyFromPath } from './constants/routes'
 import HomePage from './pages/HomePage'
@@ -26,12 +26,13 @@ function ScrollToHash() {
   return null
 }
 
-function DashboardGate({ user, onLogout }) {
+function DashboardGate({ user, authReady, onLogout }) {
+  if (!authReady) return null
   if (!user) return <Navigate to="/login" replace />
   return <DashboardPage user={user} onLogout={onLogout} />
 }
 
-function AppShell({ user, onAuth, onLogout }) {
+function AppShell({ user, authReady, onAuth, onLogout }) {
   const location = useLocation()
   const pageKey = pageKeyFromPath(location.pathname)
 
@@ -54,14 +55,14 @@ function AppShell({ user, onAuth, onLogout }) {
       <ScrollToHash />
       {showNavbar && <Navbar />}
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<HomePage onAuth={onAuth} />} />
         <Route path="/solutions" element={<SolutionsPage />} />
         <Route path="/features" element={<FeaturesPage />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/book-demo" element={<BookDemoPage />} />
         <Route path="/login" element={<LoginPage onAuth={onAuth} />} />
-        <Route path="/dashboard" element={<DashboardGate user={user} onLogout={onLogout} />} />
-        <Route path="/dashboard/:section" element={<DashboardGate user={user} onLogout={onLogout} />} />
+        <Route path="/dashboard" element={<DashboardGate user={user} authReady={authReady} onLogout={onLogout} />} />
+        <Route path="/dashboard/:section" element={<DashboardGate user={user} authReady={authReady} onLogout={onLogout} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </div>
@@ -71,21 +72,42 @@ function AppShell({ user, onAuth, onLogout }) {
 function AppRouter() {
   const navigate = useNavigate()
   const [user, setUser] = useState(null)
+  const [authReady, setAuthReady] = useState(false)
+
+  useEffect(() => {
+    const storedUser = getAuthUser()
+    const token = getAuthToken()
+
+    if (storedUser) {
+      setUser(storedUser)
+    } else if (token) {
+      const fromToken = userFromAuthToken(token)
+      if (fromToken) {
+        storeAuthUser(fromToken)
+        setUser(fromToken)
+      } else {
+        clearAuthSession()
+      }
+    }
+
+    setAuthReady(true)
+  }, [])
 
   function handleAuth(u) {
+    storeAuthUser(u)
     setUser(u)
     navigate('/dashboard')
     window.scrollTo({ top: 0, behavior: 'instant' })
   }
 
   function handleLogout() {
-    clearAuthToken()
+    clearAuthSession()
     setUser(null)
     navigate('/')
     window.scrollTo({ top: 0, behavior: 'instant' })
   }
 
-  return <AppShell user={user} onAuth={handleAuth} onLogout={handleLogout} />
+  return <AppShell user={user} authReady={authReady} onAuth={handleAuth} onLogout={handleLogout} />
 }
 
 export default function App() {

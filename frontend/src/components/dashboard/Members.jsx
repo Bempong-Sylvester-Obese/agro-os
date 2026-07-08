@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { DB_FARMERS_FALLBACK } from '../../api/farmers'
 import { FARMER_ASSESSMENTS } from '../../data/payments'
-import { findFarmerByName, formatTrustScore, scoreTier } from '../../utils/scores'
+import { findAgroAiForCrmFarmer, formatTrustScore, scoreTier } from '../../utils/scores'
 
 const STATUS_CLS = {
   active: 'bdg-green',
@@ -71,7 +71,7 @@ export default function Members({ dbFarmers, agroAi, onAddMember, loading = fals
           </div>
         )}
         {filtered.map((farmer) => {
-          const agroAiMatch = findFarmerByName(agroAiFarmers, farmer.name)
+          const agroAiMatch = findAgroAiForCrmFarmer(agroAiFarmers, farmer)
 
           return (
             <div key={farmer.id} className="mt-row">

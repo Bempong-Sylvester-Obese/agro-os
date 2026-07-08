@@ -44,6 +44,69 @@ CREATE TABLE IF NOT EXISTS transactions (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS loans (
+    id SERIAL PRIMARY KEY,
+    farmer_id INTEGER NOT NULL REFERENCES farmers(id),
+    amount DOUBLE PRECISION NOT NULL,
+    currency VARCHAR DEFAULT 'GHS',
+    purpose TEXT,
+    status VARCHAR DEFAULT 'requested',
+    approved_by VARCHAR,
+    approved_at TIMESTAMP,
+    moolre_transfer_ref VARCHAR,
+    disbursed_at TIMESTAMP,
+    repaid_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS productions (
+    id SERIAL PRIMARY KEY,
+    farmer_id INTEGER NOT NULL REFERENCES farmers(id),
+    crop_type VARCHAR NOT NULL,
+    season VARCHAR,
+    expected_kg DOUBLE PRECISION,
+    planted_date TIMESTAMP,
+    harvest_date TIMESTAMP,
+    quantity_kg DOUBLE PRECISION,
+    quality_grade VARCHAR,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS trust_scores (
+    id SERIAL PRIMARY KEY,
+    farmer_id INTEGER NOT NULL REFERENCES farmers(id),
+    score DOUBLE PRECISION NOT NULL,
+    payment_compliance DOUBLE PRECISION DEFAULT 0,
+    production_history DOUBLE PRECISION DEFAULT 0,
+    loan_repayment DOUBLE PRECISION DEFAULT 0,
+    attendance DOUBLE PRECISION DEFAULT 0,
+    calculated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS cooperative_attendances (
+    id SERIAL PRIMARY KEY,
+    farmer_id INTEGER NOT NULL REFERENCES farmers(id),
+    event_name VARCHAR NOT NULL,
+    event_date TIMESTAMP NOT NULL,
+    attended BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS communication_logs (
+    id SERIAL PRIMARY KEY,
+    message_type VARCHAR DEFAULT 'sms',
+    cooperative_id INTEGER REFERENCES cooperatives(id),
+    recipients_count INTEGER DEFAULT 0,
+    body TEXT NOT NULL,
+    moolre_ref VARCHAR,
+    sent_by VARCHAR,
+    status VARCHAR DEFAULT 'sent',
+    sent_at TIMESTAMP DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS payment_webhook_events (
     id SERIAL PRIMARY KEY,
     event_type VARCHAR DEFAULT 'payment',
