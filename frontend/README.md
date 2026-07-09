@@ -35,6 +35,8 @@ The frontend calls the FastAPI backend through `VITE_API_URL`.
 
 During early development, mocked data is acceptable as long as the expected response shapes are documented before backend integration. The current dashboard uses a fallback data set when the backend is not running, so the demo remains usable offline.
 
+See [docs/api-contract.md](../docs/api-contract.md) for request/response shapes and demo fallback policy.
+
 ## Local Setup
 
 ```bash

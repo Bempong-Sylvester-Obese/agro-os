@@ -179,6 +179,8 @@ npm run test:backend
 
 Interactive docs at `http://localhost:8000/docs` (Swagger UI) and `http://localhost:8000/redoc`.
 
+Frontend–backend contract and response shapes: [`docs/api-contract.md`](../docs/api-contract.md)
+
 ### Health
 | Method | Path | Description |
 |---|---|---|

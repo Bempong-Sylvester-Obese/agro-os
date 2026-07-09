@@ -1,8 +1,9 @@
 """Cooperative Management Routes"""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.models.models import Cooperative
 from app.schemas.schemas import CooperativeCreate, CooperativeResponse, CooperativeUpdate
@@ -21,7 +22,11 @@ def create_cooperative(cooperative: CooperativeCreate, db: Session = Depends(get
 
 
 @router.get("/", response_model=list[CooperativeResponse])
-def list_cooperatives(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def list_cooperatives(
+    skip: int = 0,
+    limit: int = Query(default=100, le=MAX_PAGE_SIZE),
+    db: Session = Depends(get_db),
+):
     """List all cooperatives."""
     return db.query(Cooperative).offset(skip).limit(limit).all()
 

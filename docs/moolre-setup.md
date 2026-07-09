@@ -112,3 +112,76 @@ Verify `MOOLRE_ENV`, `MOOLRE_API_URL`, and credentials are from the same Moolre 
 In `backend/app/routes/webhooks.py`, AgroOS skips signature checks when `MOOLRE_WEBHOOK_SECRET` is empty (dev convenience). You will see a warning log.
 
 For realistic testing and production safety, always set `MOOLRE_WEBHOOK_SECRET`.
+
+## 7) Sandbox phone OTP verification (TP14)
+
+On **first use** of a payer phone number in the Moolre sandbox, payment push returns response code **`TP14`** (HTTP 200, `status: 1`):
+
+> Please complete the verification process sent to you via SMS and try again.
+
+Moolre sends an OTP SMS directly to the payer phone (not via AgroOS). This is a one-time phone verification step — it does **not** mean you should call `POST /transactions/dues/collect` again. Submit the OTP via `POST /transactions/dues/collect/verify` using the **same** `transaction_id` and `moolre_reference` returned in the TP14 response; AgroOS reuses that reference internally to complete the original payment push.
+
+### Two-step AgroOS API flow
+
+**Step 1 — Initiate collect** (creates a pending transaction):
+
+```http
+POST /transactions/dues/collect
+Content-Type: application/json
+
+{
+  "farmer_id": 1,
+  "amount": 1.00,
+  "channel": "13",
+  "description": "Cooperative dues"
+}
+```
+
+If TP14, the response includes:
+
+```json
+{
+  "transaction_id": 42,
+  "moolre_reference": "<uuid>",
+  "status": "verification_required",
+  "outcome": "verification_required",
+  "moolre_code": "TP14",
+  "message": "Please complete the verification process sent to you via SMS and try again."
+}
+```
+
+**Step 2 — Submit OTP** (reuse the same `moolre_reference`; do **not** call collect again):
+
+```http
+POST /transactions/dues/collect/verify
+Content-Type: application/json
+
+{
+  "transaction_id": 42,
+  "otp_code": "<code-from-moolre-sms>"
+}
+```
+
+On success (`TR099`), the response has `status: "pending"` and the farmer receives a USSD MoMo approval prompt on their phone.
+
+**Step 3 — Farmer approves on phone** → Moolre sends webhook to `{PUBLIC_URL}/webhooks/moolre/payment` → transaction moves to `completed`, Trust Score recalculates, and a payment confirmation SMS is sent.
+
+### Channel codes
+
+| Code | Network |
+|------|---------|
+| `13` | MTN Ghana |
+| `6` | Telecel |
+| `7` | AT |
+
+### Local webhook requirement
+
+Steps 2–3 require a publicly reachable callback URL. Use ngrok as described in section 4 above.
+
+### Outbound cooperative SMS
+
+Dues reminders, broadcasts, and payment confirmations use `POST /open/sms/send` with the `X-API-VASKEY` header. Ensure these env vars are set for sandbox SMS testing:
+
+- `MOOLRE_API_VASKEY`
+- `DEFAULT_SMS_SENDER_ID`
+- `MOOLRE_MERCHANT_CODE` (included in dues reminder dial string)
