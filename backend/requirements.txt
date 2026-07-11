@@ -14,7 +14,7 @@ anyio==4.14.0
     #   starlette
     #   watchfiles
 bcrypt==5.0.0
-    # via passlib
+    # via -r requirements.in
 certifi==2026.6.17
     # via
     #   httpcore
@@ -73,8 +73,6 @@ packaging==26.2
     # via
     #   pytest
     #   wandb
-passlib[bcrypt]==1.7.4
-    # via -r requirements.in
 platformdirs==4.10.0
     # via wandb
 pluggy==1.6.0

@@ -83,19 +83,24 @@ _dev_origins = [
     "http://localhost:5174",
     "http://127.0.0.1:5173",
 ]
+_prod_origins = [
+    "https://agro-os-amber.vercel.app",
+    "https://agroos.company",
+    "https://www.agroos.company",
+]
 if settings.app_env.lower() in ("development", "dev"):
     _origins = ["*"]
+    _allow_credentials = False
 else:
-    _origins = _dev_origins.copy()
+    _origins = _dev_origins + _prod_origins
     if settings.cors_origins:
         _origins.extend([o.strip() for o in settings.cors_origins.split(",") if o.strip()])
-    else:
-        _origins.append("https://agro-os-amber.vercel.app")
+    _allow_credentials = True
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
-    allow_credentials=True,
+    allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
