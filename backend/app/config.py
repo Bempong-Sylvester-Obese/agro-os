@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     debug: bool = True
     secret_key: str = "your-secret-key-change-in-production"
+    cors_origins: str = ""
 
     # Database
     database_url: str = "postgresql://user:password@localhost:5432/agro_os"
@@ -25,6 +26,7 @@ class Settings(BaseSettings):
     moolre_api_url: str = "https://sandbox.moolre.com"
     moolre_api_user: str = ""
     moolre_api_key: str = ""
+    moolre_api_pubkey: str = ""
     moolre_api_vaskey: str = ""
 
     # Moolre Merchant / Account

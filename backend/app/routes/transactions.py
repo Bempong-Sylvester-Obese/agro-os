@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database.db import get_db
-from app.models.models import Farmer, Transaction, TransactionStatus, TransactionType
+from app.models.models import Farmer, Transaction, TransactionStatus, TransactionType, User
+from app.services.auth_service import get_current_user
 from app.schemas.schemas import (
     DuesCollectRequest,
     DuesCollectResponse,
@@ -43,12 +44,20 @@ def list_transactions(
     farmer_id: int | None = None,
     status: TransactionStatus | None = None,
     transaction_type: TransactionType | None = None,
+    cooperative_id: int | None = None,
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """List transactions with optional filters."""
     query = db.query(Transaction)
+    
+    if current_user.cooperative_id:
+        query = query.join(Farmer, Transaction.farmer_id == Farmer.id).filter(Farmer.cooperative_id == current_user.cooperative_id)
+    elif cooperative_id is not None:
+        query = query.join(Farmer, Transaction.farmer_id == Farmer.id).filter(Farmer.cooperative_id == cooperative_id)
+        
     if farmer_id is not None:
         query = query.filter(Transaction.farmer_id == farmer_id)
     if status is not None:
@@ -59,7 +68,7 @@ def list_transactions(
 
 
 @router.get("/{transaction_id}", response_model=TransactionResponse)
-def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
+def get_transaction(transaction_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Get a transaction by ID."""
     tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not tx:
@@ -68,7 +77,7 @@ def get_transaction(transaction_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/farmer/{farmer_id}", response_model=list[TransactionResponse])
-def get_farmer_transactions(farmer_id: int, db: Session = Depends(get_db)):
+def get_farmer_transactions(farmer_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Get all transactions for a specific farmer."""
     farmer = db.query(Farmer).filter(Farmer.id == farmer_id).first()
     if not farmer:
@@ -149,10 +158,13 @@ async def collect_dues(request: DuesCollectRequest, db: Session = Depends(get_db
         reference=request.description or "Cooperative dues",
     )
 
-    # Update moolre_reference if Moolre returned a different one
+    # Update moolre_reference if Moolre returned a valid string ID
     if result.get("moolre_reference") and result["moolre_reference"] != ext_ref:
-        tx.moolre_reference = result["moolre_reference"]
-        db.commit()
+        ref_val = result["moolre_reference"].lower()
+        # Avoid saving error field names that Moolre sometimes returns in the `data` field
+        if ref_val not in ("all", "phoneno", "externalref", "senderid"):
+            tx.moolre_reference = result["moolre_reference"]
+            db.commit()
 
     verification_required = result.get("verification_required", False)
     status = "pending" if (result["success"] or verification_required) else "failed"

@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database.db import get_db
-from app.models.models import CooperativeAttendance, Cooperative, Farmer, MembershipStatus
+from app.models.models import CooperativeAttendance, Cooperative, Farmer, MembershipStatus, User
+from app.services.auth_service import get_current_user
 from app.schemas.schemas import (
     AttendanceCreate,
     AttendanceResponse,
@@ -57,10 +58,13 @@ def list_farmers(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """List farmers with optional cooperative and status filters."""
     query = db.query(Farmer)
-    if cooperative_id is not None:
+    if current_user.cooperative_id:
+        query = query.filter(Farmer.cooperative_id == current_user.cooperative_id)
+    elif cooperative_id is not None:
         query = query.filter(Farmer.cooperative_id == cooperative_id)
     if membership_status is not None:
         query = query.filter(Farmer.membership_status == membership_status)

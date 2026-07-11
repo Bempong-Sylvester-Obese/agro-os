@@ -242,11 +242,11 @@ body {
 /* ── Tables ── */
 .pt-head { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 10px; padding: 10px 20px; background: var(--sage); }
 .mt-head { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 60px; gap: 10px; padding: 10px 20px; background: var(--sage); }
-.sc-head { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 60px; gap: 10px; padding: 10px 20px; background: var(--sage); }
+.sc-head { display: grid; grid-template-columns: 2fr 1fr 1fr 60px; gap: 10px; padding: 10px 20px; background: var(--sage); }
 .pt-lbl  { font-size: 10px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
 .pt-row  { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 10px; padding: 13px 20px; border-bottom: 1px solid var(--border); align-items: center; }
 .mt-row  { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 60px; gap: 10px; padding: 13px 20px; border-bottom: 1px solid var(--border); align-items: center; }
-.sc-row  { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 60px; gap: 10px; padding: 13px 20px; border-bottom: 1px solid var(--border); align-items: center; }
+.sc-row  { display: grid; grid-template-columns: 2fr 1fr 1fr 60px; gap: 10px; padding: 13px 20px; border-bottom: 1px solid var(--border); align-items: center; }
 .pt-row:last-child, .mt-row:last-child, .sc-row:last-child { border-bottom: none; }
 .pt-name { font-size: 12px; font-weight: 600; }
 .pt-id   { font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 1px; }

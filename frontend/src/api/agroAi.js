@@ -1,4 +1,4 @@
-import { CREDIT_SUMMARY, FARMER_ASSESSMENTS } from '../data/payments'
+
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const FETCH_TIMEOUT_MS = 10000
@@ -6,7 +6,9 @@ const FETCH_TIMEOUT_MS = 10000
 export async function fetchAgroAiDashboard() {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-  const fetchOptions = { signal: controller.signal }
+  const token = localStorage.getItem('agro_os_token')
+  const headers = token ? { 'Authorization': `Bearer ${token}` } : {}
+  const fetchOptions = { signal: controller.signal, headers }
 
   try {
     const [farmersResponse, summaryResponse] = await Promise.all([
@@ -23,12 +25,9 @@ export async function fetchAgroAiDashboard() {
       summary: await summaryResponse.json(),
       source: 'api',
     }
-  } catch {
-    return {
-      farmers: FARMER_ASSESSMENTS,
-      summary: CREDIT_SUMMARY,
-      source: 'demo',
-    }
+  } catch (error) {
+    console.error('Failed to fetch from real API:', error)
+    throw error
   } finally {
     clearTimeout(timeoutId)
   }

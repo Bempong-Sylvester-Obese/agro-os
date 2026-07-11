@@ -2,28 +2,29 @@
 import Footer from '../components/Footer'
 import DashboardMock from '../components/DashboardMock'
 import CTASection from '../components/CTASection'
+import { Sprout, Handshake, Smartphone, Globe, Users, CreditCard, MessageSquare, Star, Building, MapPin, Tractor, Landmark } from 'lucide-react'
 
 const PHOTO_STRIP = [
-  ['#1A4731', '🌾', 'The team',      'Building AgroOS, in Ghana, for Africa.'],
-  ['#2D6A4F', '🤝', 'Cooperatives',  'Hundreds of cooperatives. One platform.'],
-  ['#3A7D5C', '📱', 'USSD access',   'No smartphone needed. Manage via USSD.'],
-  ['#1A4731', '🌍', 'Built for Africa', 'AgriTech built for the continent.'],
+  ['#1A4731', <Users color="#A7F3D0" size={24} />, 'The team',      'Building AgroOS, in Ghana, for Africa.'],
+  ['#2D6A4F', <Handshake color="#A7F3D0" size={24} />, 'Cooperatives',  'Hundreds of cooperatives. One platform.'],
+  ['#3A7D5C', <Smartphone color="#A7F3D0" size={24} />, 'USSD access',   'No smartphone needed. Manage via USSD.'],
+  ['#1A4731', <Globe color="#A7F3D0" size={24} />, 'Built for Africa', 'AgriTech built for the continent.'],
 ]
 
 const FEATURES = [
-  ['01', '👥', 'Member management',       'Profiles, roles, dues status, and full history for every farmer in your cooperative.'],
-  ['02', '🌾', 'Production tracking',     'Log harvests, yields, and crop cycles per member. Build a data trail over seasons.'],
-  ['03', '💳', 'Payments & disbursements','Collect dues and pay out via MoMo or card with full audit trails and receipts.'],
-  ['04', '📱', 'SMS broadcasts',          'Send instant announcements to all members or filtered groups in one click.'],
-  ['05', '⭐', 'AgroCredit Trust Score',  'AI-generated creditworthiness score built from payment history, production, and tenure.'],
-  ['06', '📲', 'USSD access',             'Farmers without smartphones interact through a native Moolre USSD menu — no data needed.'],
+  ['01', <Users size={28} />, 'Member management',       'Profiles, roles, dues status, and full history for every farmer in your cooperative.'],
+  ['02', <Sprout size={28} />, 'Production tracking',     'Log harvests, yields, and crop cycles per member. Build a data trail over seasons.'],
+  ['03', <CreditCard size={28} />, 'Payments & disbursements','Collect dues and pay out via MoMo or card with full audit trails and receipts.'],
+  ['04', <MessageSquare size={28} />, 'SMS broadcasts',          'Send instant announcements to all members or filtered groups in one click.'],
+  ['05', <Star size={28} />, 'AgroCredit Trust Score',  'AI-generated creditworthiness score built from payment history, production, and tenure.'],
+  ['06', <Smartphone size={28} />, 'USSD access',             'Farmers without smartphones interact through a native Moolre USSD menu — no data needed.'],
 ]
 
 const WHO = [
-  ['🏛️', 'Cooperative leaders', 'Full dashboard access. Manage members, finances, and communications in one place. Replace the ledger.'],
-  ['🌿', 'Field agents',         'Log production data and member activity on the go. Mobile-optimized for low-connectivity environments.'],
-  ['📷', 'Farmers',              'Pay dues, check balances, and receive updates via USSD — no smartphone or data connection needed.'],
-  ['🏦', 'Financiers & lenders', 'Access AgroCredit Trust Scores for individual farmers to assess creditworthiness with confidence.'],
+  [<Building size={32} />, 'Cooperative leaders', 'Full dashboard access. Manage members, finances, and communications in one place. Replace the ledger.'],
+  [<MapPin size={32} />, 'Field agents',         'Log production data and member activity on the go. Mobile-optimized for low-connectivity environments.'],
+  [<Tractor size={32} />, 'Farmers',              'Pay dues, check balances, and receive updates via USSD — no smartphone or data connection needed.'],
+  [<Landmark size={32} />, 'Financiers & lenders', 'Access AgroCredit Trust Scores for individual farmers to assess creditworthiness with confidence.'],
 ]
 
 export default function HomePage({ setPage }) {
@@ -42,7 +43,7 @@ export default function HomePage({ setPage }) {
               leaders one platform to manage everything. No spreadsheets. No paper ledgers.
             </p>
             <div className="hero-ctas">
-              <button className="btn-lg">Get started free</button>
+              <button className="btn-lg" onClick={() => setPage('auth')}>Get started free</button>
               <button className="btn-out-lg" onClick={() => setPage('dashboard')}>See the dashboard</button>
             </div>
           </div>

@@ -1,7 +1,13 @@
 // src/components/dashboard/Members.jsx
-import { FARMER_ASSESSMENTS } from '../../data/payments'
+import { useState } from 'react'
+import { Search, UserPlus, X, Loader2 } from 'lucide-react'
+import { createFarmer } from '../../api/farmers'
 
-const DUE_CLS = { Paid: 'bdg-green', Pending: 'bdg-amber', Overdue: 'bdg-red' }
+const STATUS_CLS = {
+  active:    'bdg-green',
+  inactive:  'bdg-amber',
+  suspended: 'bdg-red',
+}
 
 const scoreTier = (score) => {
   if (score >= 82) return 'sh'
@@ -9,44 +15,281 @@ const scoreTier = (score) => {
   return 'sl'
 }
 
-export default function Members({ farmers = FARMER_ASSESSMENTS }) {
+// ── Add Member Modal ──────────────────────────────────────────────────────────
+function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
+  const [form, setForm] = useState({
+    name: '', phone: '', email: '', location: '', crop_type: '', acreage: '',
+  })
+  const [error, setError] = useState(null)
+  const [loading, setLoading] = useState(false)
+
+  const set = (key) => (e) => setForm(prev => ({ ...prev, [key]: e.target.value }))
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError(null)
+    if (!form.name.trim() || !form.phone.trim()) {
+      setError('Full name and phone number are required.')
+      return
+    }
+    setLoading(true)
+    try {
+      await createFarmer({
+        name:         form.name.trim(),
+        phone:        form.phone.trim(),
+        cooperative_id: cooperativeId,
+        email:        form.email.trim()   || null,
+        location:     form.location.trim() || null,
+        crop_type:    form.crop_type.trim() || null,
+        acreage:      form.acreage ? parseFloat(form.acreage) : null,
+      })
+      onSuccess()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const input = {
+    width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)',
+    borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif",
+    outline: 'none', background: '#fff', color: 'var(--text)', boxSizing: 'border-box',
+  }
+  const lbl = { display: 'block', marginBottom: 6, fontSize: 13, fontWeight: 600 }
+
   return (
-    <>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <div className="search-wrap">
-          🔍
-          <input placeholder="Search members..." />
-        </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 7, fontSize: 12, padding: '7px 14px', cursor: 'pointer', fontFamily: "'DM Sans',sans-serif" }}>
-            Filter
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)',
+      backdropFilter: 'blur(4px)', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+    }}>
+      <div style={{
+        background: '#fff', borderRadius: 16, width: '100%', maxWidth: 500,
+        maxHeight: '92vh', overflow: 'auto',
+        boxShadow: '0 32px 80px rgba(0,0,0,0.22)',
+      }}>
+        {/* Header */}
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+          padding: '24px 28px 0',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: 12,
+              background: 'rgba(26,71,49,0.1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <UserPlus size={22} color="var(--g)" />
+            </div>
+            <div>
+              <div className="serif" style={{ fontWeight: 700, fontSize: 19, lineHeight: 1.2 }}>
+                Add new member
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                Register a farmer to your cooperative
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4, marginTop: -2 }}
+          >
+            <X size={20} />
           </button>
-          <button className="btn-nav" style={{ fontSize: 12, padding: '7px 14px' }}>+ Add member</button>
         </div>
+
+        {/* Divider */}
+        <div style={{ height: 1, background: 'var(--border)', margin: '20px 0 0' }} />
+
+        <form onSubmit={handleSubmit} style={{ padding: '20px 28px 28px' }}>
+          {error && (
+            <div style={{
+              padding: '10px 14px', background: '#FEF2F2', color: '#991B1B',
+              borderRadius: 8, marginBottom: 18, fontSize: 13, borderLeft: '3px solid #F87171',
+            }}>
+              {error}
+            </div>
+          )}
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 16px' }}>
+            <div>
+              <label style={lbl}>Full name *</label>
+              <input style={input} value={form.name} onChange={set('name')} placeholder="e.g. Kofi Asante" required />
+            </div>
+            <div>
+              <label style={lbl}>Phone number *</label>
+              <input style={input} value={form.phone} onChange={set('phone')} placeholder="e.g. 024 123 4567" required />
+            </div>
+            <div>
+              <label style={lbl}>Email <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+              <input style={input} type="email" value={form.email} onChange={set('email')} placeholder="farmer@example.com" />
+            </div>
+            <div>
+              <label style={lbl}>Location <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+              <input style={input} value={form.location} onChange={set('location')} placeholder="e.g. Kumasi, Ashanti" />
+            </div>
+            <div>
+              <label style={lbl}>Crop type <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+              <input style={input} value={form.crop_type} onChange={set('crop_type')} placeholder="e.g. Maize, Cocoa, Rice" />
+            </div>
+            <div>
+              <label style={lbl}>Farm size (acres) <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+              <input style={input} type="number" min="0" step="0.1" value={form.acreage} onChange={set('acreage')} placeholder="e.g. 3.5" />
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+            <button
+              type="button" onClick={onClose}
+              style={{
+                flex: 1, padding: 12, borderRadius: 8, border: '1.5px solid var(--border)',
+                background: 'none', color: 'var(--text)', fontFamily: "'DM Sans', sans-serif",
+                fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit" className="btn-lg" disabled={loading}
+              style={{ flex: 2, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}
+            >
+              {loading
+                ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Adding...</>
+                : 'Add member →'}
+            </button>
+          </div>
+        </form>
       </div>
 
-      <div className="admin-card">
-        <div className="mt-head">
-          {['Member','Phone','Region','Dues','Agro-AI','Review'].map(h => (
-            <span key={h} className="pt-lbl">{h}</span>
-          ))}
-        </div>
-        {farmers.map((farmer) => (
-          <div key={farmer.farmer_id} className="mt-row">
-            <div>
-              <div className="pt-name">{farmer.name}</div>
-              <div className="pt-id">{farmer.farmer_id} · {farmer.crop}</div>
-            </div>
-            <span className="pt-m" style={{ fontSize: 11 }}>{farmer.phone}</span>
-            <span className="pt-m">{farmer.region}</span>
-            <span className={`bdg ${DUE_CLS[farmer.dues_status]}`}>{farmer.dues_status}</span>
-            <span className={`score-bdg ${scoreTier(farmer.score)}`}>{farmer.score}</span>
-            <span className="admin-card-action" style={{ fontSize: 11 }}>
-              {farmer.eligible ? 'Eligible' : 'Review'}
-            </span>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  )
+}
+
+// ── Members table ─────────────────────────────────────────────────────────────
+export default function Members({ farmers = [], cooperativeId, onMemberAdded, loading }) {
+  const [search, setSearch]       = useState('')
+  const [statusFilter, setStatus] = useState('all')
+  const [showModal, setShowModal] = useState(false)
+
+  const filtered = farmers.filter(f => {
+    const q = search.toLowerCase()
+    const matchSearch = !q || f.name.toLowerCase().includes(q) || f.phone.includes(q)
+    const matchStatus = statusFilter === 'all' || f.membership_status === statusFilter
+    return matchSearch && matchStatus
+  })
+
+  const handleSuccess = () => {
+    setShowModal(false)
+    onMemberAdded()
+  }
+
+  if (loading) {
+    return <div style={{ padding: 32, color: 'var(--muted)', fontSize: 14 }}>Loading members…</div>
+  }
+
+  return (
+    <>
+      {showModal && (
+        <AddMemberModal
+          cooperativeId={cooperativeId}
+          onClose={() => setShowModal(false)}
+          onSuccess={handleSuccess}
+        />
+      )}
+
+      {/* ── Toolbar ── */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, minWidth: 0 }}>
+          <div className="search-bar" style={{ flex: 1, maxWidth: 380 }}>
+            <Search size={16} />
+            <input
+              type="text"
+              placeholder="Search by name or phone…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
           </div>
-        ))}
+          <select
+            value={statusFilter}
+            onChange={e => setStatus(e.target.value)}
+            style={{
+              border: '1px solid var(--border)', borderRadius: 7, fontSize: 13,
+              padding: '7px 10px', fontFamily: "'DM Sans', sans-serif",
+              background: '#fff', cursor: 'pointer', outline: 'none',
+            }}
+          >
+            <option value="all">All</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="suspended">Suspended</option>
+          </select>
+        </div>
+        <button
+          className="btn-nav"
+          onClick={() => setShowModal(true)}
+          style={{ fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
+        >
+          <UserPlus size={15} /> Add member
+        </button>
       </div>
+
+      {/* ── Empty state ── */}
+      {farmers.length === 0 ? (
+        <div className="admin-card" style={{ padding: 56, textAlign: 'center' }}>
+          <div style={{
+            width: 64, height: 64, borderRadius: '50%',
+            background: 'rgba(26,71,49,0.08)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 20px',
+          }}>
+            <UserPlus size={30} color="var(--g)" />
+          </div>
+          <div className="serif" style={{ fontSize: 22, fontWeight: 700, marginBottom: 8 }}>No members yet</div>
+          <div style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 28, maxWidth: 320, margin: '0 auto 28px' }}>
+            Register your first farmer to start tracking dues, production, and trust scores.
+          </div>
+          <button className="btn-lg" onClick={() => setShowModal(true)}>
+            Add first member →
+          </button>
+        </div>
+      ) : (
+        <div className="admin-card">
+          <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--muted)' }}>
+            Showing {filtered.length} of {farmers.length} member{farmers.length !== 1 ? 's' : ''}
+          </div>
+          <div className="mt-head">
+            {['Member', 'Phone', 'Location', 'Crop', 'Status', 'Trust Score'].map(h => (
+              <span key={h} className="pt-lbl">{h}</span>
+            ))}
+          </div>
+
+          {filtered.length === 0 ? (
+            <div style={{ padding: '24px 20px', color: 'var(--muted)', fontSize: 14 }}>
+              No members match your search.
+            </div>
+          ) : (
+            filtered.map(farmer => (
+              <div key={farmer.id} className="mt-row">
+                <div>
+                  <div className="pt-name">{farmer.name}</div>
+                  <div className="pt-id">#{farmer.id}</div>
+                </div>
+                <span className="pt-m" style={{ fontSize: 12 }}>{farmer.phone}</span>
+                <span className="pt-m">{farmer.location || '—'}</span>
+                <span className="pt-m">{farmer.crop_type || '—'}</span>
+                <span className={`bdg ${STATUS_CLS[farmer.membership_status] || 'bdg-amber'}`}>
+                  {farmer.membership_status}
+                </span>
+                <span className={`score-bdg ${scoreTier(farmer.trust_score)}`}>
+                  {farmer.trust_score > 0 ? Math.round(farmer.trust_score) : '—'}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </>
   )
 }

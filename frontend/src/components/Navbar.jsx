@@ -1,5 +1,5 @@
 // src/components/Navbar.jsx
-export default function Navbar({ activePage, setPage }) {
+export default function Navbar({ activePage, setPage, isAuthenticated, onLogout }) {
   const links = [
     { key: 'home',      label: 'Home' },
     { key: 'solutions', label: 'Solutions' },
@@ -26,22 +26,35 @@ export default function Navbar({ activePage, setPage }) {
         <span className="nav-logo-text">AgroOS</span>
       </a>
 
-      <div className="nav-tabs">
-        {links.map(({ key, label }) => (
-          <a
-            key={key}
-            href="#"
-            className={`nav-tab${activePage === key ? ' active' : ''}`}
-            onClick={(e) => { e.preventDefault(); setPage(key) }}
-          >
-            {label}
-          </a>
-        ))}
-      </div>
+      {activePage !== 'dashboard' && (
+        <div className="nav-tabs">
+          {links.map(({ key, label }) => (
+            <a
+              key={key}
+              href="#"
+              className={`nav-tab${activePage === key ? ' active' : ''}`}
+              onClick={(e) => { e.preventDefault(); setPage(key) }}
+            >
+              {label}
+            </a>
+          ))}
+        </div>
+      )}
 
       <div className="nav-right">
-        <a href="#" className="btn-ghost" onClick={(e) => e.preventDefault()}>Log in</a>
-        <a href="#" className="btn-nav"   onClick={(e) => e.preventDefault()}>Get started free</a>
+        {isAuthenticated ? (
+          <>
+            {activePage !== 'dashboard' && (
+              <a href="#" className="btn-ghost" onClick={(e) => { e.preventDefault(); setPage('dashboard') }}>Dashboard</a>
+            )}
+            <a href="#" className="btn-nav"   onClick={(e) => { e.preventDefault(); onLogout() }}>Log out</a>
+          </>
+        ) : (
+          <>
+            <a href="#" className="btn-ghost" onClick={(e) => { e.preventDefault(); setPage('auth') }}>Log in</a>
+            <a href="#" className="btn-nav"   onClick={(e) => { e.preventDefault(); setPage('auth') }}>Get started free</a>
+          </>
+        )}
       </div>
     </nav>
   )

@@ -49,7 +49,22 @@ class MoolreService:
             headers["X-API-VASKEY"] = self.settings.moolre_api_vaskey
         return headers
 
+    def _pubkey_headers(self) -> dict:
+        """Build headers for endpoints requiring public key."""
+        headers: dict = {
+            "Content-Type": "application/json",
+            "X-API-USER": self.settings.moolre_api_user,
+        }
+        if self.settings.moolre_api_pubkey:
+            headers["X-API-PUBKEY"] = self.settings.moolre_api_pubkey
+        return headers
 
+    def _normalize_phone(self, phone: str) -> str:
+        """Normalize Ghanaian phone numbers to start with 0 and be 10 digits long for Moolre API."""
+        phone = phone.strip().replace("+", "").replace(" ", "")
+        if phone.startswith("233") and len(phone) == 12:
+            return f"0{phone[3:]}"
+        return phone
 
     # ------------------------------------------------------------------
     # Internal HTTP helpers
@@ -110,12 +125,13 @@ class MoolreService:
         """
         ext_ref = external_ref or str(uuid.uuid4())
         acc = account_number or self.settings.moolre_account_number
+        normalized_phone = self._normalize_phone(payer_phone)
 
         payload = {
             "type": 1,
             "channel": channel,
             "currency": currency,
-            "payer": payer_phone,
+            "payer": normalized_phone,
             "amount": str(amount),
             "externalref": ext_ref,
             "reference": reference,
@@ -186,13 +202,14 @@ class MoolreService:
         """
         ext_ref = external_ref or str(uuid.uuid4())
         acc = account_number or self.settings.moolre_account_number
+        normalized_phone = self._normalize_phone(receiver_phone)
 
         payload = {
             "type": 1,
             "channel": channel,
             "currency": currency,
             "amount": str(amount),
-            "receiver": receiver_phone,
+            "receiver": normalized_phone,
             "externalref": ext_ref,
             "reference": reference,
             "accountnumber": acc,
@@ -360,7 +377,7 @@ class MoolreService:
         if metadata:
             payload["metadata"] = metadata
 
-        raw = await self._post("/embed/link", payload)
+        raw = await self._post("/embed/link", payload, headers=self._pubkey_headers())
         link_data = raw.get("data", {}) or {}
         return {
             "success": raw.get("status") in (1, "1"),

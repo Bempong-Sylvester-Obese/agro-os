@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
 from app.agro_ai.runtime import agro_ai, prediction_audit
+from app.models.models import User
+from app.services.auth_service import get_current_user
 
 router = APIRouter(tags=["agro-ai"])
 
@@ -33,7 +35,7 @@ class PredictionRequest(BaseModel):
 
 
 @router.get("/api/farmers")
-def list_farmer_assessments() -> list[dict[str, Any]]:
+def list_farmer_assessments(current_user: User = Depends(get_current_user)) -> list[dict[str, Any]]:
     return agro_ai.list_farmer_assessments()
 
 
@@ -52,7 +54,7 @@ def get_credit_assessment(farmer_id: str) -> dict[str, Any]:
 
 
 @router.get("/api/agro-ai/credit-summary")
-def get_credit_summary() -> dict[str, Any]:
+def get_credit_summary(current_user: User = Depends(get_current_user)) -> dict[str, Any]:
     assessments = agro_ai.list_farmer_assessments()
     eligible_count = sum(1 for item in assessments if item["eligible"])
     high_risk_count = sum(1 for item in assessments if item["risk_band"] == "High risk")

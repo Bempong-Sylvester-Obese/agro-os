@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database.db import get_db
-from app.models.models import Farmer, Loan, LoanStatus, Transaction, TransactionStatus, TransactionType
+from app.models.models import Farmer, Loan, LoanStatus, Transaction, TransactionStatus, TransactionType, User
+from app.services.auth_service import get_current_user
 from app.schemas.schemas import LoanApprove, LoanCreate, LoanResponse
 from app.services.moolre_service import MoolreService
 from app.services.trust_score_service import TrustScoreService
@@ -43,9 +44,12 @@ def list_loans(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """List loans with optional filters."""
     query = db.query(Loan)
+    if current_user.cooperative_id:
+        query = query.join(Farmer, Loan.farmer_id == Farmer.id).filter(Farmer.cooperative_id == current_user.cooperative_id)
     if farmer_id is not None:
         query = query.filter(Loan.farmer_id == farmer_id)
     if status is not None:
