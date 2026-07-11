@@ -6,11 +6,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database.db import get_db
-from app.models.models import Farmer, Transaction, TransactionStatus, TransactionType, User
+from app.models.models import Farmer, PaymentWebhookEvent, Transaction, TransactionStatus, TransactionType, User
 from app.services.auth_service import get_current_user
 from app.schemas.schemas import (
     DuesCollectRequest,
     DuesCollectResponse,
+    DuesCollectVerifyRequest,
+    PaymentLinkRequest,
+    PaymentLinkResponse,
+    PaymentWebhookEventResponse,
     TransactionCreate,
     TransactionResponse,
     TransactionStatusUpdate,
@@ -18,6 +22,90 @@ from app.schemas.schemas import (
 from app.services.moolre_service import MoolreService
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
+
+
+def _dues_collect_response(tx: Transaction, result: dict) -> DuesCollectResponse:
+    verification_required = result.get("verification_required", False)
+    outcome = result.get("outcome")
+    if outcome is None:
+        if verification_required:
+            outcome = "verification_required"
+        elif result.get("success"):
+            outcome = "push_sent"
+        else:
+            outcome = "failed"
+
+    if outcome == "verification_required":
+        status = "verification_required"
+    elif outcome == "push_sent" or result.get("success") or verification_required:
+        status = "pending"
+    else:
+        status = "failed"
+
+    return DuesCollectResponse(
+        transaction_id=tx.id,
+        moolre_reference=tx.moolre_reference,
+        status=status,
+        message=result.get("message")
+        or ("Payment request sent" if result.get("success") else "Moolre request failed"),
+        verification_required=verification_required,
+        outcome=outcome,
+        moolre_code=result.get("moolre_code"),
+    )
+
+
+async def _run_dues_collect(
+    *,
+    farmer: Farmer,
+    amount: float,
+    channel: str,
+    description: str | None,
+    external_ref: str,
+    otp_code: str | None,
+    db: Session,
+) -> DuesCollectResponse:
+    tx = db.query(Transaction).filter(Transaction.moolre_reference == external_ref).first()
+    if not tx:
+        tx = Transaction(
+            farmer_id=farmer.id,
+            transaction_type=TransactionType.dues,
+            amount=amount,
+            currency="GHS",
+            status=TransactionStatus.pending,
+            moolre_reference=external_ref,
+            payer_phone=farmer.phone,
+            channel=channel,
+            description=description,
+        )
+        db.add(tx)
+        db.commit()
+        db.refresh(tx)
+
+    moolre = MoolreService()
+    result = await moolre.initiate_payment(
+        payer_phone=farmer.phone,
+        amount=amount,
+        currency="GHS",
+        channel=channel,
+        external_ref=external_ref,
+        otpcode=otp_code,
+        reference=description or "Cooperative dues",
+    )
+
+    if result.get("moolre_reference") and result["moolre_reference"] != external_ref:
+        ref_val = str(result["moolre_reference"]).lower()
+        if ref_val not in ("all", "phoneno", "externalref", "senderid"):
+            tx.moolre_reference = result["moolre_reference"]
+            db.commit()
+
+    if not result.get("success") and not result.get("verification_required") and result.get("outcome") != "verification_required":
+        tx.status = TransactionStatus.failed
+        db.commit()
+
+    verification_required = result.get("verification_required", False) or result.get("outcome") == "verification_required"
+    result = {**result, "verification_required": verification_required}
+
+    return _dues_collect_response(tx, result)
 
 
 # ---------------------------------------------------------------------------
@@ -48,12 +136,12 @@ def list_transactions(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user),
 ):
     """List transactions with optional filters."""
     query = db.query(Transaction)
-    
-    if current_user.cooperative_id:
+
+    if current_user and current_user.cooperative_id:
         query = query.join(Farmer, Transaction.farmer_id == Farmer.id).filter(Farmer.cooperative_id == current_user.cooperative_id)
     elif cooperative_id is not None:
         query = query.join(Farmer, Transaction.farmer_id == Farmer.id).filter(Farmer.cooperative_id == cooperative_id)
@@ -67,17 +155,28 @@ def list_transactions(
     return query.order_by(Transaction.created_at.desc()).offset(skip).limit(limit).all()
 
 
-@router.get("/{transaction_id}", response_model=TransactionResponse)
-def get_transaction(transaction_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Get a transaction by ID."""
-    tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
-    if not tx:
-        raise HTTPException(status_code=404, detail="Transaction not found")
-    return tx
+@router.get("/webhook-events", response_model=list[PaymentWebhookEventResponse])
+def list_webhook_events(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+):
+    """Audit log of incoming Moolre payment webhooks."""
+    return (
+        db.query(PaymentWebhookEvent)
+        .order_by(PaymentWebhookEvent.received_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 
 @router.get("/farmer/{farmer_id}", response_model=list[TransactionResponse])
-def get_farmer_transactions(farmer_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def get_farmer_transactions(
+    farmer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+):
     """Get all transactions for a specific farmer."""
     farmer = db.query(Farmer).filter(Farmer.id == farmer_id).first()
     if not farmer:
@@ -90,13 +189,38 @@ def get_farmer_transactions(farmer_id: int, db: Session = Depends(get_db), curre
     )
 
 
+@router.get("/{transaction_id}", response_model=TransactionResponse)
+def get_transaction(
+    transaction_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+):
+    """Get a transaction by ID."""
+    tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    return tx
+
+
 @router.patch("/{transaction_id}/status", response_model=TransactionResponse)
 def update_transaction_status(
     transaction_id: int,
     update: TransactionStatusUpdate,
     db: Session = Depends(get_db),
 ):
-    """Update the status of a transaction."""
+    """Update non-payment transaction status (admin only; cannot force completed)."""
+    from app.config import get_settings
+
+    settings = get_settings()
+    if settings.app_env.lower() in ("production", "prod"):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if update.status == TransactionStatus.completed:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot mark completed manually — use Moolre webhook confirmation",
+        )
+
     tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
@@ -123,58 +247,78 @@ async def collect_dues(request: DuesCollectRequest, db: Session = Depends(get_db
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")
 
-    tx = None
-    if request.external_ref:
-        tx = db.query(Transaction).filter(Transaction.moolre_reference == request.external_ref).first()
-
     ext_ref = request.external_ref or str(uuid.uuid4())
-
-    if not tx:
-        # Create a pending transaction record first
-        tx = Transaction(
-            farmer_id=farmer.id,
-            transaction_type=TransactionType.dues,
-            amount=request.amount,
-            currency="GHS",
-            status=TransactionStatus.pending,
-            moolre_reference=ext_ref,
-            payer_phone=farmer.phone,
-            channel=request.channel,
-            description=request.description,
-        )
-        db.add(tx)
-        db.commit()
-        db.refresh(tx)
-
-    # Trigger Moolre payment
-    moolre = MoolreService()
-    result = await moolre.initiate_payment(
-        payer_phone=farmer.phone,
+    return await _run_dues_collect(
+        farmer=farmer,
         amount=request.amount,
-        currency="GHS",
         channel=request.channel,
+        description=request.description,
         external_ref=ext_ref,
-        otpcode=request.otp_code,
-        reference=request.description or "Cooperative dues",
+        otp_code=request.otp_code,
+        db=db,
     )
 
-    # Update moolre_reference if Moolre returned a valid string ID
-    if result.get("moolre_reference") and result["moolre_reference"] != ext_ref:
-        ref_val = result["moolre_reference"].lower()
-        # Avoid saving error field names that Moolre sometimes returns in the `data` field
-        if ref_val not in ("all", "phoneno", "externalref", "senderid"):
-            tx.moolre_reference = result["moolre_reference"]
-            db.commit()
 
-    verification_required = result.get("verification_required", False)
-    status = "pending" if (result["success"] or verification_required) else "failed"
+@router.post("/dues/collect/verify", response_model=DuesCollectResponse)
+async def verify_dues_collect(request: DuesCollectVerifyRequest, db: Session = Depends(get_db)):
+    """Retry a dues collection after OTP verification."""
+    tx = db.query(Transaction).filter(Transaction.id == request.transaction_id).first()
+    if not tx:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    if tx.status != TransactionStatus.pending:
+        raise HTTPException(status_code=409, detail="Transaction is not pending verification")
 
-    return DuesCollectResponse(
+    farmer = db.query(Farmer).filter(Farmer.id == tx.farmer_id).first()
+    if not farmer:
+        raise HTTPException(status_code=404, detail="Farmer not found")
+
+    return await _run_dues_collect(
+        farmer=farmer,
+        amount=tx.amount,
+        channel=tx.channel or "13",
+        description=tx.description,
+        external_ref=tx.moolre_reference or str(uuid.uuid4()),
+        otp_code=request.otp_code,
+        db=db,
+    )
+
+
+@router.post("/payment-link", response_model=PaymentLinkResponse)
+async def create_payment_link(request: PaymentLinkRequest, db: Session = Depends(get_db)):
+    """Generate a hosted Moolre payment page for a farmer."""
+    farmer = db.query(Farmer).filter(Farmer.id == request.farmer_id).first()
+    if not farmer:
+        raise HTTPException(status_code=404, detail="Farmer not found")
+
+    ext_ref = str(uuid.uuid4())
+    tx = Transaction(
+        farmer_id=farmer.id,
+        transaction_type=TransactionType.dues,
+        amount=request.amount,
+        currency=request.currency,
+        status=TransactionStatus.pending,
+        moolre_reference=ext_ref,
+        payer_phone=farmer.phone,
+        description=request.description,
+    )
+    db.add(tx)
+    db.commit()
+    db.refresh(tx)
+
+    moolre = MoolreService()
+    result = await moolre.generate_payment_link(
+        amount=request.amount,
+        email=request.email,
+        currency=request.currency,
+        external_ref=ext_ref,
+        metadata={"farmer_id": farmer.id, "transaction_id": tx.id},
+    )
+
+    return PaymentLinkResponse(
+        success=result.get("success", False),
+        payment_url=result.get("payment_url"),
+        reference=result.get("reference", ext_ref),
         transaction_id=tx.id,
-        moolre_reference=tx.moolre_reference,
-        status=status,
-        message=result["message"] or ("Payment request sent" if result["success"] else "Moolre request failed"),
-        verification_required=verification_required,
     )
 
 

@@ -132,7 +132,7 @@ def test_verify_dues_collect_with_otp(client, farmer):
 
     mock_pay.assert_called_once()
     call_kwargs = mock_pay.call_args.kwargs
-    assert call_kwargs["otp_code"] == "123456"
+    assert call_kwargs["otpcode"] == "123456"
     assert call_kwargs["external_ref"] == ext_ref
 
 
@@ -157,9 +157,9 @@ def test_verify_dues_collect_not_pending(client, farmer):
         )
         tx_id = collect_resp.json()["transaction_id"]
 
-    client.patch(
-        f"/transactions/{tx_id}/status",
-        json={"status": "completed"},
+    client.post(
+        "/webhooks/moolre/payment/simulate",
+        json={"transaction_id": tx_id},
     )
 
     verify_resp = client.post(
@@ -213,7 +213,7 @@ def test_initiate_payment_includes_otpcode_in_payload():
                 payer_phone="233551000001",
                 amount=1.0,
                 external_ref="otp-payload-ref",
-                otp_code="654321",
+                otpcode="654321",
             )
         )
 

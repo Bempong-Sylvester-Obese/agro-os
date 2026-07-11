@@ -59,10 +59,10 @@ def test_list_transactions_filter_by_type(client, transaction):
 def test_update_transaction_status(client, transaction):
     resp = client.patch(
         f"/transactions/{transaction['id']}/status",
-        json={"status": "completed"},
+        json={"status": "failed"},
     )
     assert resp.status_code == 200
-    assert resp.json()["status"] == "completed"
+    assert resp.json()["status"] == "failed"
 
 
 def test_get_farmer_transactions(client, farmer, transaction):

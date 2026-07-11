@@ -59,11 +59,11 @@ def list_farmers(
     skip: int = 0,
     limit: int = Query(default=100, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user),
 ):
     """List farmers with optional cooperative and status filters."""
     query = db.query(Farmer)
-    if current_user.cooperative_id:
+    if current_user and current_user.cooperative_id:
         query = query.filter(Farmer.cooperative_id == current_user.cooperative_id)
     elif cooperative_id is not None:
         query = query.filter(Farmer.cooperative_id == cooperative_id)

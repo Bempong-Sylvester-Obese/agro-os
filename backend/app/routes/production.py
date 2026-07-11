@@ -50,11 +50,11 @@ def list_productions(
     skip: int = 0,
     limit: int = Query(default=100, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user),
 ):
     """List production records with optional filters."""
     query = db.query(Production)
-    if current_user.cooperative_id:
+    if current_user and current_user.cooperative_id:
         query = query.join(Farmer, Production.farmer_id == Farmer.id).filter(Farmer.cooperative_id == current_user.cooperative_id)
     if farmer_id is not None:
         query = query.filter(Production.farmer_id == farmer_id)

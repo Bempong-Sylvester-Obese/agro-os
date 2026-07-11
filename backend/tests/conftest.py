@@ -12,17 +12,21 @@ import os
 # --------------------------------------------------------------------------
 # Override DB URL BEFORE any app imports — lazy engine picks this up.
 # --------------------------------------------------------------------------
-os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
-os.environ.setdefault("MOOLRE_API_USER", "test-user")
-os.environ.setdefault("AUTH_ENABLED", "false")
-os.environ.setdefault("APP_ENV", "test")
+os.environ["DATABASE_URL"] = "sqlite:///:memory:"
+os.environ["MOOLRE_API_USER"] = "test-user"
+os.environ["AUTH_ENABLED"] = "false"
+os.environ["APP_ENV"] = "test"
+os.environ["MOOLRE_WEBHOOK_SECRET"] = ""
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
+from app.config import get_settings
 from app.database.db import Base, get_db
+
+get_settings.cache_clear()
 from main import app
 
 # --------------------------------------------------------------------------
@@ -92,6 +96,26 @@ def client(db):
 # --------------------------------------------------------------------------
 # Shared factory fixtures
 # --------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def demo_admin(db):
+    """Demo admin user for auth integration tests."""
+    from app.models.models import Cooperative, User
+    from app.services.auth_service import get_password_hash
+
+    coop = Cooperative(name="Kuapa Kokoo Demo", currency="GHS")
+    db.add(coop)
+    db.flush()
+    user = User(
+        email="admin@agroos.demo",
+        hashed_password=get_password_hash("demo1234"),
+        role="admin",
+        cooperative_id=coop.id,
+    )
+    db.add(user)
+    db.commit()
+    return user
 
 
 @pytest.fixture()
