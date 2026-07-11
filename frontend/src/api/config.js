@@ -5,7 +5,7 @@
  * only to transport-level failures (network errors, timeouts). HTTP 4xx/5xx from
  * a reachable backend are surfaced to callers as ApiError.
  */
-export const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+export const API_URL = import.meta.env.VITE_API_URL || 'https://previewbackendagro-os.onrender.com'
 export const FETCH_TIMEOUT_MS = 10000
 export const DEFAULT_COOP_ID = import.meta.env.VITE_COOPERATIVE_ID
 

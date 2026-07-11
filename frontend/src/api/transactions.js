@@ -1,4 +1,4 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || 'https://previewbackendagro-os.onrender.com'
 const FETCH_TIMEOUT_MS = 10000
 
 export async function fetchTransactions(cooperativeId = null) {
