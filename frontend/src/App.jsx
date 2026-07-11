@@ -9,7 +9,7 @@ import FeaturesPage from './pages/FeaturesPage'
 import PricingPage from './pages/PricingPage'
 import BookDemoPage from './pages/BookDemoPage'
 import DashboardPage from './pages/DashboardPage'
-import LoginPage from './pages/LoginPage'
+import AuthPage from './pages/AuthPage'
 
 function ScrollToHash() {
   const { hash, pathname } = useLocation()
@@ -60,7 +60,7 @@ function AppShell({ user, authReady, onAuth, onLogout }) {
         <Route path="/features" element={<FeaturesPage />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/book-demo" element={<BookDemoPage />} />
-        <Route path="/login" element={<LoginPage onAuth={onAuth} />} />
+        <Route path="/login" element={<AuthPage onAuth={onAuth} />} />
         <Route path="/dashboard" element={<DashboardGate user={user} authReady={authReady} onLogout={onLogout} />} />
         <Route path="/dashboard/:section" element={<DashboardGate user={user} authReady={authReady} onLogout={onLogout} />} />
         <Route path="*" element={<Navigate to="/" replace />} />

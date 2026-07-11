@@ -457,3 +457,8 @@ body {
     padding-bottom: 0;
   }
 }
+
+/* ── Auth / login page ── */
+html.page-login .app-shell {
+  min-height: 100vh;
+}

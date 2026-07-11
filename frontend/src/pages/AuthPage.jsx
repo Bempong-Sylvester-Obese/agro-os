@@ -1,6 +1,10 @@
-import { useState } from 'react'
-import { login, signup, storeAuthToken } from '../api/auth'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { login, signup, storeAuthToken, userFromAuthToken } from '../api/auth'
+import { USERS } from '../data/users'
 import { Sprout, ArrowLeft, ArrowRight, Building2, Users, MapPin, Mail, Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
+
+const ALLOW_DEMO_LOGIN = import.meta.env.DEV || import.meta.env.VITE_ALLOW_DEMO_LOGIN === 'true'
 
 // ---------------------------------------------------------------------------
 // Step indicators
@@ -118,8 +122,11 @@ function SizePills({ value, onChange }) {
 // ---------------------------------------------------------------------------
 // Main AuthPage
 // ---------------------------------------------------------------------------
-export default function AuthPage({ setPage, onLoginSuccess }) {
-  const [isLogin, setIsLogin] = useState(true)
+export default function AuthPage({ onAuth }) {
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const initialLogin = searchParams.get('mode') !== 'signup'
+  const [isLogin, setIsLogin] = useState(initialLogin)
   const [step, setStep] = useState(0) // 0 = coop info, 1 = account creds
 
   // Login fields
@@ -139,6 +146,21 @@ export default function AuthPage({ setPage, onLoginSuccess }) {
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
 
+  useEffect(() => {
+    setIsLogin(searchParams.get('mode') !== 'signup')
+    setError(null)
+    setStep(0)
+    setSuccess(false)
+  }, [searchParams])
+
+  function completeAuth(tokenPayload, extras = {}) {
+    const apiUser = tokenPayload.user || userFromAuthToken(tokenPayload.access_token)
+    onAuth({
+      ...(apiUser || {}),
+      ...extras,
+    })
+  }
+
   // ── LOGIN ──────────────────────────────────────────────────────────────────
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -147,12 +169,28 @@ export default function AuthPage({ setPage, onLoginSuccess }) {
     try {
       const data = await login(email, password)
       storeAuthToken(data.access_token)
-      onLoginSuccess()
+      completeAuth(data, {
+        email: data.user?.email || email.trim(),
+        cooperative: data.user?.cooperative || 'Kuapa Kokoo Demo Cooperative',
+      })
+      return
     } catch (err) {
-      setError(err.message)
+      if (!ALLOW_DEMO_LOGIN) {
+        setError(err.message)
+        return
+      }
     } finally {
       setLoading(false)
     }
+
+    const demoUser = USERS.find(
+      u => u.email.toLowerCase() === email.trim().toLowerCase() && u.password === password
+    )
+    if (!demoUser) {
+      setError('Invalid email or password. Try admin@agroos.demo / demo1234 when the API is running.')
+      return
+    }
+    onAuth(demoUser)
   }
 
   // ── SIGNUP step 0 → 1 ─────────────────────────────────────────────────────
@@ -181,7 +219,12 @@ export default function AuthPage({ setPage, onLoginSuccess }) {
       })
       storeAuthToken(data.access_token)
       setSuccess(true)
-      setTimeout(() => onLoginSuccess(), 1200)
+      setTimeout(() => {
+        completeAuth(data, {
+          email: signupEmail.trim(),
+          cooperative: data.cooperative_name || cooperativeName.trim(),
+        })
+      }, 1200)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -191,10 +234,12 @@ export default function AuthPage({ setPage, onLoginSuccess }) {
 
   // ── Switch mode helper ─────────────────────────────────────────────────────
   const switchMode = () => {
-    setIsLogin(!isLogin)
+    const nextLogin = !isLogin
+    setIsLogin(nextLogin)
     setError(null)
     setStep(0)
     setSuccess(false)
+    navigate(nextLogin ? '/login' : '/login?mode=signup', { replace: true })
   }
 
   // ── Background panel illustration ─────────────────────────────────────────
@@ -225,7 +270,7 @@ export default function AuthPage({ setPage, onLoginSuccess }) {
           position: 'relative',
           overflow: 'hidden',
         }}
-        className="auth-panel"
+        className="auth-brand-panel"
       >
         {/* decorative blobs */}
         <div style={{
@@ -365,6 +410,16 @@ export default function AuthPage({ setPage, onLoginSuccess }) {
                   {loading ? 'Signing in…' : 'Sign in →'}
                 </button>
               </form>
+
+              {ALLOW_DEMO_LOGIN && (
+                <div style={{
+                  marginTop: 20, padding: '12px 14px', borderRadius: 8,
+                  background: 'var(--sage)', fontSize: 12, color: 'var(--muted)', lineHeight: 1.5,
+                }}>
+                  <strong style={{ display: 'block', color: 'var(--text)', marginBottom: 4 }}>Demo credentials</strong>
+                  kwabena@ashantifarmers.gh / harvest2026
+                </div>
+              )}
             </>
           )}
 
@@ -510,7 +565,7 @@ export default function AuthPage({ setPage, onLoginSuccess }) {
           {!success && (
             <div style={{ marginTop: 12, textAlign: 'center' }}>
               <button
-                onClick={() => setPage('home')}
+                onClick={() => navigate('/')}
                 style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 12, cursor: 'pointer', textDecoration: 'underline' }}
               >
                 ← Return to website
@@ -522,7 +577,7 @@ export default function AuthPage({ setPage, onLoginSuccess }) {
 
       {/* Hide left panel on mobile */}
       <style>{`
-        @media (max-width: 700px) { .auth-panel { display: none; } }
+        @media (max-width: 700px) { .auth-brand-panel { display: none; } }
       `}</style>
     </div>
   )
