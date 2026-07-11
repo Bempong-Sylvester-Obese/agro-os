@@ -1,23 +1,35 @@
-import { API_URL, apiResult, fetchJson, withDemoFallback } from './config'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-const DEMO_COOPERATIVE = {
-  id: 1,
-  name: 'Kuapa Kokoo Demo Cooperative',
-  location: 'Kumasi, Ashanti Region',
-  currency: 'GHS',
-  moolre_account_number: 'DEMO-WALLET-001',
+function authHeaders() {
+  const token = localStorage.getItem('agro_os_token')
+  return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
-export function fetchCooperatives() {
-  return withDemoFallback(
-    async () => apiResult('api', { cooperatives: await fetchJson(`${API_URL}/cooperatives/`) }),
-    () => apiResult('demo', { cooperatives: [DEMO_COOPERATIVE] }),
-  )
+/**
+ * Fetch a cooperative by ID. Returns null on any error.
+ */
+export async function fetchCooperative(cooperativeId) {
+  if (!cooperativeId) return null
+  const res = await fetch(`${API_URL}/cooperatives/${cooperativeId}`, {
+    headers: authHeaders(),
+  })
+  if (!res.ok) return null
+  return res.json()
 }
 
-export function fetchCooperative(id) {
-  return withDemoFallback(
-    async () => apiResult('api', { cooperative: await fetchJson(`${API_URL}/cooperatives/${id}`) }),
-    () => apiResult('demo', { cooperative: DEMO_COOPERATIVE }),
-  )
+export async function updateCooperative(cooperativeId, data) {
+  const res = await fetch(`${API_URL}/cooperatives/${cooperativeId}`, {
+    method: 'PUT',
+    headers: {
+      ...authHeaders(),
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(data)
+  })
+  
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}))
+    throw new Error(errorData.detail || 'Failed to update cooperative')
+  }
+  return res.json()
 }

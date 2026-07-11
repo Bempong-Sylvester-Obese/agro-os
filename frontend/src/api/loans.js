@@ -1,101 +1,86 @@
-import { API_URL, apiResult, fetchJson, withDemoFallback } from './config'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const FETCH_TIMEOUT_MS = 10000
 
-const DEMO_LOANS = [
-  {
-    id: 1,
-    farmer_id: 1,
-    amount: 500,
-    currency: 'GHS',
-    purpose: 'Fertiliser for cocoa farm',
-    status: 'requested',
-    approved_by: null,
-    approved_at: null,
-    moolre_transfer_ref: null,
-    disbursed_at: null,
-    repaid_at: null,
-    created_at: '2026-06-01T10:00:00',
-    updated_at: '2026-06-01T10:00:00',
-  },
-  {
-    id: 2,
-    farmer_id: 2,
-    amount: 1200,
-    currency: 'GHS',
-    purpose: 'Seed inputs',
-    status: 'approved',
-    approved_by: 'Admin Kwame',
-    approved_at: '2026-06-02T14:30:00',
-    moolre_transfer_ref: null,
-    disbursed_at: null,
-    repaid_at: null,
-    created_at: '2026-05-28T09:00:00',
-    updated_at: '2026-06-02T14:30:00',
-  },
-  {
-    id: 3,
-    farmer_id: 3,
-    amount: 800,
-    currency: 'GHS',
-    purpose: 'Harvest labour',
-    status: 'disbursed',
-    approved_by: 'Admin Kwame',
-    approved_at: '2026-05-20T11:00:00',
-    moolre_transfer_ref: 'DEMO-TRANSFER-001',
-    disbursed_at: '2026-05-21T08:15:00',
-    repaid_at: null,
-    created_at: '2026-05-18T16:00:00',
-    updated_at: '2026-05-21T08:15:00',
-  },
-]
-
-const DEMO_FARMERS = [
-  { id: 1, name: 'Abena Mensah', phone: '0552340001', location: 'Ashanti' },
-  { id: 2, name: 'Kwame Asante', phone: '0248910002', location: 'Northern' },
-  { id: 3, name: 'Ama Osei', phone: '0594410003', location: 'Gr. Accra' },
-]
-
-function apiFetch(path, options = {}) {
-  return fetchJson(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
-  })
+function authHeaders(json = false) {
+  const token = localStorage.getItem('agro_os_token')
+  return {
+    ...(json ? { 'Content-Type': 'application/json' } : {}),
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  }
 }
 
-export function fetchLoansDashboard() {
-  return withDemoFallback(
-    async () => {
-      const [loans, farmers] = await Promise.all([
-        apiFetch('/loans/'),
-        apiFetch('/farmers/'),
-      ])
-      return apiResult('api', { loans, farmers })
-    },
-    () => apiResult('demo', { loans: DEMO_LOANS, farmers: DEMO_FARMERS }),
-  )
+export async function fetchLoans(cooperativeId = null) {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  const qs = cooperativeId ? `?cooperative_id=${cooperativeId}` : ''
+
+  try {
+    const res = await fetch(`${API_URL}/loans/${qs}`, {
+      headers: authHeaders(),
+      signal: controller.signal
+    })
+    if (!res.ok) throw new Error('Loans API unavailable')
+    return await res.json()
+  } catch (error) {
+    console.error('Failed to fetch loans:', error)
+    return []
+  } finally {
+    clearTimeout(timeoutId)
+  }
 }
 
-export function createLoan(payload) {
-  return apiFetch('/loans/', { method: 'POST', body: JSON.stringify(payload) })
-}
-
-export function approveLoan(loanId, approvedBy) {
-  return apiFetch(`/loans/${loanId}/approve`, {
+export async function createLoan(farmerId, amount, purpose, repaymentDate) {
+  const res = await fetch(`${API_URL}/loans/`, {
     method: 'POST',
-    body: JSON.stringify({ approved_by: approvedBy }),
+    headers: authHeaders(true),
+    body: JSON.stringify({
+      farmer_id: parseInt(farmerId, 10),
+      amount: parseFloat(amount),
+      purpose,
+      repayment_date: repaymentDate
+    })
   })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || 'Failed to request loan')
+  }
+  return res.json()
 }
 
-export function rejectLoan(loanId) {
-  return apiFetch(`/loans/${loanId}/reject`, { method: 'POST' })
+export async function approveLoan(loanId) {
+  const email = localStorage.getItem('agro_os_email') || 'admin'
+  const res = await fetch(`${API_URL}/loans/${loanId}/approve`, {
+    method: 'POST',
+    headers: authHeaders(true),
+    body: JSON.stringify({ approved_by: email })
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || 'Failed to approve loan')
+  }
+  return res.json()
 }
 
-export function disburseLoan(loanId) {
-  return apiFetch(`/loans/${loanId}/disburse`, { method: 'POST' })
+export async function rejectLoan(loanId) {
+  const res = await fetch(`${API_URL}/loans/${loanId}/reject`, {
+    method: 'POST',
+    headers: authHeaders()
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || 'Failed to reject loan')
+  }
+  return res.json()
 }
 
-export function repayLoan(loanId) {
-  return apiFetch(`/loans/${loanId}/repay`, { method: 'POST' })
+export async function disburseLoan(loanId) {
+  const res = await fetch(`${API_URL}/loans/${loanId}/disburse`, {
+    method: 'POST',
+    headers: authHeaders()
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || 'Failed to disburse loan')
+  }
+  return res.json()
 }

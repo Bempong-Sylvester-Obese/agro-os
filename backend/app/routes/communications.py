@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
-from app.models.models import CommunicationLog, Cooperative
+from app.models.models import CommunicationLog, Cooperative, User
+from app.services.auth_service import get_current_user
 from app.schemas.schemas import (
     CommunicationLogResponse,
     DuesReminderRequest,
@@ -18,7 +19,7 @@ router = APIRouter(prefix="/communications", tags=["communications"])
 
 
 @router.post("/sms/broadcast", response_model=SMSResponse)
-async def broadcast_sms(request: SMSBroadcastRequest, db: Session = Depends(get_db)):
+async def broadcast_sms(request: SMSBroadcastRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Send a free-form SMS broadcast to all active members of a cooperative.
     Message must be ≤ 160 characters (enforced by schema).
@@ -43,7 +44,7 @@ async def broadcast_sms(request: SMSBroadcastRequest, db: Session = Depends(get_
 
 
 @router.post("/sms/dues-reminder", response_model=SMSResponse)
-async def send_dues_reminder(request: DuesReminderRequest, db: Session = Depends(get_db)):
+async def send_dues_reminder(request: DuesReminderRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     """
     Send a dues-payment reminder SMS to all active members of a cooperative.
     Uses the Moolre merchant USSD code from config for the payment instruction.
@@ -74,9 +75,12 @@ def list_communication_logs(
     skip: int = 0,
     limit: int = Query(default=50, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     """List sent communication logs, optionally filtered by cooperative."""
     query = db.query(CommunicationLog)
-    if cooperative_id is not None:
+    if current_user.cooperative_id:
+        query = query.filter(CommunicationLog.cooperative_id == current_user.cooperative_id)
+    elif cooperative_id is not None:
         query = query.filter(CommunicationLog.cooperative_id == cooperative_id)
     return query.order_by(CommunicationLog.sent_at.desc()).offset(skip).limit(limit).all()

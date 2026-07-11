@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
 
-from app.agro_ai.db_bridge import get_assessment_from_db, list_assessments_from_db
 from app.agro_ai.runtime import agro_ai, prediction_audit
-from app.database.db import get_db
+from app.models.models import User
+from app.services.auth_service import get_current_user
 
 router = APIRouter(tags=["agro-ai"])
 
@@ -35,21 +34,14 @@ class PredictionRequest(BaseModel):
     actor_id: str | None = None
 
 
-def _list_assessments(db: Session) -> list[dict[str, Any]]:
-    db_assessments = list_assessments_from_db(db, agro_ai)
-    if db_assessments is not None:
-        return db_assessments
+@router.get("/api/farmers")
+def list_farmer_assessments(current_user: User = Depends(get_current_user)) -> list[dict[str, Any]]:
     return agro_ai.list_farmer_assessments()
 
 
-@router.get("/api/farmers")
-def list_farmer_assessments(db: Session = Depends(get_db)) -> list[dict[str, Any]]:
-    return _list_assessments(db)
-
-
 @router.get("/api/farmers/{farmer_id}/credit-assessment")
-def get_credit_assessment(farmer_id: str, db: Session = Depends(get_db)) -> dict[str, Any]:
-    assessment = get_assessment_from_db(farmer_id, db, agro_ai)
+def get_credit_assessment(farmer_id: str) -> dict[str, Any]:
+    assessment = agro_ai.get_farmer_assessment(farmer_id)
     if assessment is None:
         raise HTTPException(status_code=404, detail="Farmer not found")
     prediction_audit.log_prediction(
@@ -57,14 +49,13 @@ def get_credit_assessment(farmer_id: str, db: Session = Depends(get_db)) -> dict
         prediction=agro_ai.predict(assessment["features"], assessment["requested_credit_amount"]),
         requested_credit_amount=assessment["requested_credit_amount"],
         context={"source": "farmer_assessment", "farmer_id": farmer_id},
-        db=db,
     )
     return assessment
 
 
 @router.get("/api/agro-ai/credit-summary")
-def get_credit_summary(db: Session = Depends(get_db)) -> dict[str, Any]:
-    assessments = _list_assessments(db)
+def get_credit_summary(current_user: User = Depends(get_current_user)) -> dict[str, Any]:
+    assessments = agro_ai.list_farmer_assessments()
     eligible_count = sum(1 for item in assessments if item["eligible"])
     high_risk_count = sum(1 for item in assessments if item["risk_band"] == "High risk")
     review_count = sum(1 for item in assessments if item["risk_band"] == "Watchlist")
@@ -82,12 +73,11 @@ def get_credit_summary(db: Session = Depends(get_db)) -> dict[str, Any]:
         "manual_review_count": review_count,
         "high_risk_count": high_risk_count,
         "average_score": average_score,
-        "data_source": "database" if list_assessments_from_db(db, agro_ai) is not None else "synthetic",
     }
 
 
 @router.post("/api/agro-ai/predict")
-def predict_creditworthiness(payload: PredictionRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
+def predict_creditworthiness(payload: PredictionRequest) -> dict[str, Any]:
     prediction = agro_ai.predict(
         payload.features.model_dump(),
         requested_credit_amount=payload.requested_credit_amount,
@@ -102,7 +92,6 @@ def predict_creditworthiness(payload: PredictionRequest, db: Session = Depends(g
             "cooperative_id": payload.cooperative_id,
             "actor_id": payload.actor_id,
         },
-        db=db,
     )
     return {
         "requested_credit_amount": payload.requested_credit_amount,

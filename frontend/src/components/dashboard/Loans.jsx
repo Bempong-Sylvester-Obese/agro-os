@@ -1,153 +1,159 @@
 // src/components/dashboard/Loans.jsx
-import { useCallback, useEffect, useState } from 'react'
-import {
-  approveLoan,
-  createLoan,
-  disburseLoan,
-  fetchLoansDashboard,
-  rejectLoan,
-  repayLoan,
-} from '../../api/loans'
+import { useState } from 'react'
+import { Plus, X, Loader2, Check, XCircle, Send } from 'lucide-react'
+import { createLoan, approveLoan, rejectLoan, disburseLoan } from '../../api/loans'
 
-const STATUS_CLS = {
-  requested: 'bdg-amber',
-  approved: 'bdg-amber',
-  disbursed: 'bdg-green',
-  repaid: 'bdg-green',
-  rejected: 'bdg-red',
+function fmtGHS(amount) {
+  return `GHS ${Number(amount).toLocaleString('en-GH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 }
 
-const EMPTY_REQUEST = { farmer_id: '', amount: '', purpose: '' }
+// ── Log Loan Request Modal ──────────────────────────────────────────────────────
+function RequestLoanModal({ farmers, onClose, onSuccess }) {
+  const [form, setForm] = useState({ farmerId: '', amount: '', purpose: '', repaymentDate: '' })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  
+  const activeFarmers = farmers.filter(f => f.membership_status === 'active')
 
-function formatAmount(amount, currency = 'GHS') {
-  return `${currency} ${Number(amount).toLocaleString()}`
-}
-
-function formatStatus(status) {
-  return status.charAt(0).toUpperCase() + status.slice(1)
-}
-
-export default function Loans({ approverName = 'Cooperative Admin' }) {
-  const [loans, setLoans] = useState([])
-  const [farmers, setFarmers] = useState([])
-  const [source, setSource] = useState('demo')
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [actionId, setActionId] = useState(null)
-  const [modal, setModal] = useState(false)
-  const [form, setForm] = useState(EMPTY_REQUEST)
-  const [formErr, setFormErr] = useState('')
-
-  const farmerMap = Object.fromEntries(farmers.map((f) => [f.id, f]))
-
-  const loadLoans = useCallback(async () => {
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!form.farmerId || !form.amount || !form.purpose || !form.repaymentDate) {
+      setError('Please fill in all fields.')
+      return
+    }
     setLoading(true)
-    setError('')
+    setError(null)
     try {
-      const data = await fetchLoansDashboard()
-      setLoans(data.loans)
-      setFarmers(data.farmers)
-      setSource(data.source)
+      await createLoan(form.farmerId, form.amount, form.purpose, form.repaymentDate)
+      onSuccess()
     } catch (err) {
-      setError(err.message || 'Failed to load loans')
+      setError(err.message)
     } finally {
       setLoading(false)
     }
-  }, [])
+  }
 
-  useEffect(() => {
-    loadLoans()
-  }, [loadLoans])
+  const input = {
+    width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)',
+    borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif",
+    outline: 'none', background: '#fff', color: 'var(--text)', boxSizing: 'border-box',
+    marginTop: 6
+  }
 
-  async function runAction(loanId, action) {
-    if (source === 'demo') {
-      setError('Connect the backend (VITE_API_URL) to run live loan actions.')
-      return
-    }
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)',
+      backdropFilter: 'blur(4px)', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+    }}>
+      <div style={{
+        background: '#fff', borderRadius: 16, width: '100%', maxWidth: 400,
+        boxShadow: '0 32px 80px rgba(0,0,0,0.22)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '24px 28px 20px', borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <div className="serif" style={{ fontWeight: 700, fontSize: 19 }}>Log Loan Request</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Log a new input or cash loan request from a member</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={20} /></button>
+        </div>
 
-    setActionId(loanId)
-    setError('')
+        <form onSubmit={handleSubmit} style={{ padding: '24px 28px' }}>
+          {error && <div style={{ padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>}
+          
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 13, fontWeight: 600 }}>Member</label>
+            <select style={input} value={form.farmerId} onChange={e => setForm({...form, farmerId: e.target.value})} required disabled={loading}>
+              <option value="">Select a member...</option>
+              {activeFarmers.map(f => <option key={f.id} value={f.id}>{f.name} ({f.phone})</option>)}
+            </select>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 13, fontWeight: 600 }}>Amount (GHS)</label>
+            <input style={input} type="number" min="1" step="0.5" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} placeholder="e.g. 500" required disabled={loading}/>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 13, fontWeight: 600 }}>Purpose</label>
+            <input style={input} type="text" value={form.purpose} onChange={e => setForm({...form, purpose: e.target.value})} placeholder="e.g. Fertilizer, Seeds" required disabled={loading}/>
+          </div>
+
+          <div style={{ marginBottom: 24 }}>
+            <label style={{ fontSize: 13, fontWeight: 600 }}>Expected Repayment Date</label>
+            <input style={input} type="date" value={form.repaymentDate} onChange={e => setForm({...form, repaymentDate: e.target.value})} required disabled={loading}/>
+          </div>
+
+          <button type="submit" className="btn-lg" disabled={loading} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
+            {loading ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Submitting...</> : 'Log Request'}
+          </button>
+        </form>
+      </div>
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  )
+}
+
+// ── Main Component ────────────────────────────────────────────────────────
+export default function Loans({ farmers = [], loans = [], loading, onRefresh }) {
+  const [showModal, setShowModal] = useState(false)
+  const [processing, setProcessing] = useState(null) // ID of loan being processed
+  const [actionError, setActionError] = useState(null)
+
+  if (loading) {
+    return <div style={{ padding: 32, color: 'var(--muted)', fontSize: 14 }}>Loading loans…</div>
+  }
+
+  const disbursed = loans.filter(l => l.status === 'disbursed')
+  const requested = loans.filter(l => l.status === 'requested')
+  const totalDisbursedAmount = disbursed.reduce((s, l) => s + l.amount, 0)
+  const totalRequestedAmount = requested.reduce((s, l) => s + l.amount, 0)
+
+  const sorted = [...loans].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+
+  const handleAction = async (loanId, action) => {
+    setProcessing(loanId)
+    setActionError(null)
     try {
-      let updated
-      switch (action) {
-        case 'approve':
-          updated = await approveLoan(loanId, approverName)
-          break
-        case 'reject':
-          updated = await rejectLoan(loanId)
-          break
-        case 'disburse':
-          updated = await disburseLoan(loanId)
-          break
-        case 'repay':
-          updated = await repayLoan(loanId)
-          break
-        default:
-          return
-      }
-      setLoans((prev) => prev.map((ln) => (ln.id === loanId ? updated : ln)))
+      if (action === 'approve') await approveLoan(loanId)
+      if (action === 'reject') await rejectLoan(loanId)
+      if (action === 'disburse') await disburseLoan(loanId)
+      if (onRefresh) onRefresh()
     } catch (err) {
-      setError(err.message || 'Action failed')
+      setActionError(err.message)
     } finally {
-      setActionId(null)
+      setProcessing(null)
     }
   }
-
-  function openRequestModal() {
-    setForm({
-      ...EMPTY_REQUEST,
-      farmer_id: farmers[0]?.id ? String(farmers[0].id) : '',
-    })
-    setFormErr('')
-    setModal(true)
-  }
-
-  async function handleCreateLoan(e) {
-    e.preventDefault()
-    setFormErr('')
-
-    const farmerId = parseInt(form.farmer_id, 10)
-    const amount = parseFloat(form.amount)
-    if (!farmerId) { setFormErr('Select a farmer.'); return }
-    if (!amount || amount <= 0) { setFormErr('Enter a valid loan amount.'); return }
-
-    if (source === 'demo') {
-      setFormErr('Connect the backend to submit live loan requests.')
-      return
-    }
-
-    setActionId('create')
-    try {
-      const created = await createLoan({
-        farmer_id: farmerId,
-        amount,
-        currency: 'GHS',
-        purpose: form.purpose.trim() || null,
-      })
-      setLoans((prev) => [created, ...prev])
-      setModal(false)
-    } catch (err) {
-      setFormErr(err.message || 'Could not create loan request')
-    } finally {
-      setActionId(null)
-    }
-  }
-
-  const pending = loans.filter((ln) => ln.status === 'requested').length
-  const awaitingDisburse = loans.filter((ln) => ln.status === 'approved').length
-  const outstanding = loans.filter((ln) => ln.status === 'disbursed').length
-  const totalRequested = loans
-    .filter((ln) => ln.status === 'requested' || ln.status === 'approved')
-    .reduce((sum, ln) => sum + ln.amount, 0)
 
   return (
     <>
+      {showModal && (
+        <RequestLoanModal 
+          farmers={farmers} 
+          onClose={() => setShowModal(false)} 
+          onSuccess={() => { setShowModal(false); if (onRefresh) onRefresh(); }} 
+        />
+      )}
+
+      {/* ── Toolbar ── */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
+        <button className="btn-nav" onClick={() => setShowModal(true)} style={{ fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, background: 'var(--text)', color: '#fff' }}>
+          <Plus size={15} /> Log Loan Request
+        </button>
+      </div>
+
+      {actionError && (
+        <div style={{ padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
+          {actionError}
+        </div>
+      )}
+
       <div className="pay-stats">
         {[
-          ['Pending requests', String(pending), 'Awaiting admin review'],
-          ['Approved', String(awaitingDisburse), 'Ready for Moolre payout'],
-          ['Outstanding', String(outstanding), 'Disbursed, not repaid'],
-          ['Pipeline value', formatAmount(totalRequested), source === 'api' ? 'Live API' : 'Demo data'],
+          ['Total Disbursed', totalDisbursedAmount > 0 ? fmtGHS(totalDisbursedAmount) : '—', `${disbursed.length} active loan${disbursed.length !== 1 ? 's' : ''}`],
+          ['Pending Requests', totalRequestedAmount > 0 ? fmtGHS(totalRequestedAmount) : '—', `${requested.length} awaiting approval`],
+          ['Avg. Loan Size', disbursed.length > 0 ? fmtGHS(totalDisbursedAmount / disbursed.length) : '—', 'Based on active loans'],
         ].map(([lbl, val, sub]) => (
           <div key={lbl} className="stat-card">
             <div className="stat-lbl">{lbl}</div>
@@ -157,176 +163,78 @@ export default function Loans({ approverName = 'Cooperative Admin' }) {
         ))}
       </div>
 
-      <div className="toolbar">
-        <div className="toolbar-note">
-          Golden Path steps 6–7: approve input loans and disburse via Moolre.
-        </div>
-        <div className="toolbar-actions">
-          <button className="btn-nav" style={{ fontSize: 12, padding: '7px 14px' }} onClick={openRequestModal}>
-            + Request loan
-          </button>
-        </div>
-      </div>
-
-      {error && <div className="auth-error" style={{ marginBottom: 16 }}>{error}</div>}
-
-      <div className="admin-card table-cards">
+      <div className="admin-card">
         <div className="admin-card-head">
-          <span className="admin-card-title serif">Loan requests</span>
-          <span className="admin-card-action">{source === 'api' ? 'Live API' : 'Demo fallback'}</span>
+          <span className="admin-card-title serif">Loan History</span>
+          <span className="admin-card-action">{loans.length} record{loans.length !== 1 ? 's' : ''}</span>
         </div>
 
-        <div className="loan-head">
-          {['Farmer', 'Amount', 'Purpose', 'Status', 'Moolre ref', 'Actions'].map((h) => (
-            <span key={h} className="pt-lbl">{h}</span>
-          ))}
-        </div>
-
-        {loading && (
-          <div style={{ padding: '28px 22px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
-            Loading loans…
+        {sorted.length === 0 ? (
+          <div style={{ padding: '32px 20px', color: 'var(--muted)', fontSize: 14 }}>
+            No loans recorded yet. Click "Log Loan Request" to log a new application.
           </div>
-        )}
-
-        {!loading && loans.length === 0 && (
-          <div style={{ padding: '28px 22px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
-            No loan requests yet. Create one to start the Golden Path flow.
-          </div>
-        )}
-
-        {!loading && loans.map((loan) => {
-          const farmer = farmerMap[loan.farmer_id]
-          const busy = actionId === loan.id
-
-          return (
-            <div key={loan.id} className="loan-row">
-              <div data-label="Farmer">
-                <div className="pt-name">{farmer?.name ?? `Farmer #${loan.farmer_id}`}</div>
-                <div className="pt-id">Loan #{loan.id}{farmer?.phone ? ` · ${farmer.phone}` : ''}</div>
-              </div>
-              <span className="pt-v" data-label="Amount">{formatAmount(loan.amount, loan.currency)}</span>
-              <span className="pt-m" data-label="Purpose">{loan.purpose || '—'}</span>
-              <span className={`bdg ${STATUS_CLS[loan.status] ?? 'bdg-amber'}`} data-label="Status">
-                {formatStatus(loan.status)}
-              </span>
-              <span className="pt-m mono" style={{ fontSize: 11 }} data-label="Moolre ref">
-                {loan.moolre_transfer_ref || '—'}
-              </span>
-              <div className="loan-actions" data-label="Actions">
-                {loan.status === 'requested' && (
-                  <>
-                    <button
-                      className="btn-nav loan-btn"
-                      disabled={busy}
-                      onClick={() => runAction(loan.id, 'approve')}
-                    >
-                      {busy ? '…' : 'Approve'}
-                    </button>
-                    <button
-                      className="loan-btn loan-btn-muted"
-                      disabled={busy}
-                      onClick={() => runAction(loan.id, 'reject')}
-                    >
-                      Reject
-                    </button>
-                  </>
-                )}
-                {loan.status === 'approved' && (
-                  <button
-                    className="btn-nav loan-btn"
-                    disabled={busy}
-                    onClick={() => runAction(loan.id, 'disburse')}
-                  >
-                    {busy ? '…' : 'Disburse →'}
-                  </button>
-                )}
-                {loan.status === 'disbursed' && (
-                  <button
-                    className="btn-nav loan-btn"
-                    disabled={busy}
-                    onClick={() => runAction(loan.id, 'repay')}
-                  >
-                    {busy ? '…' : 'Record repay'}
-                  </button>
-                )}
-                {(loan.status === 'repaid' || loan.status === 'rejected') && (
-                  <span className="pt-m" style={{ fontSize: 11 }}>—</span>
-                )}
-              </div>
+        ) : (
+          <>
+            {/* Using a custom grid similar to pay-head but accommodating actions */}
+            <div className="pay-head" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 100px 140px' }}>
+              <span className="pt-lbl">Member</span>
+              <span className="pt-lbl">Amount</span>
+              <span className="pt-lbl">Purpose</span>
+              <span className="pt-lbl">Repayment</span>
+              <span className="pt-lbl">Status</span>
+              <span className="pt-lbl" style={{ textAlign: 'right' }}>Action</span>
             </div>
-          )
-        })}
+            {sorted.map(loan => {
+              const farmer = farmers.find(f => f.id === loan.farmer_id)
+              const name = farmer ? farmer.name : `Farmer #${loan.farmer_id}`
+              const repayDate = new Date(loan.repayment_date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+              
+              let cls = 'bdg-amber', label = loan.status
+              if (['approved', 'disbursed', 'repaid'].includes(loan.status)) cls = 'bdg-green'
+              if (loan.status === 'rejected') cls = 'bdg-red'
+
+              return (
+                <div key={loan.id} className="pay-row" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 100px 140px', alignItems: 'center' }}>
+                  <div><div className="pt-name">{name}</div><div className="pt-id">#{loan.id}</div></div>
+                  <span className="pt-v">{fmtGHS(loan.amount)}</span>
+                  <span className="pt-m" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{loan.purpose}</span>
+                  <span className="pt-m">{repayDate}</span>
+                  <span className={`bdg ${cls}`} style={{ textTransform: 'capitalize' }}>{label}</span>
+                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    {loan.status === 'requested' && (
+                      <>
+                        <button 
+                          disabled={processing === loan.id}
+                          onClick={() => handleAction(loan.id, 'approve')}
+                          style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600 }}
+                        >
+                          {processing === loan.id ? <Loader2 size={12} className="spin" /> : <Check size={12} />} Approve
+                        </button>
+                        <button 
+                          disabled={processing === loan.id}
+                          onClick={() => handleAction(loan.id, 'reject')}
+                          style={{ background: '#FEF2F2', color: '#991B1B', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600 }}
+                        >
+                          <XCircle size={12} /> Reject
+                        </button>
+                      </>
+                    )}
+                    {loan.status === 'approved' && (
+                      <button 
+                        disabled={processing === loan.id}
+                        onClick={() => handleAction(loan.id, 'disburse')}
+                        style={{ background: 'var(--text)', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600 }}
+                      >
+                        {processing === loan.id ? <Loader2 size={12} className="spin" /> : <Send size={12} />} Disburse
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </>
+        )}
       </div>
-
-      {modal && (
-        <div className="modal-overlay" onClick={() => setModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-head">
-              <div>
-                <div className="modal-title serif">Request input loan</div>
-                <div className="modal-sub">Submit a farmer loan request for cooperative review.</div>
-              </div>
-              <button className="modal-close" onClick={() => setModal(false)}>✕</button>
-            </div>
-
-            {formErr && <div className="auth-error" style={{ margin: '0 0 16px' }}>{formErr}</div>}
-
-            <form onSubmit={handleCreateLoan} className="modal-form">
-              <div className="auth-field">
-                <label className="auth-label">Farmer *</label>
-                <select
-                  className="auth-input auth-select"
-                  name="farmer_id"
-                  value={form.farmer_id}
-                  onChange={(e) => setForm((f) => ({ ...f, farmer_id: e.target.value }))}
-                  required
-                >
-                  <option value="">Select farmer…</option>
-                  {farmers.map((f) => (
-                    <option key={f.id} value={f.id}>{f.name}{f.location ? ` · ${f.location}` : ''}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="modal-row">
-                <div className="auth-field">
-                  <label className="auth-label">Amount (GHS) *</label>
-                  <input
-                    className="auth-input"
-                    name="amount"
-                    type="number"
-                    min="1"
-                    step="0.01"
-                    placeholder="e.g. 500"
-                    value={form.amount}
-                    onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
-                    required
-                  />
-                </div>
-                <div className="auth-field">
-                  <label className="auth-label">Purpose</label>
-                  <input
-                    className="auth-input"
-                    name="purpose"
-                    placeholder="e.g. Fertiliser for cocoa"
-                    value={form.purpose}
-                    onChange={(e) => setForm((f) => ({ ...f, purpose: e.target.value }))}
-                  />
-                </div>
-              </div>
-
-              <div className="modal-actions">
-                <button type="button" className="btn-out-lg" style={{ fontSize: 13, padding: '10px 22px' }} onClick={() => setModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn-lg" style={{ fontSize: 13, padding: '10px 22px' }} disabled={actionId === 'create'}>
-                  {actionId === 'create' ? 'Submitting…' : 'Submit request →'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </>
   )
 }

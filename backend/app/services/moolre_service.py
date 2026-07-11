@@ -40,8 +40,6 @@ class MoolreService:
         }
         if self.settings.moolre_api_key:
             headers["X-API-KEY"] = self.settings.moolre_api_key
-        if self.settings.moolre_env == "live" and self.settings.moolre_api_pubkey:
-            headers["X-API-PUBKEY"] = self.settings.moolre_api_pubkey
         return headers
 
     def _vaskey_headers(self) -> dict:
@@ -51,7 +49,22 @@ class MoolreService:
             headers["X-API-VASKEY"] = self.settings.moolre_api_vaskey
         return headers
 
+    def _pubkey_headers(self) -> dict:
+        """Build headers for endpoints requiring public key."""
+        headers: dict = {
+            "Content-Type": "application/json",
+            "X-API-USER": self.settings.moolre_api_user,
+        }
+        if self.settings.moolre_api_pubkey:
+            headers["X-API-PUBKEY"] = self.settings.moolre_api_pubkey
+        return headers
 
+    def _normalize_phone(self, phone: str) -> str:
+        """Normalize Ghanaian phone numbers to start with 0 and be 10 digits long for Moolre API."""
+        phone = phone.strip().replace("+", "").replace(" ", "")
+        if phone.startswith("233") and len(phone) == 12:
+            return f"0{phone[3:]}"
+        return phone
 
     # ------------------------------------------------------------------
     # Internal HTTP helpers
@@ -100,70 +113,45 @@ class MoolreService:
         currency: str = "GHS",
         channel: str = "13",
         external_ref: str | None = None,
+        otpcode: str | None = None,
         reference: str = "Cooperative dues",
         account_number: str | None = None,
-        otp_code: str | None = None,
     ) -> dict[str, Any]:
         """
         Trigger a USSD payment prompt on the payer's phone.
 
         channel codes: 13=MTN Ghana, 6=Telecel, 7=AT
-        Returns a normalised dict with ``success``, ``outcome``, ``moolre_code``,
-        ``moolre_reference``, and ``message``.
-
-        Moolre codes:
-          - TR099: USSD push sent (success)
-          - TP14: OTP SMS sent; retry with same externalref + otpcode
+        Returns a normalised dict with ``success``, ``moolre_reference``, ``message``.
         """
         ext_ref = external_ref or str(uuid.uuid4())
         acc = account_number or self.settings.moolre_account_number
+        normalized_phone = self._normalize_phone(payer_phone)
 
         payload = {
             "type": 1,
             "channel": channel,
             "currency": currency,
-            "payer": payer_phone,
+            "payer": normalized_phone,
             "amount": str(amount),
             "externalref": ext_ref,
             "reference": reference,
             "accountnumber": acc,
         }
-        if otp_code:
-            payload["otpcode"] = otp_code
+        if otpcode:
+            payload["otpcode"] = otpcode
 
         raw = await self._post("/open/transact/payment", payload)
 
-        if raw.get("success") is False:
-            return {
-                "success": False,
-                "outcome": "failed",
-                "moolre_code": None,
-                "moolre_reference": ext_ref,
-                "external_ref": ext_ref,
-                "message": raw.get("error", "Moolre request failed"),
-                "raw": raw,
-            }
-
-        code = raw.get("code", "")
-        if code == "TR099":
-            outcome = "push_sent"
-        elif code == "TP14":
-            outcome = "verification_required"
-        else:
-            outcome = "failed"
-
-        success = outcome == "push_sent"
-        message = raw.get("message") or raw.get("error", "")
-        if isinstance(message, list):
-            message = " ".join(message)
-
+        # Moolre returns code "TR099" on a successful payment request
+        # TP14 means SMS OTP verification is required
+        verification_required = raw.get("code") == "TP14"
+        success = (raw.get("code") in ("TR099",) or raw.get("status") in (1, "1")) and not verification_required
         return {
             "success": success,
-            "outcome": outcome,
-            "moolre_code": code or None,
+            "verification_required": verification_required,
             "moolre_reference": raw.get("data") or ext_ref,
             "external_ref": ext_ref,
-            "message": str(message),
+            "message": raw.get("message") or raw.get("error", ""),
             "raw": raw,
         }
 
@@ -214,13 +202,14 @@ class MoolreService:
         """
         ext_ref = external_ref or str(uuid.uuid4())
         acc = account_number or self.settings.moolre_account_number
+        normalized_phone = self._normalize_phone(receiver_phone)
 
         payload = {
             "type": 1,
             "channel": channel,
             "currency": currency,
             "amount": str(amount),
-            "receiver": receiver_phone,
+            "receiver": normalized_phone,
             "externalref": ext_ref,
             "reference": reference,
             "accountnumber": acc,
@@ -388,7 +377,7 @@ class MoolreService:
         if metadata:
             payload["metadata"] = metadata
 
-        raw = await self._post("/embed/link", payload)
+        raw = await self._post("/embed/link", payload, headers=self._pubkey_headers())
         link_data = raw.get("data", {}) or {}
         return {
             "success": raw.get("status") in (1, "1"),

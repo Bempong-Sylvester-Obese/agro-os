@@ -1,22 +1,21 @@
 // src/pages/FeaturesPage.jsx
 import Footer from '../components/Footer'
 import CTASection from '../components/CTASection'
-import { useAppNavigate } from '../hooks/useAppNavigate'
+import { Users, Sprout, CreditCard, MessageSquare, Star, Smartphone, Activity, Shield, FileText } from 'lucide-react'
 
 const FEATURES = [
-  ['👥', 'Member management',        'Full profiles, roles, dues status, and complete history for every farmer. Filter by region, status, or score.'],
-  ['🌾', 'Production tracking',      'Log harvests, yields, and crop cycles per member. Build a multi-season data trail for every farm.'],
-  ['💳', 'Payments & disbursements', 'Collect dues via MoMo, USSD, or card. Run disbursements with full audit trails and automated receipts.'],
-  ['📱', 'SMS broadcasts',           'Send targeted announcements to all members or filtered groups — by region, payment status, or custom list.'],
-  ['⭐', 'AgroCredit Trust Score',   'AI-generated creditworthiness scores (0–100) from payment history, production output, and tenure. Updated monthly.'],
-  ['📲', 'USSD access',              'Native Moolre USSD integration. Farmers with basic phones can pay dues, check balances, and get alerts.'],
-  ['📊', 'Analytics dashboard',      'Real-time overview of dues collection, production trends, and member activity across all regions.'],
-  ['🔐', 'Role-based access',        'Cooperative leaders, field agents, and managers each see exactly what they need — nothing more.'],
-  ['📄', 'Audit trails & receipts',  'Every transaction is logged with a timestamped receipt. Export to CSV for financial reporting.'],
+  [<Users size={28} />, 'Member management',        'Full profiles, roles, dues status, and complete history for every farmer. Filter by region, status, or score.'],
+  [<Sprout size={28} />, 'Production tracking',      'Log harvests, yields, and crop cycles per member. Build a multi-season data trail for every farm.'],
+  [<CreditCard size={28} />, 'Payments & disbursements', 'Collect dues via MoMo, USSD, or card. Run disbursements with full audit trails and automated receipts.'],
+  [<MessageSquare size={28} />, 'SMS broadcasts',           'Send targeted announcements to all members or filtered groups — by region, payment status, or custom list.'],
+  [<Star size={28} />, 'AgroCredit Trust Score',   'AI-generated creditworthiness scores (0–100) from payment history, production output, and tenure. Updated monthly.'],
+  [<Smartphone size={28} />, 'USSD access',              'Native Moolre USSD integration. Farmers with basic phones can pay dues, check balances, and get alerts.'],
+  [<Activity size={28} />, 'Analytics dashboard',      'Real-time overview of dues collection, production trends, and member activity across all regions.'],
+  [<Shield size={28} />, 'Role-based access',        'Cooperative leaders, field agents, and managers each see exactly what they need — nothing more.'],
+  [<FileText size={28} />, 'Audit trails & receipts',  'Every transaction is logged with a timestamped receipt. Export to CSV for financial reporting.'],
 ]
 
-export default function FeaturesPage() {
-  const setPage = useAppNavigate()
+export default function FeaturesPage({ setPage }) {
   return (
     <>
       <div className="sol-hero">
@@ -47,10 +46,10 @@ export default function FeaturesPage() {
         primaryLabel="Open dashboard"
         secondaryLabel="Book a demo"
         onPrimary={() => setPage('dashboard')}
-        onSecondary={() => setPage('login', { loginMode: 'login' })}
+        onSecondary={() => {}}
       />
 
-      <Footer />
+      <Footer setPage={setPage} />
     </>
   )
 }

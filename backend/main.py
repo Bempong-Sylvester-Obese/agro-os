@@ -22,6 +22,7 @@ from app.routes import (
     production,
     transactions,
     webhooks,
+    auth,
 )
 from app.agro_ai.runtime import agro_ai as agro_ai_runtime
 
@@ -77,9 +78,19 @@ app = FastAPI(
 )
 
 # Configure CORS
-_origins = ["*"] if settings.app_env == "development" else [
-    "https://agro-os.vercel.app",  # Update with actual frontend URL
+_dev_origins = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5173",
 ]
+if settings.app_env.lower() in ("development", "dev"):
+    _origins = ["*"]
+else:
+    _origins = _dev_origins.copy()
+    if settings.cors_origins:
+        _origins.extend([o.strip() for o in settings.cors_origins.split(",") if o.strip()])
+    else:
+        _origins.append("https://agro-os-amber.vercel.app")
 
 app.add_middleware(
     CORSMiddleware,
@@ -121,6 +132,7 @@ app.include_router(production.router)
 app.include_router(communications.router)
 app.include_router(webhooks.router)
 app.include_router(agro_ai.router)
+app.include_router(auth.router)
 
 
 @app.get("/", tags=["health"])

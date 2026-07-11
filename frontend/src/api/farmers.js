@@ -1,59 +1,62 @@
-import { MEMBERS_SEED } from '../data/payments'
-import { authHeaders } from './auth'
-import { API_URL, ApiError, apiResult, fetchJson, withDemoFallback } from './config'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-const DEFAULT_COOP_ID = import.meta.env.VITE_COOPERATIVE_ID
-
-export const DB_FARMERS_FALLBACK = MEMBERS_SEED.map((member, index) => ({
-  id: index + 1,
-  name: member.name,
-  phone: member.phone,
-  location: member.region,
-  crop_type: null,
-  cooperative_id: 1,
-  membership_status: 'active',
-  trust_score: parseFloat(member.score, 10),
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
-}))
-
-export function fetchFarmers() {
-  return withDemoFallback(
-    async () => apiResult('api', { farmers: await fetchJson(`${API_URL}/farmers/`) }),
-    () => apiResult('demo', { farmers: DB_FARMERS_FALLBACK }),
-  )
+function authHeaders() {
+  const token = localStorage.getItem('agro_os_token')
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  }
 }
 
-export async function createFarmer(payload) {
-  return fetchJson(`${API_URL}/farmers/`, {
+/**
+ * Fetch all farmers, optionally filtered to a specific cooperative.
+ */
+export async function fetchFarmers(cooperativeId = null) {
+  const qs = cooperativeId
+    ? `?cooperative_id=${cooperativeId}&limit=500`
+    : '?limit=500'
+  const res = await fetch(`${API_URL}/farmers/${qs}`, { headers: authHeaders() })
+  if (!res.ok) throw new Error('Failed to fetch farmers')
+  return res.json()
+}
+
+/**
+ * Register a new farmer / cooperative member.
+ * @param {object} data - { name, phone, cooperative_id, email?, location?, crop_type?, acreage? }
+ */
+export async function createFarmer(data) {
+  const res = await fetch(`${API_URL}/farmers/`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeaders(),
-    },
-    body: JSON.stringify(payload),
+    headers: authHeaders(),
+    body: JSON.stringify(data),
   })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Failed to create farmer')
+  }
+  return res.json()
 }
 
+/**
+ * Fetch the most recent trust score breakdown for a farmer.
+ * Returns null if no score has been calculated yet.
+ */
+export async function fetchFarmerTrustScore(farmerId) {
+  const res = await fetch(`${API_URL}/farmers/${farmerId}/trust-score`, {
+    headers: authHeaders(),
+  })
+  if (!res.ok) return null
+  return res.json()
+}
+
+/**
+ * Trigger a server-side trust score recalculation for a farmer.
+ */
 export async function recalculateTrustScore(farmerId) {
-  return fetchJson(`${API_URL}/farmers/${farmerId}/recalculate-trust-score`, {
+  const res = await fetch(`${API_URL}/farmers/${farmerId}/recalculate-trust-score`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...authHeaders(),
-    },
+    headers: authHeaders(),
   })
-}
-
-export function resolveCooperativeIdForFarmers() {
-  if (DEFAULT_COOP_ID) return Promise.resolve(Number(DEFAULT_COOP_ID))
-
-  return withDemoFallback(
-    async () => {
-      const coops = await fetchJson(`${API_URL}/cooperatives/`)
-      if (!coops?.length) throw new ApiError('No cooperative found', 404)
-      return coops[0].id
-    },
-    () => 1,
-  )
+  if (!res.ok) return null
+  return res.json()
 }

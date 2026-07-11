@@ -1,15 +1,34 @@
-import { CREDIT_SUMMARY, FARMER_ASSESSMENTS } from '../data/payments'
-import { API_URL, apiResult, fetchJson, withDemoFallback } from './config'
 
-export function fetchAgroAiDashboard() {
-  return withDemoFallback(
-    async () => {
-      const [farmers, summary] = await Promise.all([
-        fetchJson(`${API_URL}/api/farmers`),
-        fetchJson(`${API_URL}/api/agro-ai/credit-summary`),
-      ])
-      return apiResult('api', { farmers, summary })
-    },
-    () => apiResult('demo', { farmers: FARMER_ASSESSMENTS, summary: CREDIT_SUMMARY }),
-  )
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const FETCH_TIMEOUT_MS = 10000
+
+export async function fetchAgroAiDashboard() {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  const token = localStorage.getItem('agro_os_token')
+  const headers = token ? { 'Authorization': `Bearer ${token}` } : {}
+  const fetchOptions = { signal: controller.signal, headers }
+
+  try {
+    const [farmersResponse, summaryResponse] = await Promise.all([
+      fetch(`${API_URL}/api/farmers`, fetchOptions),
+      fetch(`${API_URL}/api/agro-ai/credit-summary`, fetchOptions),
+    ])
+
+    if (!farmersResponse.ok || !summaryResponse.ok) {
+      throw new Error('agro-ai API unavailable')
+    }
+
+    return {
+      farmers: await farmersResponse.json(),
+      summary: await summaryResponse.json(),
+      source: 'api',
+    }
+  } catch (error) {
+    console.error('Failed to fetch from real API:', error)
+    throw error
+  } finally {
+    clearTimeout(timeoutId)
+  }
 }

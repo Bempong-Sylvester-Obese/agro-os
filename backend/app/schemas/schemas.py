@@ -129,6 +129,8 @@ class DuesCollectRequest(BaseModel):
     amount: float = Field(..., gt=0)
     channel: str = Field("13", description="Moolre channel code. 13=MTN Ghana, 6=Telecel, 7=AT")
     description: Optional[str] = "Cooperative dues payment"
+    external_ref: Optional[str] = Field(None, description="Provide this if retrying a payment push after OTP verification")
+    otp_code: Optional[str] = Field(None, description="Provide this if retrying after receiving OTP")
 
 
 class DuesCollectResponse(BaseModel):
@@ -136,13 +138,7 @@ class DuesCollectResponse(BaseModel):
     moolre_reference: Optional[str] = None
     status: str
     message: str
-    moolre_code: Optional[str] = None
-    outcome: Optional[str] = None
-
-
-class DuesCollectVerifyRequest(BaseModel):
-    transaction_id: int
-    otp_code: str = Field(..., min_length=1)
+    verification_required: bool = False
 
 
 # ===========================================================================
@@ -321,63 +317,3 @@ class TransferInitiateResponse(BaseModel):
     moolre_transfer_ref: Optional[str] = None
     message: str
     raw: Optional[dict] = None
-
-
-class PaymentLinkRequest(BaseModel):
-    farmer_id: int
-    amount: float = Field(..., gt=0)
-    email: str
-    description: Optional[str] = None
-    callback_url: Optional[str] = None
-    redirect_url: Optional[str] = None
-
-
-class PaymentLinkResponse(BaseModel):
-    transaction_id: int
-    moolre_reference: str
-    payment_url: Optional[str] = None
-    success: bool
-    message: str
-
-
-class SimulateWebhookRequest(BaseModel):
-    transaction_id: Optional[int] = None
-    moolre_reference: Optional[str] = None
-
-
-class PaymentWebhookEventResponse(BaseModel):
-    id: int
-    event_type: str
-    moolre_reference: Optional[str] = None
-    transaction_id: Optional[int] = None
-    signature_valid: bool
-    processed: bool
-    message: Optional[str] = None
-    received_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class UssdSessionResponse(BaseModel):
-    id: int
-    session_id: Optional[str] = None
-    phone: str
-    input_path: Optional[str] = None
-    response_text: Optional[str] = None
-    farmer_id: Optional[int] = None
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class LoginRequest(BaseModel):
-    email: str
-    password: str
-
-
-class LoginResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    user: dict
