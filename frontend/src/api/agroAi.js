@@ -1,19 +1,12 @@
-
-
-const API_URL = import.meta.env.VITE_API_URL || 'https://previewbackendagro-os.onrender.com'
-const FETCH_TIMEOUT_MS = 10000
+import { API_URL, apiFetch, authHeaders } from './config'
 
 export async function fetchAgroAiDashboard() {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-  const token = localStorage.getItem('agro_os_token')
-  const headers = token ? { 'Authorization': `Bearer ${token}` } : {}
-  const fetchOptions = { signal: controller.signal, headers }
+  const fetchOptions = { headers: authHeaders() }
 
   try {
     const [farmersResponse, summaryResponse] = await Promise.all([
-      fetch(`${API_URL}/api/farmers`, fetchOptions),
-      fetch(`${API_URL}/api/agro-ai/credit-summary`, fetchOptions),
+      apiFetch(`${API_URL}/api/farmers`, fetchOptions),
+      apiFetch(`${API_URL}/api/agro-ai/credit-summary`, fetchOptions),
     ])
 
     if (!farmersResponse.ok || !summaryResponse.ok) {
@@ -28,7 +21,5 @@ export async function fetchAgroAiDashboard() {
   } catch (error) {
     console.error('Failed to fetch from real API:', error)
     throw error
-  } finally {
-    clearTimeout(timeoutId)
   }
 }

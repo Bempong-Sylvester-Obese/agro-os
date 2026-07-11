@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { login, signup } from '../api/auth'
+import { login, signup, storeAuthToken } from '../api/auth'
 import { Sprout, ArrowLeft, ArrowRight, Building2, Users, MapPin, Mail, Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ export default function AuthPage({ setPage, onLoginSuccess }) {
     setLoading(true)
     try {
       const data = await login(email, password)
-      localStorage.setItem('agro_os_token', data.access_token)
+      storeAuthToken(data.access_token)
       onLoginSuccess()
     } catch (err) {
       setError(err.message)
@@ -179,7 +179,7 @@ export default function AuthPage({ setPage, onLoginSuccess }) {
         location: location || undefined,
         memberCount: memberCount || undefined,
       })
-      localStorage.setItem('agro_os_token', data.access_token)
+      storeAuthToken(data.access_token)
       setSuccess(true)
       setTimeout(() => onLoginSuccess(), 1200)
     } catch (err) {

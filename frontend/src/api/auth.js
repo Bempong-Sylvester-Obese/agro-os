@@ -145,9 +145,3 @@ export function userFromAuthToken(token) {
   }
 }
 
-export function authHeaders(json = false) {
-  const token = getAuthToken()
-  const headers = token ? { Authorization: `Bearer ${token}` } : {}
-  if (json) headers['Content-Type'] = 'application/json'
-  return headers
-}

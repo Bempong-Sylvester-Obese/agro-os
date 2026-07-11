@@ -4,6 +4,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { loginAdmin, signupAdmin, storeAuthToken } from '../api/auth'
 import { USERS } from '../data/users'
 
+const ALLOW_DEMO_LOGIN = import.meta.env.DEV || import.meta.env.VITE_ALLOW_DEMO_LOGIN === 'true'
+
 export default function LoginPage({ onAuth }) {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -36,8 +38,11 @@ export default function LoginPage({ onAuth }) {
         cooperative: 'Kuapa Kokoo Demo Cooperative',
       })
       return
-    } catch {
-      // Fall back to local demo accounts when backend auth is unavailable.
+    } catch (err) {
+      if (!ALLOW_DEMO_LOGIN) {
+        setError(err.message || 'Invalid email or password')
+        return
+      }
     } finally {
       setLoading(false)
     }
@@ -76,8 +81,11 @@ export default function LoginPage({ onAuth }) {
         cooperative: cooperativeName.trim(),
       })
       return
-    } catch {
-      // Fall back to local demo signup when backend signup is unavailable.
+    } catch (err) {
+      if (!ALLOW_DEMO_LOGIN) {
+        setError(err.message || 'Could not create account')
+        return
+      }
     } finally {
       setLoading(false)
     }
@@ -249,7 +257,7 @@ export default function LoginPage({ onAuth }) {
             )}
           </div>
 
-          {mode === 'login' && (
+          {mode === 'login' && ALLOW_DEMO_LOGIN && (
             <div className="auth-hint">
               <span className="auth-hint-label">Demo credentials</span>
               <span>kwabena@ashantifarmers.gh / harvest2026</span>

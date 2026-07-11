@@ -1,16 +1,11 @@
-const API_URL = import.meta.env.VITE_API_URL || 'https://previewbackendagro-os.onrender.com'
-
-function authHeaders() {
-  const token = localStorage.getItem('agro_os_token')
-  return token ? { Authorization: `Bearer ${token}` } : {}
-}
+import { API_URL, apiFetch, authHeaders } from './config'
 
 /**
  * Fetch a cooperative by ID. Returns null on any error.
  */
 export async function fetchCooperative(cooperativeId) {
   if (!cooperativeId) return null
-  const res = await fetch(`${API_URL}/cooperatives/${cooperativeId}`, {
+  const res = await apiFetch(`${API_URL}/cooperatives/${cooperativeId}`, {
     headers: authHeaders(),
   })
   if (!res.ok) return null
@@ -18,15 +13,12 @@ export async function fetchCooperative(cooperativeId) {
 }
 
 export async function updateCooperative(cooperativeId, data) {
-  const res = await fetch(`${API_URL}/cooperatives/${cooperativeId}`, {
+  const res = await apiFetch(`${API_URL}/cooperatives/${cooperativeId}`, {
     method: 'PUT',
-    headers: {
-      ...authHeaders(),
-      'Content-Type': 'application/json'
-    },
+    headers: authHeaders(true),
     body: JSON.stringify(data)
   })
-  
+
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}))
     throw new Error(errorData.detail || 'Failed to update cooperative')

@@ -1,9 +1,11 @@
+import { TOKEN_KEY } from '../api/auth'
+
 /**
  * Decodes the stored JWT to extract cooperative_id, user_id, and email.
  * No crypto verification — server-side auth is authoritative.
  */
 export function getAuthInfo() {
-  const token = localStorage.getItem('agro_os_token')
+  const token = localStorage.getItem(TOKEN_KEY)
   if (!token) return { cooperative_id: null, email: null, user_id: null }
   try {
     const segment = token.split('.')[1]

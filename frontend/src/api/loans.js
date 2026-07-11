@@ -1,36 +1,22 @@
-const API_URL = import.meta.env.VITE_API_URL || 'https://previewbackendagro-os.onrender.com'
-const FETCH_TIMEOUT_MS = 10000
-
-function authHeaders(json = false) {
-  const token = localStorage.getItem('agro_os_token')
-  return {
-    ...(json ? { 'Content-Type': 'application/json' } : {}),
-    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-  }
-}
+import { API_URL, apiFetch, authHeaders } from './config'
 
 export async function fetchLoans(cooperativeId = null) {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
   const qs = cooperativeId ? `?cooperative_id=${cooperativeId}` : ''
 
   try {
-    const res = await fetch(`${API_URL}/loans/${qs}`, {
+    const res = await apiFetch(`${API_URL}/loans/${qs}`, {
       headers: authHeaders(),
-      signal: controller.signal
     })
     if (!res.ok) throw new Error('Loans API unavailable')
     return await res.json()
   } catch (error) {
     console.error('Failed to fetch loans:', error)
     return []
-  } finally {
-    clearTimeout(timeoutId)
   }
 }
 
 export async function createLoan(farmerId, amount, purpose, repaymentDate) {
-  const res = await fetch(`${API_URL}/loans/`, {
+  const res = await apiFetch(`${API_URL}/loans/`, {
     method: 'POST',
     headers: authHeaders(true),
     body: JSON.stringify({
@@ -49,7 +35,7 @@ export async function createLoan(farmerId, amount, purpose, repaymentDate) {
 
 export async function approveLoan(loanId) {
   const email = localStorage.getItem('agro_os_email') || 'admin'
-  const res = await fetch(`${API_URL}/loans/${loanId}/approve`, {
+  const res = await apiFetch(`${API_URL}/loans/${loanId}/approve`, {
     method: 'POST',
     headers: authHeaders(true),
     body: JSON.stringify({ approved_by: email })
@@ -62,7 +48,7 @@ export async function approveLoan(loanId) {
 }
 
 export async function rejectLoan(loanId) {
-  const res = await fetch(`${API_URL}/loans/${loanId}/reject`, {
+  const res = await apiFetch(`${API_URL}/loans/${loanId}/reject`, {
     method: 'POST',
     headers: authHeaders()
   })
@@ -74,7 +60,7 @@ export async function rejectLoan(loanId) {
 }
 
 export async function disburseLoan(loanId) {
-  const res = await fetch(`${API_URL}/loans/${loanId}/disburse`, {
+  const res = await apiFetch(`${API_URL}/loans/${loanId}/disburse`, {
     method: 'POST',
     headers: authHeaders()
   })

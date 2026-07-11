@@ -75,12 +75,18 @@ function AppRouter() {
   const [authReady, setAuthReady] = useState(false)
 
   useEffect(() => {
-    const storedUser = getAuthUser()
     const token = getAuthToken()
+    const storedUser = getAuthUser()
+
+    if (!token) {
+      if (storedUser) clearAuthSession()
+      setAuthReady(true)
+      return
+    }
 
     if (storedUser) {
       setUser(storedUser)
-    } else if (token) {
+    } else {
       const fromToken = userFromAuthToken(token)
       if (fromToken) {
         storeAuthUser(fromToken)
