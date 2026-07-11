@@ -23,10 +23,18 @@ from app.config import get_settings
 class MoolreService:
     """Handle all server-side Moolre API communications."""
 
+    _shared_client: httpx.AsyncClient | None = None
+
     def __init__(self) -> None:
         self.settings = get_settings()
         self.base_url = self.settings.moolre_api_url.rstrip("/")
         self._base_headers = self._build_base_headers()
+
+    @classmethod
+    def _http_client(cls) -> httpx.AsyncClient:
+        if cls._shared_client is None:
+            cls._shared_client = httpx.AsyncClient(timeout=30.0)
+        return cls._shared_client
 
     # ------------------------------------------------------------------
     # Header helpers
@@ -66,41 +74,59 @@ class MoolreService:
             return f"0{phone[3:]}"
         return phone
 
+    def resolve_account_number(self, cooperative_account: str | None = None) -> str:
+        """Use cooperative wallet when set; otherwise fall back to global settings."""
+        if cooperative_account and cooperative_account.strip():
+            return cooperative_account.strip()
+        return self.settings.moolre_account_number
+
     # ------------------------------------------------------------------
     # Internal HTTP helpers
     # ------------------------------------------------------------------
 
     async def _post(self, path: str, payload: dict, headers: dict | None = None) -> dict:
         h = headers or self._base_headers
-        async with httpx.AsyncClient(timeout=30) as client:
+        client = self._http_client()
+        for attempt in range(3):
             try:
                 resp = await client.post(f"{self.base_url}{path}", json=payload, headers=h)
                 resp.raise_for_status()
                 return resp.json()
             except httpx.HTTPStatusError as exc:
+                if exc.response.status_code >= 500 and attempt < 2:
+                    continue
                 return {
                     "success": False,
                     "error": str(exc),
                     "status_code": exc.response.status_code,
                 }
             except httpx.RequestError as exc:
+                if attempt < 2:
+                    continue
                 return {"success": False, "error": str(exc)}
+        return {"success": False, "error": "max retries exceeded"}
 
     async def _get(self, path: str, params: dict | None = None, headers: dict | None = None) -> dict:
         h = headers or self._base_headers
-        async with httpx.AsyncClient(timeout=30) as client:
+        client = self._http_client()
+        for attempt in range(3):
             try:
                 resp = await client.get(f"{self.base_url}{path}", params=params, headers=h)
                 resp.raise_for_status()
                 return resp.json()
             except httpx.HTTPStatusError as exc:
+                if exc.response.status_code >= 500 and attempt < 2:
+                    continue
                 return {
                     "success": False,
                     "error": str(exc),
                     "status_code": exc.response.status_code,
                 }
             except httpx.RequestError as exc:
+                if attempt < 2:
+                    continue
                 return {"success": False, "error": str(exc)}
+        return {"success": False, "error": "max retries exceeded"}
 
     # ------------------------------------------------------------------
     # Payments — collect dues via USSD push
@@ -124,7 +150,7 @@ class MoolreService:
         Returns a normalised dict with ``success``, ``moolre_reference``, ``message``.
         """
         ext_ref = external_ref or str(uuid.uuid4())
-        acc = account_number or self.settings.moolre_account_number
+        acc = self.resolve_account_number(account_number)
         normalized_phone = self._normalize_phone(payer_phone)
 
         payload = {
@@ -161,7 +187,7 @@ class MoolreService:
         account_number: str | None = None,
     ) -> dict[str, Any]:
         """Check the status of a previously initiated payment."""
-        acc = account_number or self.settings.moolre_account_number
+        acc = self.resolve_account_number(account_number)
         payload = {
             "type": 1,
             "idtype": "1",  # 1 = externalref
@@ -201,7 +227,7 @@ class MoolreService:
         channel codes: 1=MTN, 6=Telecel, 7=AT, 2=Instant Bank Transfer
         """
         ext_ref = external_ref or str(uuid.uuid4())
-        acc = account_number or self.settings.moolre_account_number
+        acc = self.resolve_account_number(account_number)
         normalized_phone = self._normalize_phone(receiver_phone)
 
         payload = {
@@ -234,7 +260,7 @@ class MoolreService:
         account_number: str | None = None,
     ) -> dict[str, Any]:
         """Check the status of a transfer."""
-        acc = account_number or self.settings.moolre_account_number
+        acc = self.resolve_account_number(account_number)
         payload = {
             "type": 1,
             "idtype": "1",
@@ -259,7 +285,7 @@ class MoolreService:
 
     async def account_status(self, account_number: str | None = None) -> dict[str, Any]:
         """Check wallet balance."""
-        acc = account_number or self.settings.moolre_account_number
+        acc = self.resolve_account_number(account_number)
         payload = {"type": 1, "accountnumber": acc}
         raw = await self._post("/open/account/status", payload)
         wallet_data = raw.get("data", {})
@@ -281,7 +307,7 @@ class MoolreService:
         status: str | None = None,
     ) -> dict[str, Any]:
         """List account transactions from Moolre (for finance dashboard sync)."""
-        acc = account_number or self.settings.moolre_account_number
+        acc = self.resolve_account_number(account_number)
         payload: dict = {"type": 2, "accountnumber": acc, "limit": str(limit)}
         if start_date:
             payload["startdate"] = start_date
@@ -359,7 +385,7 @@ class MoolreService:
     ) -> dict[str, Any]:
         """Generate a hosted Moolre payment page URL."""
         ext_ref = external_ref or str(uuid.uuid4())
-        acc = account_number or self.settings.moolre_account_number
+        acc = self.resolve_account_number(account_number)
         payload: dict = {
             "type": 1,
             "amount": str(amount),
