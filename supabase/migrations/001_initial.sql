@@ -143,3 +143,13 @@ CREATE TABLE IF NOT EXISTS agro_ai_prediction_logs (
     context TEXT,
     created_at TIMESTAMP DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR UNIQUE NOT NULL,
+    hashed_password VARCHAR NOT NULL,
+    role VARCHAR DEFAULT 'admin',
+    cooperative_id INTEGER REFERENCES cooperatives(id),
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);

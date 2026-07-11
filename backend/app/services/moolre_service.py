@@ -48,6 +48,8 @@ class MoolreService:
         }
         if self.settings.moolre_api_key:
             headers["X-API-KEY"] = self.settings.moolre_api_key
+        if self.settings.moolre_env.lower() == "live" and self.settings.moolre_api_pubkey:
+            headers["X-API-PUBKEY"] = self.settings.moolre_api_pubkey
         return headers
 
     def _vaskey_headers(self) -> dict:
@@ -168,13 +170,23 @@ class MoolreService:
 
         raw = await self._post("/open/transact/payment", payload)
 
-        # Moolre returns code "TR099" on a successful payment request
-        # TP14 means SMS OTP verification is required
-        verification_required = raw.get("code") == "TP14"
-        success = (raw.get("code") in ("TR099",) or raw.get("status") in (1, "1")) and not verification_required
+        code = raw.get("code", "")
+        verification_required = code == "TP14"
+        success = code == "TR099" or (
+            raw.get("status") in (1, "1") and not verification_required
+        )
+        if verification_required:
+            outcome = "verification_required"
+        elif success:
+            outcome = "push_sent"
+        else:
+            outcome = "failed"
+
         return {
             "success": success,
             "verification_required": verification_required,
+            "outcome": outcome,
+            "moolre_code": code or None,
             "moolre_reference": raw.get("data") or ext_ref,
             "external_ref": ext_ref,
             "message": raw.get("message") or raw.get("error", ""),

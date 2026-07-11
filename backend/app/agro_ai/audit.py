@@ -45,29 +45,29 @@ class PredictionAuditLogger:
             "context": context or {},
         }
 
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as audit_file:
-            audit_file.write(json.dumps(record, sort_keys=True) + "\n")
-
         if db is not None:
             ctx = context or {}
-            try:
-                db.add(
-                    AgroAiPredictionLog(
-                        event_id=record["event_id"],
-                        farmer_id=ctx.get("farmer_id"),
-                        cooperative_id=ctx.get("cooperative_id"),
-                        actor_id=ctx.get("actor_id"),
-                        model_version=prediction.model_version,
-                        feature_schema_version=FEATURE_SCHEMA_VERSION,
-                        requested_credit_amount=requested_credit_amount,
-                        features=json.dumps(features),
-                        prediction=json.dumps(asdict(prediction)),
-                        context=json.dumps(ctx),
-                    )
+            db.add(
+                AgroAiPredictionLog(
+                    event_id=record["event_id"],
+                    farmer_id=ctx.get("farmer_id"),
+                    cooperative_id=ctx.get("cooperative_id"),
+                    actor_id=ctx.get("actor_id"),
+                    model_version=prediction.model_version,
+                    feature_schema_version=FEATURE_SCHEMA_VERSION,
+                    requested_credit_amount=requested_credit_amount,
+                    features=json.dumps(features),
+                    prediction=json.dumps(asdict(prediction)),
+                    context=json.dumps(ctx),
                 )
-                db.commit()
-            except Exception:
-                db.rollback()
+            )
+            db.commit()
+        elif os.getenv("APP_ENV", "development").lower() in ("production", "prod"):
+            raise RuntimeError("Agro-AI audit requires database session in production")
+
+        if os.getenv("APP_ENV", "development").lower() not in ("production", "prod"):
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.path.open("a", encoding="utf-8") as audit_file:
+                audit_file.write(json.dumps(record, sort_keys=True) + "\n")
 
         return record

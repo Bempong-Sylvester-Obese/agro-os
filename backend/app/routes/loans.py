@@ -51,7 +51,7 @@ def list_loans(
     skip: int = 0,
     limit: int = Query(default=100, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user),
 ):
     """List loans with optional filters."""
     query = db.query(Loan)

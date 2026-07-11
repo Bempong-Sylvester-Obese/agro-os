@@ -139,6 +139,42 @@ class DuesCollectResponse(BaseModel):
     status: str
     message: str
     verification_required: bool = False
+    outcome: Optional[str] = None
+    moolre_code: Optional[str] = None
+
+
+class DuesCollectVerifyRequest(BaseModel):
+    transaction_id: int
+    otp_code: str = Field(..., min_length=4)
+
+
+class PaymentLinkRequest(BaseModel):
+    farmer_id: int
+    amount: float = Field(..., gt=0)
+    email: str
+    description: Optional[str] = "Cooperative payment"
+    currency: str = "GHS"
+
+
+class PaymentLinkResponse(BaseModel):
+    success: bool
+    payment_url: Optional[str] = None
+    reference: Optional[str] = None
+    transaction_id: int
+
+
+class PaymentWebhookEventResponse(BaseModel):
+    id: int
+    event_type: str
+    moolre_reference: Optional[str] = None
+    transaction_id: Optional[int] = None
+    signature_valid: bool
+    processed: bool
+    message: Optional[str] = None
+    received_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 # ===========================================================================
@@ -155,6 +191,7 @@ class LoanCreate(BaseModel):
 
 class LoanApprove(BaseModel):
     approved_by: str
+    override_reason: Optional[str] = None
 
 
 class LoanResponse(BaseModel):

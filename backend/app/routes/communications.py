@@ -75,11 +75,11 @@ def list_communication_logs(
     skip: int = 0,
     limit: int = Query(default=50, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user),
 ):
     """List sent communication logs, optionally filtered by cooperative."""
     query = db.query(CommunicationLog)
-    if current_user.cooperative_id:
+    if current_user and current_user.cooperative_id:
         query = query.filter(CommunicationLog.cooperative_id == current_user.cooperative_id)
     elif cooperative_id is not None:
         query = query.filter(CommunicationLog.cooperative_id == cooperative_id)

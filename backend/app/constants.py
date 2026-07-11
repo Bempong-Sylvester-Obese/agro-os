@@ -1,3 +1,3 @@
 """Shared application constants."""
 
-MAX_PAGE_SIZE = 1000
+MAX_PAGE_SIZE = 100

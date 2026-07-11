@@ -1,7 +1,7 @@
 """Tests for demo-critical endpoints: auth, webhook simulate, payment link, USSD logs."""
 
 
-def test_auth_login(client):
+def test_auth_login(client, demo_admin):
     resp = client.post(
         "/auth/login",
         json={"email": "admin@agroos.demo", "password": "demo1234"},

@@ -22,6 +22,7 @@ class UserResponse(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+    user: UserResponse | None = None
 
 class SignupRequest(BaseModel):
     """Combined cooperative + user registration in one step."""
