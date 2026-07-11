@@ -1,7 +1,7 @@
 // src/pages/LoginPage.jsx
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { loginAdmin, signupAdmin, storeAuthToken } from '../api/auth'
+import { loginAdmin, signupAdmin, storeAuthToken, userFromAuthToken } from '../api/auth'
 import { USERS } from '../data/users'
 
 const ALLOW_DEMO_LOGIN = import.meta.env.DEV || import.meta.env.VITE_ALLOW_DEMO_LOGIN === 'true'
@@ -32,10 +32,11 @@ export default function LoginPage({ onAuth }) {
     try {
       const result = await loginAdmin(email, password)
       storeAuthToken(result.access_token)
+      const apiUser = result.user || userFromAuthToken(result.access_token)
       onAuth({
-        ...result.user,
-        email: result.user.email || email.trim(),
-        cooperative: 'Kuapa Kokoo Demo Cooperative',
+        ...(apiUser || {}),
+        email: apiUser?.email || email.trim(),
+        cooperative: apiUser?.cooperative || 'Kuapa Kokoo Demo Cooperative',
       })
       return
     } catch (err) {
@@ -75,10 +76,12 @@ export default function LoginPage({ onAuth }) {
         cooperative_name: cooperativeName.trim(),
       })
       storeAuthToken(result.access_token)
+      const apiUser = result.user || userFromAuthToken(result.access_token)
       onAuth({
-        ...result.user,
-        email: result.user?.email || email.trim(),
-        cooperative: cooperativeName.trim(),
+        ...(apiUser || {}),
+        name: apiUser?.name || name.trim(),
+        email: apiUser?.email || email.trim(),
+        cooperative: result.cooperative_name || cooperativeName.trim(),
       })
       return
     } catch (err) {

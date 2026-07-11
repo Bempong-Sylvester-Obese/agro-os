@@ -1,6 +1,7 @@
 // src/pages/FeaturesPage.jsx
 import Footer from '../components/Footer'
 import CTASection from '../components/CTASection'
+import { useAppNavigate } from '../hooks/useAppNavigate'
 import { Users, Sprout, CreditCard, MessageSquare, Star, Smartphone, Activity, Shield, FileText } from 'lucide-react'
 
 const FEATURES = [
@@ -15,7 +16,9 @@ const FEATURES = [
   [<FileText size={28} />, 'Audit trails & receipts',  'Every transaction is logged with a timestamped receipt. Export to CSV for financial reporting.'],
 ]
 
-export default function FeaturesPage({ setPage }) {
+export default function FeaturesPage() {
+  const setPage = useAppNavigate()
+
   return (
     <>
       <div className="sol-hero">
@@ -46,10 +49,10 @@ export default function FeaturesPage({ setPage }) {
         primaryLabel="Open dashboard"
         secondaryLabel="Book a demo"
         onPrimary={() => setPage('dashboard')}
-        onSecondary={() => {}}
+        onSecondary={() => setPage('bookDemo')}
       />
 
-      <Footer setPage={setPage} />
+      <Footer />
     </>
   )
 }

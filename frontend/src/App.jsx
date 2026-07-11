@@ -53,9 +53,9 @@ function AppShell({ user, authReady, onAuth, onLogout }) {
   return (
     <div className="app-shell">
       <ScrollToHash />
-      {showNavbar && <Navbar />}
+      {showNavbar && <Navbar isAuthenticated={Boolean(user)} onLogout={onLogout} />}
       <Routes>
-        <Route path="/" element={<HomePage onAuth={onAuth} />} />
+        <Route path="/" element={<HomePage />} />
         <Route path="/solutions" element={<SolutionsPage />} />
         <Route path="/features" element={<FeaturesPage />} />
         <Route path="/pricing" element={<PricingPage />} />

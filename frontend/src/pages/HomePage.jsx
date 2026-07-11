@@ -2,6 +2,7 @@
 import Footer from '../components/Footer'
 import DashboardMock from '../components/DashboardMock'
 import CTASection from '../components/CTASection'
+import { useAppNavigate } from '../hooks/useAppNavigate'
 import { Sprout, Handshake, Smartphone, Globe, Users, CreditCard, MessageSquare, Star, Building, MapPin, Tractor, Landmark } from 'lucide-react'
 
 const PHOTO_STRIP = [
@@ -27,7 +28,9 @@ const WHO = [
   [<Landmark size={32} />, 'Financiers & lenders', 'Access AgroCredit Trust Scores for individual farmers to assess creditworthiness with confidence.'],
 ]
 
-export default function HomePage({ setPage }) {
+export default function HomePage() {
+  const setPage = useAppNavigate()
+
   return (
     <>
       {/* ── Hero ── */}
@@ -43,7 +46,7 @@ export default function HomePage({ setPage }) {
               leaders one platform to manage everything. No spreadsheets. No paper ledgers.
             </p>
             <div className="hero-ctas">
-              <button className="btn-lg" onClick={() => setPage('auth')}>Get started free</button>
+              <button className="btn-lg" onClick={() => setPage('login', { loginMode: 'signup' })}>Get started free</button>
               <button className="btn-out-lg" onClick={() => setPage('dashboard')}>See the dashboard</button>
             </div>
           </div>
@@ -161,11 +164,11 @@ export default function HomePage({ setPage }) {
         subtext="Join cooperatives across Ghana who've replaced paper with AgroOS. Start free, upgrade when you're ready."
         primaryLabel="Get started free"
         secondaryLabel="Book a demo"
-        onPrimary={() => {}}
-        onSecondary={() => {}}
+        onPrimary={() => setPage('login', { loginMode: 'signup' })}
+        onSecondary={() => setPage('bookDemo')}
       />
 
-      <Footer setPage={setPage} />
+      <Footer />
     </>
   )
 }

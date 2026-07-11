@@ -17,7 +17,7 @@ export function useAppNavigate() {
       return
     }
 
-    if (target === 'login') {
+    if (target === 'login' || target === 'auth') {
       const search = loginMode === 'signup' ? '?mode=signup' : ''
       navigate(`/login${search}`)
       window.scrollTo({ top: 0, behavior: 'instant' })
