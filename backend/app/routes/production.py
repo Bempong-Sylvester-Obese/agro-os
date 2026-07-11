@@ -1,8 +1,9 @@
 """Production Tracking Routes"""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.models.models import Farmer, Production, User
 from app.services.auth_service import get_current_user
@@ -47,7 +48,7 @@ def list_productions(
     farmer_id: int | None = None,
     crop_type: str | None = None,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = Query(default=100, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

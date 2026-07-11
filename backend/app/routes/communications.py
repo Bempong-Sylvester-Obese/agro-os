@@ -1,8 +1,9 @@
 """Communications Routes — SMS broadcast and reminder endpoints"""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.models.models import CommunicationLog, Cooperative, User
 from app.services.auth_service import get_current_user
@@ -72,7 +73,7 @@ async def send_dues_reminder(request: DuesReminderRequest, db: Session = Depends
 def list_communication_logs(
     cooperative_id: int | None = None,
     skip: int = 0,
-    limit: int = 50,
+    limit: int = Query(default=50, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):

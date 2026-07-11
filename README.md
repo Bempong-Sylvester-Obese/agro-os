@@ -4,7 +4,7 @@
 
 Built for the **Moolre Cup Hackathon**, AgroOS shifts the conversation from fragmented agricultural apps to a unified ecosystem. It empowers farmer organizations to manage members, process bulk disbursements, and generate AI-driven credit scores using offline-first Moolre USSD integration.
 
-By bridging the gap between unconnected rural farmers and formal financial ecosystems, AgroOS provides enterprise-grade infrastructure tailored for the agricultural value chain.
+By bridging the gap between unconnected rural farmers and formal financial ecosystems, AgroOS provides enterprise-grade infrastructure tailored for the agricultural value chain
 
 ---
 
@@ -38,13 +38,13 @@ agroos/
 |   +-- README.md
 +-- docs/                      # Product strategy and planning notes
 |   +-- product-strategy.md
-+-- frontend/                  # Next.js web dashboard
++-- frontend/                  # Vite + React web dashboard
 |   +-- README.md
 +-- supabase/                  # Database schema, migrations, and seed data
 |   +-- README.md
 +-- .env.example
 +-- .gitignore
-+-- readme.md
++-- README.md
 
 ```
 
@@ -70,7 +70,7 @@ Resources:
 
 ## Getting Started
 
-This repository is currently initialized as a team scaffold. The implementation folders are intentionally lightweight so each teammate can build their assigned area from a shared structure.
+This repository is an active monorepo: the Vite + React dashboard and FastAPI backend are both implemented, including production, communications, transactions, loans, webhooks, and Agro-AI routes backed by a tested backend service.
 
 ### Prerequisites
 
@@ -81,9 +81,16 @@ This repository is currently initialized as a team scaffold. The implementation 
 
 ### 1. Clone and Configure
 
-1. Copy `.env.example` to your local environment file when implementation work begins.
+1. Copy `backend/.env.example` to `backend/.env` and `frontend/.env.example` to `frontend/.env` for local development.
 2. Read `docs/product-strategy.md` for the product vision and Golden Path demo.
 3. Choose a feature branch before making changes.
+4. For deeper backend setup and API details, see `backend/README.md`.
+
+### Environment files
+
+- **`backend/.env`**: runtime env file for the FastAPI backend. `backend/app/config.py` loads `.env` from the backend working directory, so copy from `backend/.env.example`.
+- **`frontend/.env`**: local env file for the Vite app. Copy from `frontend/.env.example` (for example `VITE_API_URL=http://localhost:8000`, `VITE_COOPERATIVE_ID=1`).
+- **Root `.env` / `.env.example`**: shared reference for workspace-level variables. Keep Moolre keys aligned with backend names (for example `MOOLRE_API_URL`, `DEFAULT_SMS_SENDER_ID`). `NEXT_PUBLIC_API_URL` is deprecated and not used by this Vite frontend.
 
 ### 2. Local Development
 
@@ -96,7 +103,19 @@ npm run api
 npm run dev
 ```
 
-Use `npm run build` from the repository root to build the Vite frontend.
+Additional root scripts:
+
+```bash
+npm run test:backend   # Run backend pytest suite
+npm run train:ai       # Train/evaluate Agro-AI model
+npm run build          # Build Vite frontend
+```
+
+Reference docs:
+
+- `docs/` for strategy, demo, and planning documents
+- `docs/moolre-setup.md` for sandbox/live credential setup and local webhook testing
+- `backend/README.md` for backend endpoints, environment variables, linting, and test commands
 
 ### 3. Team Work Areas
 
@@ -114,11 +133,8 @@ For the hackathon MVP, AgroCredit now includes `agro-ai`: a Scikit-learn Random 
 When a farmer makes a USSD payment via Moolre, a webhook should trigger the FastAPI backend to record the transaction and recalculate their Trust Score in Supabase.
 
 ---
-
-## Contribution Guidelines
-
-To ensure rapid development and zero merge conflicts during the hackathon:
+See **[CONTRIBUTING.md](./CONTRIBUTING.md)** for branch naming, PR checklists, test commands, and secrets policy.
 
 1. **Never push directly to `main`.**
-2. Branch naming convention: `feat/feature-name`, `fix/bug-name`, `docs/update-name`.
+2. Branch naming convention: `feat/feature-name`, `fix/bug-name`, `docs/update-name`, `integrate/system-wiring`.
 3. Ensure backend code passes `ruff` linting and frontend code passes `eslint` before opening a Pull Request.

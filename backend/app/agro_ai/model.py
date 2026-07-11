@@ -13,6 +13,7 @@ from app.agro_ai.synthetic_data import DEMO_FARMERS, FEATURE_NAMES, generate_tra
 
 MODEL_VERSION = "agro-ai-rf-v1"
 FEATURE_SCHEMA_VERSION = "agro-ai-features-v1"
+SYNTHETIC_ARTIFACT_SOURCE = "startup-trained-synthetic"
 MODEL_PARAMS = {
     "n_estimators": 160,
     "max_depth": 7,
@@ -99,7 +100,7 @@ class AgroAiCreditModel:
         classifier: RandomForestClassifier | None = None,
         *,
         model_version: str = MODEL_VERSION,
-        artifact_source: str = "startup-trained-synthetic",
+        artifact_source: str = SYNTHETIC_ARTIFACT_SOURCE,
     ) -> None:
         self.classifier = classifier or train_classifier()
         self.model_version = model_version
@@ -115,11 +116,16 @@ class AgroAiCreditModel:
         )
 
     @property
-    def metadata(self) -> dict[str, str]:
+    def is_synthetic_fallback(self) -> bool:
+        return self.artifact_source == SYNTHETIC_ARTIFACT_SOURCE
+
+    @property
+    def metadata(self) -> dict[str, str | bool]:
         return {
             "model_version": self.model_version,
             "feature_schema_version": FEATURE_SCHEMA_VERSION,
             "artifact_source": self.artifact_source,
+            "is_synthetic_fallback": self.is_synthetic_fallback,
         }
 
     def list_farmer_assessments(self) -> list[dict[str, Any]]:

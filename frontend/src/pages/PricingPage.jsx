@@ -1,5 +1,6 @@
 // src/pages/PricingPage.jsx
 import Footer from '../components/Footer'
+import { useAppNavigate } from '../hooks/useAppNavigate'
 
 const PLANS = [
   {
@@ -48,7 +49,8 @@ const PLANS = [
   },
 ]
 
-export default function PricingPage({ setPage }) {
+export default function PricingPage() {
+  const setPage = useAppNavigate()
   return (
     <>
       <div className="sol-hero">
@@ -60,10 +62,11 @@ export default function PricingPage({ setPage }) {
 
       <section className="sec">
         <div className="sec-inner">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 24, maxWidth: 960, margin: '0 auto' }}>
+          <div className="pricing-grid">
             {PLANS.map(({ name, price, sub, primary, features, cta }) => (
               <div
                 key={name}
+                className={`pricing-card${primary ? ' pricing-card--featured' : ''}`}
                 style={{
                   background: primary ? 'var(--g)' : '#fff',
                   border: `1px solid ${primary ? 'var(--g)' : 'var(--border)'}`,
@@ -72,7 +75,6 @@ export default function PricingPage({ setPage }) {
                   display: 'flex',
                   flexDirection: 'column',
                   boxShadow: primary ? '0 24px 60px rgba(26,71,49,.2)' : 'none',
-                  transform: primary ? 'translateY(-8px)' : 'none',
                 }}
               >
                 <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', color: primary ? 'var(--gold-l)' : 'var(--g)', marginBottom: 10 }}>
@@ -95,6 +97,14 @@ export default function PricingPage({ setPage }) {
                 </div>
 
                 <button
+                  type="button"
+                  onClick={() => {
+                    if (cta === 'Contact sales') {
+                      setPage('login', { loginMode: 'login' })
+                    } else {
+                      setPage('login', { loginMode: 'signup' })
+                    }
+                  }}
                   style={{
                     background: primary ? 'var(--gold)' : 'none',
                     color: primary ? 'var(--g)' : 'var(--g)',
@@ -115,7 +125,7 @@ export default function PricingPage({ setPage }) {
         </div>
       </section>
 
-      <Footer setPage={setPage} />
+      <Footer />
     </>
   )
 }

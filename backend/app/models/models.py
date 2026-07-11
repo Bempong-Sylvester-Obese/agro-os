@@ -288,3 +288,67 @@ class CommunicationLog(Base):
     sent_by = Column(String, nullable=True)  # admin identifier
     status = Column(String, default="sent")
     sent_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Payment Webhook Audit
+# ---------------------------------------------------------------------------
+
+
+class PaymentWebhookEvent(Base):
+    """Audit log for incoming Moolre payment webhooks."""
+
+    __tablename__ = "payment_webhook_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_type = Column(String, default="payment")
+    moolre_reference = Column(String, nullable=True, index=True)
+    transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
+    signature_valid = Column(Boolean, default=True)
+    payload = Column(Text, nullable=False)
+    processed = Column(Boolean, default=False)
+    message = Column(String, nullable=True)
+    received_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# USSD Session Log
+# ---------------------------------------------------------------------------
+
+
+class UssdSession(Base):
+    """Lightweight USSD interaction log for dashboard visibility."""
+
+    __tablename__ = "ussd_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String, nullable=True, index=True)
+    phone = Column(String, nullable=False, index=True)
+    input_path = Column(String, nullable=True)
+    response_text = Column(Text, nullable=True)
+    farmer_id = Column(Integer, ForeignKey("farmers.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Agro-AI Prediction Audit
+# ---------------------------------------------------------------------------
+
+
+class AgroAiPredictionLog(Base):
+    """Database audit trail for Agro-AI predictions."""
+
+    __tablename__ = "agro_ai_prediction_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(String, unique=True, nullable=False, index=True)
+    farmer_id = Column(String, nullable=True)
+    cooperative_id = Column(String, nullable=True)
+    actor_id = Column(String, nullable=True)
+    model_version = Column(String, nullable=False)
+    feature_schema_version = Column(String, nullable=False)
+    requested_credit_amount = Column(Integer, default=0)
+    features = Column(Text, nullable=False)
+    prediction = Column(Text, nullable=False)
+    context = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

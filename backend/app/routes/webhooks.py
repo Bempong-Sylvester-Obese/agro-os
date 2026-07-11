@@ -3,19 +3,23 @@ Moolre Webhook Routes
 
 Handles:
   - POST /webhooks/moolre/payment  — real-time payment confirmation
+  - POST /webhooks/moolre/payment/simulate — dev/demo webhook trigger
   - POST /webhooks/moolre/ussd     — USSD session menu handler
 """
 
 import hashlib
 import hmac
+import json
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
-from app.models.models import Farmer, Transaction, TransactionStatus
+from app.models.models import Farmer, PaymentWebhookEvent, Transaction, TransactionStatus, UssdSession
+from app.schemas.schemas import SimulateWebhookRequest, UssdSessionResponse
 from app.services.communications_service import CommunicationsService
 from app.services.trust_score_service import TrustScoreService
 
@@ -50,6 +54,123 @@ def _verify_signature(body: bytes, signature_header: str | None) -> bool:
         hashlib.sha256,
     ).hexdigest()
     return hmac.compare_digest(expected, signature_header.lower().strip())
+
+
+def _record_webhook_event(
+    db: Session,
+    *,
+    payload: dict,
+    signature_valid: bool,
+    transaction: Transaction | None = None,
+    processed: bool = False,
+    message: str | None = None,
+) -> PaymentWebhookEvent:
+    data = payload.get("data") or {}
+    external_ref = data.get("externalref") or payload.get("reference")
+    event = PaymentWebhookEvent(
+        event_type="payment",
+        moolre_reference=external_ref,
+        transaction_id=transaction.id if transaction else None,
+        signature_valid=signature_valid,
+        payload=json.dumps(payload),
+        processed=processed,
+        message=message,
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+def _process_payment_payload(
+    payload: dict,
+    db: Session,
+    background_tasks: BackgroundTasks,
+    *,
+    signature_valid: bool,
+) -> dict:
+    moolre_status: int = payload.get("status", 0)
+    data: dict = payload.get("data") or {}
+
+    external_ref: str | None = data.get("externalref") or payload.get("reference")
+    transaction_id: str | None = data.get("transactionid")
+    amount_raw = data.get("amount") or data.get("value", "0")
+
+    try:
+        amount = float(amount_raw)
+    except (TypeError, ValueError):
+        amount = 0.0
+
+    tx: Transaction | None = None
+    if external_ref:
+        tx = db.query(Transaction).filter(Transaction.moolre_reference == external_ref).first()
+
+    if not tx and transaction_id:
+        tx = db.query(Transaction).filter(Transaction.moolre_reference == transaction_id).first()
+
+    if not tx:
+        _record_webhook_event(
+            db,
+            payload=payload,
+            signature_valid=signature_valid,
+            processed=False,
+            message="reference not found",
+        )
+        logger.warning(
+            "Webhook received for unknown reference '%s' (txid: %s)", external_ref, transaction_id
+        )
+        return {"status": "ok", "message": "reference not found — acknowledged"}
+
+    if moolre_status == 1:
+        tx.status = TransactionStatus.completed
+        db.commit()
+
+        _record_webhook_event(
+            db,
+            payload=payload,
+            signature_valid=signature_valid,
+            transaction=tx,
+            processed=True,
+            message="Payment confirmed",
+        )
+
+        background_tasks.add_task(
+            _post_payment_tasks,
+            farmer_id=tx.farmer_id,
+            amount=amount,
+            reference=external_ref or str(transaction_id),
+        )
+
+        logger.info(
+            "Payment confirmed: tx_id=%s farmer_id=%s amount=GHS%.2f",
+            tx.id,
+            tx.farmer_id,
+            amount,
+        )
+        return {
+            "status": "ok",
+            "transaction_id": tx.id,
+            "reference": external_ref,
+            "message": "Payment confirmed — Trust Score queued for update",
+        }
+
+    tx.status = TransactionStatus.failed
+    db.commit()
+    _record_webhook_event(
+        db,
+        payload=payload,
+        signature_valid=signature_valid,
+        transaction=tx,
+        processed=True,
+        message="Payment failure recorded",
+    )
+    logger.info("Payment failed: tx_id=%s ref=%s", tx.id, external_ref)
+    return {
+        "status": "ok",
+        "transaction_id": tx.id,
+        "reference": external_ref,
+        "message": "Payment failure recorded",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -109,8 +230,9 @@ async def handle_moolre_payment_webhook(
     }
     """
     body = await request.body()
+    signature_valid = _verify_signature(body, x_moolre_signature)
 
-    if not _verify_signature(body, x_moolre_signature):
+    if not signature_valid:
         raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
     try:
@@ -118,70 +240,62 @@ async def handle_moolre_payment_webhook(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
-    moolre_status: int = payload.get("status", 0)
-    data: dict = payload.get("data") or {}
+    return _process_payment_payload(
+        payload,
+        db,
+        background_tasks,
+        signature_valid=signature_valid,
+    )
 
-    external_ref: str | None = data.get("externalref") or payload.get("reference")
-    transaction_id: str | None = data.get("transactionid")
-    amount_raw = data.get("amount") or data.get("value", "0")
 
-    try:
-        amount = float(amount_raw)
-    except (TypeError, ValueError):
-        amount = 0.0
+@router.post("/moolre/payment/simulate")
+async def simulate_moolre_payment_webhook(
+    request_body: SimulateWebhookRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Dev/demo endpoint to fire a successful payment webhook without Moolre sandbox."""
+    if settings.app_env == "production":
+        raise HTTPException(status_code=403, detail="Simulation disabled in production")
 
-    # Locate our transaction record
     tx: Transaction | None = None
-    if external_ref:
-        tx = db.query(Transaction).filter(Transaction.moolre_reference == external_ref).first()
-
-    if not tx and transaction_id:
-        # Fallback: try matching Moolre's own transaction ID
-        tx = db.query(Transaction).filter(Transaction.moolre_reference == transaction_id).first()
+    if request_body.transaction_id is not None:
+        tx = db.query(Transaction).filter(Transaction.id == request_body.transaction_id).first()
+    elif request_body.moolre_reference:
+        tx = (
+            db.query(Transaction)
+            .filter(Transaction.moolre_reference == request_body.moolre_reference)
+            .first()
+        )
 
     if not tx:
-        logger.warning(
-            "Webhook received for unknown reference '%s' (txid: %s)", external_ref, transaction_id
-        )
-        # Return 200 so Moolre doesn't retry
-        return {"status": "ok", "message": "reference not found — acknowledged"}
+        raise HTTPException(status_code=404, detail="Transaction not found")
 
-    if moolre_status == 1:
-        # Payment success
-        tx.status = TransactionStatus.completed
+    if not tx.moolre_reference:
+        import uuid as _uuid
+
+        tx.moolre_reference = str(_uuid.uuid4())
         db.commit()
+        db.refresh(tx)
 
-        background_tasks.add_task(
-            _post_payment_tasks,
-            farmer_id=tx.farmer_id,
-            amount=amount,
-            reference=external_ref or str(transaction_id),
-        )
-
-        logger.info(
-            "Payment confirmed: tx_id=%s farmer_id=%s amount=GHS%.2f",
-            tx.id,
-            tx.farmer_id,
-            amount,
-        )
-        return {
-            "status": "ok",
-            "transaction_id": tx.id,
-            "reference": external_ref,
-            "message": "Payment confirmed — Trust Score queued for update",
-        }
-
-    else:
-        # Payment failed
-        tx.status = TransactionStatus.failed
-        db.commit()
-        logger.info("Payment failed: tx_id=%s ref=%s", tx.id, external_ref)
-        return {
-            "status": "ok",
-            "transaction_id": tx.id,
-            "reference": external_ref,
-            "message": "Payment failure recorded",
-        }
+    payload = {
+        "status": 1,
+        "code": "P01",
+        "message": "Simulated Transaction Successful",
+        "data": {
+            "transactionid": f"SIM-{tx.id}",
+            "externalref": tx.moolre_reference,
+            "amount": str(tx.amount),
+            "payer": tx.payer_phone or "",
+        },
+        "simulated": True,
+    }
+    return _process_payment_payload(
+        payload,
+        db,
+        background_tasks,
+        signature_valid=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -198,15 +312,58 @@ USSD_MENU_MAIN = (
 )
 
 
+def _log_ussd_session(
+    db: Session,
+    *,
+    session_id: str,
+    phone: str,
+    input_path: str,
+    response_text: str,
+    farmer: Farmer | None,
+) -> None:
+    db.add(
+        UssdSession(
+            session_id=session_id or None,
+            phone=phone,
+            input_path=input_path or None,
+            response_text=response_text,
+            farmer_id=farmer.id if farmer else None,
+        )
+    )
+    db.commit()
+
+
+@router.get("/ussd/logs", response_model=list[UssdSessionResponse])
+def list_ussd_logs(
+    limit: int = Query(default=50, le=MAX_PAGE_SIZE),
+    db: Session = Depends(get_db),
+):
+    """Recent USSD interactions for dashboard visibility."""
+    return (
+        db.query(UssdSession)
+        .order_by(UssdSession.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+
 @router.post("/moolre/ussd")
-async def handle_ussd_session(request: Request, db: Session = Depends(get_db)):
+async def handle_ussd_session(
+    request: Request,
+    db: Session = Depends(get_db),
+    x_moolre_signature: str | None = Header(default=None),
+):
     """
     Handle USSD session callbacks from Moolre.
     Moolre posts session data; we respond with the next menu string.
     """
+    body = await request.body()
+    if not _verify_signature(body, x_moolre_signature):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
     try:
-        payload = await request.json()
-    except Exception:
+        payload = json.loads(body)
+    except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
     session_id: str = payload.get("sessionid", "")
@@ -217,7 +374,16 @@ async def handle_ussd_session(request: Request, db: Session = Depends(get_db)):
 
     # ---- Main menu (no input yet)
     if not input_text or input_text == "0":
-        return {"response": USSD_MENU_MAIN, "action": "input"}
+        response = {"response": USSD_MENU_MAIN, "action": "input"}
+        _log_ussd_session(
+            db,
+            session_id=session_id,
+            phone=phone,
+            input_path=input_text or "menu",
+            response_text=USSD_MENU_MAIN,
+            farmer=farmer,
+        )
+        return response
 
     parts = input_text.split("*")
     level_1 = parts[0] if parts else ""
@@ -225,7 +391,9 @@ async def handle_ussd_session(request: Request, db: Session = Depends(get_db)):
     # ---- Option 1: Check Loan Balance
     if level_1 == "1":
         if not farmer:
-            return {"response": "Phone not registered with AgroOS. Contact your cooperative.", "action": "end"}
+            msg = "Phone not registered with AgroOS. Contact your cooperative."
+            _log_ussd_session(db, session_id=session_id, phone=phone, input_path=input_text, response_text=msg, farmer=None)
+            return {"response": msg, "action": "end"}
         from app.models.models import Loan, LoanStatus
 
         active_loans = (
@@ -238,45 +406,50 @@ async def handle_ussd_session(request: Request, db: Session = Depends(get_db)):
         else:
             total = sum(ln.amount for ln in active_loans)
             msg = f"Hello {farmer.name}, active loan balance: GHS {total:.2f}"
+        _log_ussd_session(db, session_id=session_id, phone=phone, input_path=input_text, response_text=msg, farmer=farmer)
         return {"response": msg, "action": "end"}
 
     # ---- Option 2: Pay Cooperative Dues (info — actual payment via USSD merchant code)
     elif level_1 == "2":
         merchant = settings.moolre_merchant_code or "AgroOS"
-        return {
-            "response": f"Dial *203*{merchant}# to pay your dues via mobile money. Thank you!",
-            "action": "end",
-        }
+        msg = f"Dial *203*{merchant}# to pay your dues via mobile money. Thank you!"
+        _log_ussd_session(db, session_id=session_id, phone=phone, input_path=input_text, response_text=msg, farmer=farmer)
+        return {"response": msg, "action": "end"}
 
     # ---- Option 3: Request Input Loan
     elif level_1 == "3":
         if not farmer:
-            return {"response": "Phone not registered with AgroOS.", "action": "end"}
-        return {
-            "response": (
-                f"Hello {farmer.name}, loan requests must be submitted through your "
-                "cooperative administrator. They will process it in AgroOS."
-            ),
-            "action": "end",
-        }
+            msg = "Phone not registered with AgroOS."
+            _log_ussd_session(db, session_id=session_id, phone=phone, input_path=input_text, response_text=msg, farmer=None)
+            return {"response": msg, "action": "end"}
+        msg = (
+            f"Hello {farmer.name}, loan requests must be submitted through your "
+            "cooperative administrator. They will process it in AgroOS."
+        )
+        _log_ussd_session(db, session_id=session_id, phone=phone, input_path=input_text, response_text=msg, farmer=farmer)
+        return {"response": msg, "action": "end"}
 
     # ---- Option 4: View Announcements
     elif level_1 == "4":
-        return {
-            "response": "No new announcements. Check with your cooperative leader.",
-            "action": "end",
-        }
+        msg = "No new announcements. Check with your cooperative leader."
+        _log_ussd_session(db, session_id=session_id, phone=phone, input_path=input_text, response_text=msg, farmer=farmer)
+        return {"response": msg, "action": "end"}
 
     # ---- Option 5: Check Farm Status
     elif level_1 == "5":
         if not farmer:
-            return {"response": "Phone not registered with AgroOS.", "action": "end"}
+            msg = "Phone not registered with AgroOS."
+            _log_ussd_session(db, session_id=session_id, phone=phone, input_path=input_text, response_text=msg, farmer=None)
+            return {"response": msg, "action": "end"}
         msg = (
             f"Farmer: {farmer.name}\n"
             f"Trust Score: {farmer.trust_score:.1f}/100\n"
             f"Status: {farmer.membership_status.value.capitalize()}"
         )
+        _log_ussd_session(db, session_id=session_id, phone=phone, input_path=input_text, response_text=msg, farmer=farmer)
         return {"response": msg, "action": "end"}
 
     else:
-        return {"response": "Invalid option. Please try again.", "action": "end"}
+        msg = "Invalid option. Please try again."
+        _log_ussd_session(db, session_id=session_id, phone=phone, input_path=input_text, response_text=msg, farmer=farmer)
+        return {"response": msg, "action": "end"}

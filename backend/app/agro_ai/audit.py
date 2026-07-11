@@ -10,13 +10,16 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from sqlalchemy.orm import Session
+
 from app.agro_ai.model import FEATURE_SCHEMA_VERSION, Prediction
+from app.models.models import AgroAiPredictionLog
 
 DEFAULT_AUDIT_LOG_PATH = Path(__file__).resolve().parents[2] / "logs" / "agro_ai_predictions.jsonl"
 
 
 class PredictionAuditLogger:
-    """Append local JSONL audit records until Supabase persistence is available."""
+    """Append JSONL audit records and persist to the database when available."""
 
     def __init__(self, path: str | Path | None = None) -> None:
         configured_path = path or os.getenv("AGRO_AI_AUDIT_LOG_PATH") or DEFAULT_AUDIT_LOG_PATH
@@ -29,6 +32,7 @@ class PredictionAuditLogger:
         prediction: Prediction,
         requested_credit_amount: int,
         context: dict[str, Any] | None = None,
+        db: Session | None = None,
     ) -> dict[str, Any]:
         record = {
             "event_id": str(uuid4()),
@@ -44,5 +48,26 @@ class PredictionAuditLogger:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as audit_file:
             audit_file.write(json.dumps(record, sort_keys=True) + "\n")
+
+        if db is not None:
+            ctx = context or {}
+            try:
+                db.add(
+                    AgroAiPredictionLog(
+                        event_id=record["event_id"],
+                        farmer_id=ctx.get("farmer_id"),
+                        cooperative_id=ctx.get("cooperative_id"),
+                        actor_id=ctx.get("actor_id"),
+                        model_version=prediction.model_version,
+                        feature_schema_version=FEATURE_SCHEMA_VERSION,
+                        requested_credit_amount=requested_credit_amount,
+                        features=json.dumps(features),
+                        prediction=json.dumps(asdict(prediction)),
+                        context=json.dumps(ctx),
+                    )
+                )
+                db.commit()
+            except Exception:
+                db.rollback()
 
         return record

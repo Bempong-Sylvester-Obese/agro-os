@@ -1,8 +1,9 @@
 """Farmer Management Routes"""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.models.models import CooperativeAttendance, Cooperative, Farmer, MembershipStatus, User
 from app.services.auth_service import get_current_user
@@ -56,7 +57,7 @@ def list_farmers(
     cooperative_id: int | None = None,
     membership_status: MembershipStatus | None = None,
     skip: int = 0,
-    limit: int = 100,
+    limit: int = Query(default=100, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -135,7 +136,9 @@ def get_trust_score(farmer_id: int, db: Session = Depends(get_db)):
 
 @router.get("/{farmer_id}/trust-score/history", response_model=list[TrustScoreResponse])
 def get_trust_score_history(
-    farmer_id: int, limit: int = 10, db: Session = Depends(get_db)
+    farmer_id: int,
+    limit: int = Query(default=10, le=MAX_PAGE_SIZE),
+    db: Session = Depends(get_db),
 ):
     """Return the last N trust score snapshots for trend display."""
     _get_farmer_or_404(farmer_id, db)
