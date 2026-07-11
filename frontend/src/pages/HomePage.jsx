@@ -62,11 +62,6 @@ const WHO = [
 export default function HomePage({ user }) {
   const setPage = useAppNavigate()
 
-  function scrollToMoolre() {
-    document.querySelector('.moolre-cards')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      ?? document.getElementById('moolre-integration')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
   function handleSeeDashboard() {
     if (user) {
       setPage('dashboard')
@@ -102,8 +97,17 @@ export default function HomePage({ user }) {
               leaders one platform to manage everything. No spreadsheets. No paper ledgers.
             </p>
             <div className="hero-ctas">
-              <button className="btn-lg" onClick={() => setPage('login', { loginMode: 'signup' })}>Get started free</button>
-              <button className="btn-out-lg" onClick={handleSeeDashboard}>See the dashboard</button>
+              {user ? (
+                <>
+                  <button className="btn-lg" onClick={() => setPage('dashboard')}>Go to dashboard</button>
+                  <button className="btn-out-lg" onClick={() => setPage('bookDemo')}>Book a demo</button>
+                </>
+              ) : (
+                <>
+                  <button className="btn-lg" onClick={() => setPage('login', { loginMode: 'signup' })}>Get started free</button>
+                  <button className="btn-out-lg" onClick={handleSeeDashboard}>See the dashboard</button>
+                </>
+              )}
             </div>
           </div>
           <div>
@@ -210,7 +214,6 @@ export default function HomePage({ user }) {
               and disbursements flow directly through the Moolre ecosystem. No third-party payment setup required.
             </p>
           </div>
-          <button type="button" className="btn-gold" onClick={scrollToMoolre}>Explore integration →</button>
         </div>
 
         <div className="moolre-cards">
@@ -236,9 +239,9 @@ export default function HomePage({ user }) {
       <CTASection
         heading="Ready to modernize<br />your cooperative?"
         subtext="Join cooperatives across Ghana who've replaced paper with AgroOS. Start free, upgrade when you're ready."
-        primaryLabel="Get started free"
+        primaryLabel={user ? 'Go to dashboard' : 'Get started free'}
         secondaryLabel="Book a demo"
-        onPrimary={() => setPage('login', { loginMode: 'signup' })}
+        onPrimary={() => (user ? setPage('dashboard') : setPage('login', { loginMode: 'signup' }))}
         onSecondary={() => setPage('bookDemo')}
       />
 

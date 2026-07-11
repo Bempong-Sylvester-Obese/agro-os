@@ -5,8 +5,8 @@ import { API_URL, apiFetch, authHeaders } from './config'
  */
 export async function fetchFarmers(cooperativeId = null) {
   const qs = cooperativeId
-    ? `?cooperative_id=${cooperativeId}&limit=500`
-    : '?limit=500'
+    ? `?cooperative_id=${cooperativeId}&limit=100`
+    : '?limit=100'
   const res = await apiFetch(`${API_URL}/farmers/${qs}`, { headers: authHeaders() })
   if (!res.ok) throw new Error('Failed to fetch farmers')
   return res.json()

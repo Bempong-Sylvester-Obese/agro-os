@@ -3,9 +3,30 @@ import { useState } from 'react'
 import { Plus, X, Loader2 } from 'lucide-react'
 import { logProduction } from '../../api/production'
 
+function quantityKg(prod) {
+  const value = prod.quantity_kg ?? prod.yield_amount
+  return value == null || Number.isNaN(Number(value)) ? null : Number(value)
+}
+
+function expectedKg(prod) {
+  const value = prod.expected_kg ?? prod.acreage
+  return value == null || Number.isNaN(Number(value)) ? null : Number(value)
+}
+
+function formatKg(value) {
+  return value == null ? '—' : value.toLocaleString()
+}
+
+function formatHarvestDate(prod) {
+  if (!prod.harvest_date) return '—'
+  const date = new Date(prod.harvest_date)
+  if (Number.isNaN(date.getTime())) return '—'
+  return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+}
+
 // ── Log Production Modal ────────────────────────────────────────────────────────
 function LogProductionModal({ farmers, onClose, onSuccess }) {
-  const [form, setForm] = useState({ farmerId: '', cropType: '', acreage: '', yieldAmount: '', harvestDate: '' })
+  const [form, setForm] = useState({ farmerId: '', cropType: '', expectedKg: '', quantityKg: '', harvestDate: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   
@@ -13,14 +34,14 @@ function LogProductionModal({ farmers, onClose, onSuccess }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!form.farmerId || !form.cropType || !form.acreage || !form.yieldAmount || !form.harvestDate) {
+    if (!form.farmerId || !form.cropType || !form.expectedKg || !form.quantityKg || !form.harvestDate) {
       setError('Please fill in all fields.')
       return
     }
     setLoading(true)
     setError(null)
     try {
-      await logProduction(form.farmerId, form.cropType, form.acreage, form.yieldAmount, form.harvestDate)
+      await logProduction(form.farmerId, form.cropType, form.expectedKg, form.quantityKg, form.harvestDate)
       onSuccess()
     } catch (err) {
       setError(err.message)
@@ -71,15 +92,15 @@ function LogProductionModal({ farmers, onClose, onSuccess }) {
               <input style={input} type="text" value={form.cropType} onChange={e => setForm({...form, cropType: e.target.value})} placeholder="e.g. Maize" required disabled={loading}/>
             </div>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 13, fontWeight: 600 }}>Acreage (Acres)</label>
-              <input style={input} type="number" min="0.1" step="0.1" value={form.acreage} onChange={e => setForm({...form, acreage: e.target.value})} placeholder="e.g. 2.5" required disabled={loading}/>
+              <label style={{ fontSize: 13, fontWeight: 600 }}>Expected yield (kg)</label>
+              <input style={input} type="number" min="0.1" step="0.1" value={form.expectedKg} onChange={e => setForm({...form, expectedKg: e.target.value})} placeholder="e.g. 600" required disabled={loading}/>
             </div>
           </div>
 
           <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 13, fontWeight: 600 }}>Yield (kg/bags)</label>
-              <input style={input} type="number" min="1" step="1" value={form.yieldAmount} onChange={e => setForm({...form, yieldAmount: e.target.value})} placeholder="e.g. 500" required disabled={loading}/>
+              <label style={{ fontSize: 13, fontWeight: 600 }}>Harvest quantity (kg)</label>
+              <input style={input} type="number" min="1" step="1" value={form.quantityKg} onChange={e => setForm({...form, quantityKg: e.target.value})} placeholder="e.g. 500" required disabled={loading}/>
             </div>
             <div style={{ flex: 1 }}>
               <label style={{ fontSize: 13, fontWeight: 600 }}>Harvest Date</label>
@@ -105,17 +126,22 @@ export default function Production({ farmers = [], productions = [], loading, on
     return <div style={{ padding: 32, color: 'var(--muted)', fontSize: 14 }}>Loading production data…</div>
   }
 
-  const totalAcreage = productions.reduce((sum, p) => sum + p.acreage, 0)
-  const totalYield = productions.reduce((sum, p) => sum + p.yield_amount, 0)
-  
-  // Get unique crops and sort by yield
+  const totalExpected = productions.reduce((sum, p) => sum + (expectedKg(p) ?? 0), 0)
+  const totalYield = productions.reduce((sum, p) => sum + (quantityKg(p) ?? 0), 0)
+
   const crops = {}
   productions.forEach(p => {
-    crops[p.crop_type] = (crops[p.crop_type] || 0) + p.yield_amount
+    const qty = quantityKg(p)
+    if (qty == null || !p.crop_type) return
+    crops[p.crop_type] = (crops[p.crop_type] || 0) + qty
   })
   const topCrop = Object.keys(crops).sort((a, b) => crops[b] - crops[a])[0]
 
-  const sorted = [...productions].sort((a, b) => new Date(b.harvest_date) - new Date(a.harvest_date))
+  const sorted = [...productions].sort((a, b) => {
+    const aTime = a.harvest_date ? new Date(a.harvest_date).getTime() : 0
+    const bTime = b.harvest_date ? new Date(b.harvest_date).getTime() : 0
+    return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime)
+  })
 
   return (
     <>
@@ -136,9 +162,9 @@ export default function Production({ farmers = [], productions = [], loading, on
 
       <div className="pay-stats">
         {[
-          ['Total Yield Volume', totalYield > 0 ? totalYield.toLocaleString() : '—', 'Across all harvest logs'],
-          ['Total Farmed Acreage', totalAcreage > 0 ? `${totalAcreage.toLocaleString()} acres` : '—', 'Aggregated across members'],
-          ['Top Producing Crop', topCrop || '—', topCrop ? `${crops[topCrop].toLocaleString()} logged` : 'No data yet'],
+          ['Total harvest (kg)', totalYield > 0 ? formatKg(totalYield) : '—', 'Across all harvest logs'],
+          ['Total expected (kg)', totalExpected > 0 ? formatKg(totalExpected) : '—', 'Planned yield across members'],
+          ['Top producing crop', topCrop || '—', topCrop ? `${formatKg(crops[topCrop])} kg logged` : 'No data yet'],
         ].map(([lbl, val, sub]) => (
           <div key={lbl} className="stat-card">
             <div className="stat-lbl">{lbl}</div>
@@ -163,22 +189,21 @@ export default function Production({ farmers = [], productions = [], loading, on
             <div className="pay-head" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}>
               <span className="pt-lbl">Member</span>
               <span className="pt-lbl">Crop Type</span>
-              <span className="pt-lbl">Acreage</span>
-              <span className="pt-lbl">Yield</span>
+              <span className="pt-lbl">Expected (kg)</span>
+              <span className="pt-lbl">Harvest (kg)</span>
               <span className="pt-lbl">Harvest Date</span>
             </div>
             {sorted.map(prod => {
               const farmer = farmers.find(f => f.id === prod.farmer_id)
               const name = farmer ? farmer.name : `Farmer #${prod.farmer_id}`
-              const harvestDate = new Date(prod.harvest_date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
 
               return (
                 <div key={prod.id} className="pay-row" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', alignItems: 'center' }}>
                   <div><div className="pt-name">{name}</div><div className="pt-id">#{prod.id}</div></div>
-                  <span className="pt-m">{prod.crop_type}</span>
-                  <span className="pt-m">{prod.acreage} acres</span>
-                  <span className="pt-v">{prod.yield_amount.toLocaleString()}</span>
-                  <span className="pt-m">{harvestDate}</span>
+                  <span className="pt-m">{prod.crop_type || '—'}</span>
+                  <span className="pt-m">{formatKg(expectedKg(prod))}</span>
+                  <span className="pt-v">{formatKg(quantityKg(prod))}</span>
+                  <span className="pt-m">{formatHarvestDate(prod)}</span>
                 </div>
               )
             })}

@@ -40,9 +40,9 @@ export default function Footer() {
 
         <div>
           <div className="footer-col-title">Moolre</div>
-          <a href="/#moolre-integration" className="footer-link" onClick={go('home', { scrollTo: 'moolre-integration' })}>Integration</a>
-          <a href="/dashboard/payments" className="footer-link" onClick={go('dashboard', { dashboardSection: 'payments' })}>Payment portal</a>
-          <a href="/dashboard/ussd" className="footer-link" onClick={go('dashboard', { dashboardSection: 'ussd' })}>USSD menu</a>
+          <a href="/#moolre-integration" className="footer-link" onClick={go('home', { scrollTo: 'moolre-integration' })}>Integration overview</a>
+          <a href="/dashboard/payments" className="footer-link" onClick={go('dashboard', { dashboardSection: 'payments' })}>Collections</a>
+          <a href="/dashboard/ussd" className="footer-link" onClick={go('dashboard', { dashboardSection: 'ussd' })}>USSD activity</a>
         </div>
 
         <div>

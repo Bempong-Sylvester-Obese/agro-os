@@ -16,8 +16,16 @@ const FEATURES = [
   [<FileText size={28} />, 'Audit trails & receipts',  'Every transaction is logged with a timestamped receipt. Export to CSV for financial reporting.'],
 ]
 
-export default function FeaturesPage() {
+export default function FeaturesPage({ user }) {
   const setPage = useAppNavigate()
+
+  function openDashboard() {
+    if (user) {
+      setPage('dashboard')
+      return
+    }
+    setPage('login', { next: '/dashboard' })
+  }
 
   return (
     <>
@@ -46,9 +54,9 @@ export default function FeaturesPage() {
       <CTASection
         heading="Ready to see it in action?"
         subtext="Try the live dashboard or book a walkthrough with the AgroOS team."
-        primaryLabel="Open dashboard"
+        primaryLabel={user ? 'Go to dashboard' : 'Open dashboard'}
         secondaryLabel="Book a demo"
-        onPrimary={() => setPage('dashboard')}
+        onPrimary={openDashboard}
         onSecondary={() => setPage('bookDemo')}
       />
 

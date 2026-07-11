@@ -1,6 +1,8 @@
 // src/pages/DashboardPage.jsx
 import { useEffect, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { getAuthInfo } from '../utils/auth'
+import { DASHBOARD_SECTIONS, dashboardPath } from '../constants/routes'
 import { fetchFarmers } from '../api/farmers'
 import { fetchCooperative } from '../api/cooperatives'
 import { fetchTransactions } from '../api/transactions'
@@ -14,6 +16,7 @@ import SMS      from '../components/dashboard/SMS'
 import Loans    from '../components/dashboard/Loans'
 import Production from '../components/dashboard/Production'
 import SettingsView from '../components/dashboard/Settings'
+import USSD from '../components/dashboard/USSD'
 import DashboardUserMenu from '../components/dashboard/DashboardUserMenu'
 import { BarChart3, Users, CreditCard, Star, MessageSquare, Settings, Sprout, Banknote, Tractor } from 'lucide-react'
 
@@ -35,11 +38,15 @@ const TITLES = {
   production: 'Production',
   scores:   'Agro-AI credit scores',
   sms:      'SMS broadcasts',
+  ussd:     'USSD activity',
   settings: 'Settings',
 }
 
 export default function DashboardPage({ user, onLogout }) {
-  const [section, setSection]           = useState('overview')
+  const navigate = useNavigate()
+  const { section: urlSection } = useParams()
+  const sectionFromUrl = urlSection && DASHBOARD_SECTIONS.includes(urlSection) ? urlSection : 'overview'
+  const [section, setSection] = useState(sectionFromUrl)
   const [farmers, setFarmers]           = useState([])
   const [transactions, setTransactions] = useState([])
   const [loans, setLoans]               = useState([])
@@ -70,6 +77,15 @@ export default function DashboardPage({ user, onLogout }) {
 
   useEffect(() => { loadAll() }, [cooperative_id])
 
+  useEffect(() => {
+    setSection(sectionFromUrl)
+  }, [sectionFromUrl])
+
+  function goToSection(key) {
+    setSection(key)
+    navigate(dashboardPath(key))
+  }
+
   // Called after a member is added — refreshes only the farmers list
   const handleMemberAdded = () => {
     fetchFarmers(cooperative_id).then(setFarmers).catch(() => {})
@@ -95,7 +111,7 @@ export default function DashboardPage({ user, onLogout }) {
             <button
               key={key}
               className={`admin-nav-item${section === key ? ' on' : ''}`}
-              onClick={() => setSection(key)}
+              onClick={() => goToSection(key)}
             >
               {icon} {label}
             </button>
@@ -104,7 +120,7 @@ export default function DashboardPage({ user, onLogout }) {
           <div className="admin-nav-lbl">Account</div>
           <button
             className={`admin-nav-item${section === 'settings' ? ' on' : ''}`}
-            onClick={() => setSection('settings')}
+            onClick={() => goToSection('settings')}
           >
             <Settings size={18} style={{ marginRight: 8 }} /> Settings
           </button>
@@ -115,11 +131,7 @@ export default function DashboardPage({ user, onLogout }) {
       <div className="admin-main">
         <div className="admin-topbar">
           <div className="admin-page-title serif">{TITLES[section]}</div>
-          <DashboardUserMenu
-            user={user}
-            onLogout={onLogout}
-            onOpenSettings={() => setSection('settings')}
-          />
+          <DashboardUserMenu user={user} onLogout={onLogout} />
         </div>
 
         <div className="admin-content">
@@ -176,6 +188,9 @@ export default function DashboardPage({ user, onLogout }) {
               cooperative={cooperative}
               onRefresh={loadAll}
             />
+          )}
+          {section === 'ussd' && (
+            <USSD />
           )}
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell, Globe, LogOut, Settings, ImagePlus, Trash2 } from 'lucide-react'
+import { Bell, Globe, LogOut, ImagePlus, Trash2 } from 'lucide-react'
 import {
   clearProfileAvatar,
   getProfileAvatar,
@@ -18,7 +18,7 @@ function readFileAsDataUrl(file) {
   })
 }
 
-export default function DashboardUserMenu({ user, onLogout, onOpenSettings }) {
+export default function DashboardUserMenu({ user, onLogout }) {
   const navigate = useNavigate()
   const email = user?.email ?? ''
   const initials = user?.initials || getInitials(email)
@@ -151,20 +151,6 @@ export default function DashboardUserMenu({ user, onLogout, onOpenSettings }) {
                 onClick={handleRemovePhoto}
               >
                 <Trash2 size={16} /> Remove photo
-              </button>
-            )}
-
-            {onOpenSettings && (
-              <button
-                type="button"
-                className="admin-user-menu-item"
-                role="menuitem"
-                onClick={() => {
-                  closeAll()
-                  onOpenSettings()
-                }}
-              >
-                <Settings size={16} /> Settings
               </button>
             )}
 

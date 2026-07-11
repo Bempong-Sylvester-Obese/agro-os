@@ -66,7 +66,7 @@ function AppShell({ user, authReady, onAuth, onLogout }) {
       <Routes>
         <Route path="/" element={<HomePage user={user} />} />
         <Route path="/solutions" element={<SolutionsPage />} />
-        <Route path="/features" element={<FeaturesPage />} />
+        <Route path="/features" element={<FeaturesPage user={user} />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/book-demo" element={<BookDemoPage />} />
         <Route path="/login" element={<AuthPage onAuth={onAuth} />} />
