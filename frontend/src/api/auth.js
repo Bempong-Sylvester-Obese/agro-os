@@ -2,6 +2,30 @@ const API_URL = import.meta.env.VITE_API_URL || 'https://previewbackendagro-os.o
 const FETCH_TIMEOUT_MS = 10000
 export const TOKEN_KEY = 'agro_os_token'
 const USER_KEY = 'agro_os_user'
+const AVATAR_PREFIX = 'agro_os_avatar_'
+const MAX_AVATAR_BYTES = 500 * 1024
+
+function avatarKey(email) {
+  return `${AVATAR_PREFIX}${(email || '').toLowerCase()}`
+}
+
+export function getProfileAvatar(email) {
+  if (!email) return null
+  return localStorage.getItem(avatarKey(email))
+}
+
+export function storeProfileAvatar(email, dataUrl) {
+  if (!email) return
+  if (dataUrl) localStorage.setItem(avatarKey(email), dataUrl)
+  else localStorage.removeItem(avatarKey(email))
+}
+
+export function clearProfileAvatar(email) {
+  if (!email) return
+  localStorage.removeItem(avatarKey(email))
+}
+
+export { MAX_AVATAR_BYTES }
 
 export async function signupAdmin({ email, password, cooperative_name, location, member_count }) {
   const controller = new AbortController()

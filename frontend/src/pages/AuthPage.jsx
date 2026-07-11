@@ -239,7 +239,12 @@ export default function AuthPage({ onAuth }) {
     setError(null)
     setStep(0)
     setSuccess(false)
-    navigate(nextLogin ? '/login' : '/login?mode=signup', { replace: true })
+    const params = new URLSearchParams()
+    if (!nextLogin) params.set('mode', 'signup')
+    const next = searchParams.get('next')
+    if (next) params.set('next', next)
+    const search = params.toString() ? `?${params.toString()}` : ''
+    navigate(`/login${search}`, { replace: true })
   }
 
   // ── Background panel illustration ─────────────────────────────────────────

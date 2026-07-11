@@ -3,7 +3,38 @@ import Footer from '../components/Footer'
 import DashboardMock from '../components/DashboardMock'
 import CTASection from '../components/CTASection'
 import { useAppNavigate } from '../hooks/useAppNavigate'
-import { Sprout, Handshake, Smartphone, Globe, Users, CreditCard, MessageSquare, Star, Building, MapPin, Tractor, Landmark } from 'lucide-react'
+import { Sprout, Handshake, Smartphone, Globe, Users, CreditCard, MessageSquare, Star, Building, MapPin, Tractor, Landmark, Banknote, ArrowRight } from 'lucide-react'
+
+const MOOLRE_PILLARS = [
+  {
+    icon: <CreditCard size={24} />,
+    title: 'Collections',
+    desc: 'Collect member dues via MoMo with payment links, receipts, and webhook confirmation.',
+    target: 'dashboard',
+    dashboardSection: 'payments',
+  },
+  {
+    icon: <Banknote size={24} />,
+    title: 'Disbursements',
+    desc: 'Approve and disburse loans straight to member wallets with full audit trails.',
+    target: 'dashboard',
+    dashboardSection: 'loans',
+  },
+  {
+    icon: <MessageSquare size={24} />,
+    title: 'SMS broadcasts',
+    desc: 'Send announcements to all members or filtered groups in one click.',
+    target: 'dashboard',
+    dashboardSection: 'sms',
+  },
+  {
+    icon: <Smartphone size={24} />,
+    title: 'USSD access',
+    desc: 'Farmers without smartphones check balances and pay dues through Moolre USSD menus.',
+    target: 'solutions',
+    scrollTo: 'ussd-section',
+  },
+]
 
 const PHOTO_STRIP = [
   ['#1A4731', <Users color="#A7F3D0" size={24} />, 'The team',      'Building AgroOS, in Ghana, for Africa.'],
@@ -28,8 +59,33 @@ const WHO = [
   [<Landmark size={32} />, 'Financiers & lenders', 'Access AgroCredit Trust Scores for individual farmers to assess creditworthiness with confidence.'],
 ]
 
-export default function HomePage() {
+export default function HomePage({ user }) {
   const setPage = useAppNavigate()
+
+  function scrollToMoolre() {
+    document.querySelector('.moolre-cards')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      ?? document.getElementById('moolre-integration')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
+  function handleSeeDashboard() {
+    if (user) {
+      setPage('dashboard')
+      return
+    }
+    setPage('login', { next: '/dashboard' })
+  }
+
+  function handlePillarClick(pillar) {
+    if (pillar.target === 'dashboard') {
+      if (user) {
+        setPage('dashboard', { dashboardSection: pillar.dashboardSection })
+      } else {
+        setPage('login', { next: `/dashboard/${pillar.dashboardSection}` })
+      }
+      return
+    }
+    setPage(pillar.target, { scrollTo: pillar.scrollTo })
+  }
 
   return (
     <>
@@ -47,7 +103,7 @@ export default function HomePage() {
             </p>
             <div className="hero-ctas">
               <button className="btn-lg" onClick={() => setPage('login', { loginMode: 'signup' })}>Get started free</button>
-              <button className="btn-out-lg" onClick={() => setPage('dashboard')}>See the dashboard</button>
+              <button className="btn-out-lg" onClick={handleSeeDashboard}>See the dashboard</button>
             </div>
           </div>
           <div>
@@ -143,8 +199,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Moolre band ── */}
-      <div className="moolre-band">
+      {/* ── Moolre band + integration ── */}
+      <div className="moolre-band" id="moolre-integration">
         <div className="moolre-inner">
           <div>
             <div className="moolre-tag">Moolre integration</div>
@@ -154,7 +210,25 @@ export default function HomePage() {
               and disbursements flow directly through the Moolre ecosystem. No third-party payment setup required.
             </p>
           </div>
-          <button className="btn-gold">Explore integration →</button>
+          <button type="button" className="btn-gold" onClick={scrollToMoolre}>Explore integration →</button>
+        </div>
+
+        <div className="moolre-cards">
+          {MOOLRE_PILLARS.map((pillar) => (
+            <button
+              key={pillar.title}
+              type="button"
+              className="moolre-card"
+              onClick={() => handlePillarClick(pillar)}
+            >
+              <div className="moolre-card-icon">{pillar.icon}</div>
+              <div className="moolre-card-title serif">{pillar.title}</div>
+              <p className="moolre-card-desc">{pillar.desc}</p>
+              <span className="moolre-card-link">
+                Learn more <ArrowRight size={14} />
+              </span>
+            </button>
+          ))}
         </div>
       </div>
 
