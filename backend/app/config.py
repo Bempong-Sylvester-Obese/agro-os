@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     debug: bool = True
     secret_key: str = "your-secret-key-change-in-production"
     cors_origins: str = ""
+    auth_enabled: bool = False
+    sentry_dsn: str = ""
+    seed_demo_data: bool = False
 
     # Database
     database_url: str = "postgresql://user:password@localhost:5432/agro_os"
@@ -42,6 +45,7 @@ class Settings(BaseSettings):
     # Agro-AI
     agro_ai_model_path: str = "backend/model_artifacts/agro-ai-rf-v1.joblib"
     agro_ai_audit_log_path: str = "backend/logs/agro_ai_predictions.jsonl"
+    agro_ai_require_artifact: bool = False
     wandb_project: str = "agro-os"
     wandb_entity: str = ""
     wandb_mode: str = "offline"
