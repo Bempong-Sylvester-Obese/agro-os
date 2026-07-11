@@ -317,3 +317,24 @@ class TransferInitiateResponse(BaseModel):
     moolre_transfer_ref: Optional[str] = None
     message: str
     raw: Optional[dict] = None
+
+
+# ===========================================================================
+# Webhooks
+# ===========================================================================
+
+class SimulateWebhookRequest(BaseModel):
+    transaction_id: Optional[int] = None
+    moolre_reference: Optional[str] = None
+
+class UssdSessionResponse(BaseModel):
+    id: int
+    session_id: Optional[str] = None
+    phone: str
+    input_path: Optional[str] = None
+    response_text: str
+    farmer_id: Optional[int] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
