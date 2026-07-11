@@ -6,7 +6,10 @@ export function getAuthInfo() {
   const token = localStorage.getItem('agro_os_token')
   if (!token) return { cooperative_id: null, email: null, user_id: null }
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]))
+    const segment = token.split('.')[1]
+    const base64 = segment.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4)
+    const payload = JSON.parse(atob(padded))
     return {
       cooperative_id: payload.cooperative_id ?? null,
       user_id: payload.user_id ?? null,
