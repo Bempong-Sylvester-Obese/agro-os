@@ -1,6 +1,6 @@
 // src/pages/DashboardPage.jsx
 import { useEffect, useState } from 'react'
-import { getAuthInfo, getInitials } from '../utils/auth'
+import { getAuthInfo } from '../utils/auth'
 import { fetchFarmers } from '../api/farmers'
 import { fetchCooperative } from '../api/cooperatives'
 import { fetchTransactions } from '../api/transactions'
@@ -14,7 +14,8 @@ import SMS      from '../components/dashboard/SMS'
 import Loans    from '../components/dashboard/Loans'
 import Production from '../components/dashboard/Production'
 import SettingsView from '../components/dashboard/Settings'
-import { BarChart3, Users, CreditCard, Star, MessageSquare, Settings, Bell, Sprout, Banknote, Tractor } from 'lucide-react'
+import DashboardUserMenu from '../components/dashboard/DashboardUserMenu'
+import { BarChart3, Users, CreditCard, Star, MessageSquare, Settings, Sprout, Banknote, Tractor } from 'lucide-react'
 
 const NAV_ITEMS = [
   { key: 'overview', icon: <BarChart3 size={18} />, label: 'Overview' },
@@ -37,7 +38,7 @@ const TITLES = {
   settings: 'Settings',
 }
 
-export default function DashboardPage() {
+export default function DashboardPage({ user, onLogout }) {
   const [section, setSection]           = useState('overview')
   const [farmers, setFarmers]           = useState([])
   const [transactions, setTransactions] = useState([])
@@ -47,8 +48,7 @@ export default function DashboardPage() {
   const [loading, setLoading]           = useState(true)
 
   // Decode JWT once — cooperative_id scopes all queries
-  const { cooperative_id, email } = getAuthInfo()
-  const initials = getInitials(email)
+  const { cooperative_id } = getAuthInfo()
 
   const loadAll = () => {
     setLoading(true)
@@ -115,12 +115,11 @@ export default function DashboardPage() {
       <div className="admin-main">
         <div className="admin-topbar">
           <div className="admin-page-title serif">{TITLES[section]}</div>
-          <div className="admin-topbar-r">
-            <span style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-              <Bell size={20} />
-            </span>
-            <div className="admin-avatar" title={email ?? ''}>{initials}</div>
-          </div>
+          <DashboardUserMenu
+            user={user}
+            onLogout={onLogout}
+            onOpenSettings={() => setSection('settings')}
+          />
         </div>
 
         <div className="admin-content">

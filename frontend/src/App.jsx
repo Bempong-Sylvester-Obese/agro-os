@@ -11,6 +11,11 @@ import BookDemoPage from './pages/BookDemoPage'
 import DashboardPage from './pages/DashboardPage'
 import AuthPage from './pages/AuthPage'
 
+function safeNextPath(next) {
+  if (!next || !next.startsWith('/') || next.startsWith('//')) return '/dashboard'
+  return next
+}
+
 function ScrollToHash() {
   const { hash, pathname } = useLocation()
 
@@ -27,8 +32,12 @@ function ScrollToHash() {
 }
 
 function DashboardGate({ user, authReady, onLogout }) {
+  const location = useLocation()
   if (!authReady) return null
-  if (!user) return <Navigate to="/login" replace />
+  if (!user) {
+    const next = encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)
+    return <Navigate to={`/login?next=${next}`} replace />
+  }
   return <DashboardPage user={user} onLogout={onLogout} />
 }
 
@@ -55,7 +64,7 @@ function AppShell({ user, authReady, onAuth, onLogout }) {
       <ScrollToHash />
       {showNavbar && <Navbar isAuthenticated={Boolean(user)} onLogout={onLogout} />}
       <Routes>
-        <Route path="/" element={<HomePage />} />
+        <Route path="/" element={<HomePage user={user} />} />
         <Route path="/solutions" element={<SolutionsPage />} />
         <Route path="/features" element={<FeaturesPage />} />
         <Route path="/pricing" element={<PricingPage />} />
@@ -102,7 +111,8 @@ function AppRouter() {
   function handleAuth(u) {
     storeAuthUser(u)
     setUser(u)
-    navigate('/dashboard')
+    const next = new URLSearchParams(window.location.search).get('next')
+    navigate(safeNextPath(next))
     window.scrollTo({ top: 0, behavior: 'instant' })
   }
 
