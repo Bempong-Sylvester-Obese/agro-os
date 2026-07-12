@@ -19,6 +19,18 @@ function getDates() {
 
 const FMT = { weekday: 'short', month: 'short', day: 'numeric' }
 
+function toLocalDateString(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+function formatLocalDate(iso, options) {
+  const [y, m, day] = iso.split('-').map(Number)
+  return new Date(y, m - 1, day).toLocaleDateString('en-GB', options)
+}
+
 export default function BookDemoPage() {
   const setPage = useAppNavigate()
   const [step, setStep] = useState(0)
@@ -26,6 +38,7 @@ export default function BookDemoPage() {
   const [selectedTime, setSelectedTime] = useState(null)
   const [form, setForm] = useState({ name: '', email: '', phone: '', cooperative: '', size: '1-50', topic: TOPICS[0], notes: '' })
   const [err, setErr] = useState('')
+  const [submitting, setSubmitting] = useState(false)
   const dates = getDates()
 
   function handleField(e) { setForm((f) => ({ ...f, [e.target.name]: e.target.value })); setErr('') }
@@ -37,10 +50,15 @@ export default function BookDemoPage() {
   }
 
   function submitDemo() {
+    if (submitting) return
     if (!form.name.trim() || !form.email.trim()) { setErr('Name and email are required.'); return }
     if (!form.email.includes('@')) { setErr('Enter a valid email address.'); return }
     setErr('')
-    setStep(2)
+    setSubmitting(true)
+    window.setTimeout(() => {
+      setStep(2)
+      setSubmitting(false)
+    }, 400)
   }
 
   return (
@@ -56,7 +74,7 @@ export default function BookDemoPage() {
       <section className="sec" style={{ paddingTop: 0 }}>
         <div className="sec-inner" style={{ maxWidth: 900 }}>
           {step < 2 ? (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32 }}>
+            <div className="book-demo-grid">
               <div>
                 <div style={{
                   background: '#fff', border: '1px solid var(--border)', borderRadius: 16,
@@ -85,9 +103,9 @@ export default function BookDemoPage() {
                   {step === 0 && (
                     <>
                       <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: 'var(--text)' }}>Select a date</div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 20 }}>
+                      <div className="book-demo-dates">
                         {dates.map((d) => {
-                          const iso = d.toISOString().split('T')[0]
+                          const iso = toLocalDateString(d)
                           const active = selectedDate === iso
                           return (
                             <button
@@ -134,7 +152,7 @@ export default function BookDemoPage() {
 
                   {step === 1 && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div className="book-demo-fields">
                         <div className="auth-field">
                           <label className="auth-label">Full name *</label>
                           <input className="auth-input" name="name" placeholder="Kwame Boateng" value={form.name} onChange={handleField} />
@@ -148,7 +166,7 @@ export default function BookDemoPage() {
                         <label className="auth-label">Cooperative name</label>
                         <input className="auth-input" name="cooperative" placeholder="Ashanti Farmers Co-op" value={form.cooperative} onChange={handleField} />
                       </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div className="book-demo-fields">
                         <div className="auth-field">
                           <label className="auth-label">Phone</label>
                           <input className="auth-input" name="phone" placeholder="024 xxx xxxx" value={form.phone} onChange={handleField} />
@@ -179,8 +197,10 @@ export default function BookDemoPage() {
                         />
                       </div>
                       <div style={{ display: 'flex', gap: 10 }}>
-                        <button type="button" className="btn-out-lg" style={{ fontSize: 13, padding: '10px 18px', flex: 1 }} onClick={() => { setStep(0); setErr('') }}>← Back</button>
-                        <button type="button" className="btn-lg" style={{ fontSize: 13, padding: '10px 18px', flex: 2 }} onClick={submitDemo}>Confirm booking →</button>
+                        <button type="button" className="btn-out-lg" style={{ fontSize: 13, padding: '10px 18px', flex: 1 }} onClick={() => { setStep(0); setErr('') }} disabled={submitting}>← Back</button>
+                        <button type="button" className="btn-lg" style={{ fontSize: 13, padding: '10px 18px', flex: 2 }} onClick={submitDemo} disabled={submitting}>
+                          {submitting ? 'Submitting…' : 'Confirm booking →'}
+                        </button>
                       </div>
                     </div>
                   )}
@@ -196,7 +216,7 @@ export default function BookDemoPage() {
                     <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 6 }}>
                       <span>📅</span>
                       <span style={{ fontSize: 14, fontWeight: 600 }}>
-                        {selectedDate ? new Date(`${selectedDate}T00:00`).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'No date selected'}
+                        {selectedDate ? formatLocalDate(selectedDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'No date selected'}
                       </span>
                     </div>
                     <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
@@ -231,10 +251,10 @@ export default function BookDemoPage() {
           ) : (
             <div style={{ maxWidth: 500, margin: '0 auto', textAlign: 'center' }}>
               <div style={{ fontSize: 64, marginBottom: 16 }}>🎉</div>
-              <h2 className="serif" style={{ fontSize: 28, fontWeight: 900, color: 'var(--g)', marginBottom: 10 }}>Demo booked!</h2>
+              <h2 className="serif" style={{ fontSize: 28, fontWeight: 900, color: 'var(--g)', marginBottom: 10 }}>Request received</h2>
               <p style={{ fontSize: 14, color: 'var(--muted)', lineHeight: 1.7, marginBottom: 28 }}>
-                We've received your booking for <strong>{selectedDate && new Date(`${selectedDate}T00:00`).toLocaleDateString('en-GB', { weekday: 'long', month: 'long', day: 'numeric' })}</strong> at <strong>{selectedTime} GMT</strong>.<br />
-                A calendar invite has been sent to <strong>{form.email}</strong>.
+                We've received your demo request for <strong>{selectedDate && formatLocalDate(selectedDate, { weekday: 'long', month: 'long', day: 'numeric' })}</strong> at <strong>{selectedTime} GMT</strong>.<br />
+                We'll email you at <strong>{form.email}</strong> within 24 hours to confirm your booking.
               </p>
               <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
                 <button type="button" className="btn-out-lg" style={{ fontSize: 13, padding: '10px 22px' }} onClick={() => setPage('home')}>Back to home</button>
