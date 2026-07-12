@@ -34,5 +34,8 @@ async def test_send_sms_includes_account_number(mock_post, monkeypatch):
     get_settings.cache_clear()
 
     payload = mock_post.call_args[0][1]
+    headers = mock_post.call_args[1]["headers"]
     assert payload["accountnumber"] == "ACC-12345"
     assert payload["messages"][0]["recipient"] == "0244123456"
+    assert headers["X-API-VASKEY"] == "test-vas-key"
+    assert "X-API-USER" in headers

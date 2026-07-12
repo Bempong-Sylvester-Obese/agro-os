@@ -109,7 +109,7 @@ class CommunicationsService:
         Send a bulk SMS to all (active) members of a cooperative.
         Returns total recipients, successes, and failures.
         """
-        from app.models.models import Farmer, MembershipStatus, Cooperative
+        from app.models.models import Farmer, MembershipStatus
 
         query = db.query(Farmer).filter(Farmer.cooperative_id == cooperative_id)
         if active_only:
@@ -119,15 +119,12 @@ class CommunicationsService:
         if not farmers:
             return {"success": True, "recipients_count": 0, "message": "No active members found."}
 
-        coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
-        account_number = coop.moolre_account_number if coop else None
-
         recipients = [
             {"recipient": f.phone, "message": message, "ref": str(uuid.uuid4())}
             for f in farmers
         ]
 
-        result = await self.moolre.send_sms(recipients, account_number=account_number)
+        result = await self.moolre.send_sms(recipients)
 
         log = self._log(
             db=db,
@@ -159,7 +156,7 @@ class CommunicationsService:
         Send dues reminder to ALL active members of a cooperative in one call.
         """
         from app.config import get_settings
-        from app.models.models import Farmer, MembershipStatus, Cooperative
+        from app.models.models import Farmer, MembershipStatus
 
         settings = get_settings()
         merchant = settings.moolre_merchant_code or "AgroOS"
@@ -175,9 +172,6 @@ class CommunicationsService:
         if not farmers:
             return {"success": True, "recipients_count": 0, "message": "No active members."}
 
-        coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
-        account_number = coop.moolre_account_number if coop else None
-
         recipients = [
             {
                 "recipient": f.phone,
@@ -190,7 +184,7 @@ class CommunicationsService:
             for f in farmers
         ]
 
-        result = await self.moolre.send_sms(recipients, account_number=account_number)
+        result = await self.moolre.send_sms(recipients)
 
         log = self._log(
             db=db,
