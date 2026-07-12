@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { login, signup, storeAuthToken, userFromAuthToken, userFromSignupResponse, warmAuthBackend } from '../api/auth'
 import { USERS } from '../data/users'
@@ -31,10 +31,13 @@ function StepDots({ total, current }) {
 // ---------------------------------------------------------------------------
 // Styled input with icon
 // ---------------------------------------------------------------------------
-function Field({ label, icon: Icon, type = 'text', value, onChange, placeholder, required, rightEl }) {
+function Field({ id, label, icon: Icon, type = 'text', value, onChange, placeholder, required, rightEl }) {
+  const generatedId = useId()
+  const fieldId = id || `auth-field-${generatedId.replace(/:/g, '')}`
+
   return (
     <div style={{ marginBottom: 16 }}>
-      <label style={{ display: 'block', marginBottom: 6, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+      <label htmlFor={fieldId} style={{ display: 'block', marginBottom: 6, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
         {label}
       </label>
       <div style={{ position: 'relative' }}>
@@ -45,6 +48,7 @@ function Field({ label, icon: Icon, type = 'text', value, onChange, placeholder,
           />
         )}
         <input
+          id={fieldId}
           type={type}
           className="auth-input"
           value={value}
@@ -89,16 +93,17 @@ const SIZE_OPTIONS = [
 
 function SizePills({ value, onChange }) {
   return (
-    <div style={{ marginBottom: 16 }}>
-      <label style={{ display: 'block', marginBottom: 8, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+    <fieldset style={{ margin: 0, marginBottom: 16, padding: 0, border: 0 }}>
+      <legend style={{ display: 'block', marginBottom: 8, fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
         Cooperative size (members)
-      </label>
+      </legend>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         {SIZE_OPTIONS.map(opt => (
           <button
             key={opt.value}
             type="button"
             onClick={() => onChange(opt.value)}
+            aria-pressed={value === opt.value}
             style={{
               padding: '10px 0',
               borderRadius: 8,
@@ -116,7 +121,7 @@ function SizePills({ value, onChange }) {
           </button>
         ))}
       </div>
-    </div>
+    </fieldset>
   )
 }
 

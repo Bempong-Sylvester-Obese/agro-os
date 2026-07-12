@@ -11,7 +11,7 @@ function fmtGHS(amount) {
 
 // ── Collect Dues Modal ────────────────────────────────────────────────────────
 function CollectDuesModal({ farmers, onClose, onSuccess }) {
-  const { onBackdropClick, dialogProps } = useModal(onClose)
+  const { onBackdropClick, dialogProps, titleId, closeButtonProps } = useModal(onClose, { label: 'collect dues dialog' })
   const [form, setForm] = useState({ farmerId: '', amount: '', channel: '13' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -97,10 +97,10 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '24px 28px 20px', borderBottom: '1px solid var(--border)' }}>
           <div>
-            <div className="serif" style={{ fontWeight: 700, fontSize: 19 }}>Collect Dues</div>
+            <div id={titleId} className="serif" style={{ fontWeight: 700, fontSize: 19 }}>Collect Dues</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Send a USSD payment prompt</div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={20} /></button>
+          <button {...closeButtonProps} onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={20} /></button>
         </div>
 
         <form onSubmit={handleSubmit} style={{ padding: '24px 28px' }}>
@@ -110,13 +110,13 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
           {!otpRequired ? (
             <>
               <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 13, fontWeight: 600 }}>Member</label>
+                <label htmlFor="dues-member" style={{ fontSize: 13, fontWeight: 600 }}>Member</label>
                 {activeFarmers.length === 0 ? (
                   <div style={{ marginTop: 6, padding: 12, background: 'var(--sage)', color: 'var(--g)', borderRadius: 8, fontSize: 13 }}>
                     No active members available. Add members before collecting dues.
                   </div>
                 ) : (
-                  <select style={input} value={form.farmerId} onChange={e => setForm({...form, farmerId: e.target.value})} required disabled={loading || msg}>
+                  <select id="dues-member" style={input} value={form.farmerId} onChange={e => setForm({...form, farmerId: e.target.value})} required disabled={loading || msg}>
                     <option value="">Select a member...</option>
                     {activeFarmers.map(f => <option key={f.id} value={f.id}>{f.name} ({f.phone})</option>)}
                   </select>
@@ -124,13 +124,13 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
               </div>
 
               <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 13, fontWeight: 600 }}>Amount (GHS)</label>
-                <input style={input} type="number" min="1" step="0.5" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} placeholder="e.g. 50" required disabled={loading || msg}/>
+                <label htmlFor="dues-amount" style={{ fontSize: 13, fontWeight: 600 }}>Amount (GHS)</label>
+                <input id="dues-amount" style={input} type="number" min="1" step="0.5" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} placeholder="e.g. 50" required disabled={loading || msg}/>
               </div>
 
               <div style={{ marginBottom: 24 }}>
-                <label style={{ fontSize: 13, fontWeight: 600 }}>Network Channel</label>
-                <select style={input} value={form.channel} onChange={e => setForm({...form, channel: e.target.value})} disabled={loading || msg}>
+                <label htmlFor="dues-channel" style={{ fontSize: 13, fontWeight: 600 }}>Network Channel</label>
+                <select id="dues-channel" style={input} value={form.channel} onChange={e => setForm({...form, channel: e.target.value})} disabled={loading || msg}>
                   <option value="13">MTN Ghana</option>
                   <option value="6">Telecel</option>
                   <option value="7">AT</option>
@@ -144,8 +144,9 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
           ) : (
             <>
               <div style={{ marginBottom: 24 }}>
-                <label style={{ fontSize: 13, fontWeight: 600 }}>Enter SMS OTP</label>
+                <label htmlFor="dues-otp" style={{ fontSize: 13, fontWeight: 600 }}>Enter SMS OTP</label>
                 <input 
+                  id="dues-otp"
                   style={{...input, fontSize: 18, letterSpacing: 4, textAlign: 'center'}} 
                   type="text" 
                   value={otpCode} 
