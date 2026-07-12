@@ -12,6 +12,8 @@ export const API_URL = import.meta.env.VITE_API_URL || 'https://previewbackendag
 export const FETCH_TIMEOUT_MS = 45000
 /** Login/signup — allow time for free-tier backend wake + DB connect. */
 export const AUTH_FETCH_TIMEOUT_MS = 90000
+/** Moolre disburse/collect can take 60s+ (validate + transfer + status). */
+export const MUTATION_TIMEOUT_MS = 120000
 /** Production builds never silently substitute demo data. */
 export const LIVE_API_ONLY = import.meta.env.PROD && import.meta.env.VITE_ALLOW_DEMO_FALLBACK !== 'true'
 export const DEFAULT_COOP_ID = import.meta.env.VITE_COOPERATIVE_ID
@@ -75,9 +77,9 @@ export function apiResult(source, data) {
   return { ...data, source: source === 'api' ? 'api' : 'demo' }
 }
 
-export function createFetchSignal() {
+export function createFetchSignal(timeoutMs = FETCH_TIMEOUT_MS) {
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
   return {
     signal: controller.signal,
     clear: () => clearTimeout(timeoutId),

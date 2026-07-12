@@ -203,7 +203,8 @@ def test_disburse_loan(client, farmer):
     mock_status.assert_called_once()
 
 
-def test_disburse_loan_uses_cooperative_account(client, farmer, cooperative):
+def test_disburse_loan_uses_platform_wallet(client, farmer, cooperative):
+    service = MoolreService()
     client.put(
         f"/cooperatives/{cooperative['id']}",
         json={"moolre_account_number": "COOP-WALLET-999"},
@@ -214,11 +215,11 @@ def test_disburse_loan_uses_cooperative_account(client, farmer, cooperative):
     loan_id = create_resp.json()["id"]
     client.post(f"/loans/{loan_id}/approve", json={"approved_by": "Admin"})
 
-    with _mock_disburse_moolre(wallet_account="COOP-WALLET-999") as (mock_transfer, _mock_status):
+    with _mock_disburse_moolre(wallet_account=service.settings.moolre_account_number) as (mock_transfer, _mock_status):
         resp = client.post(f"/loans/{loan_id}/disburse")
 
     assert resp.status_code == 200
-    assert mock_transfer.call_args.kwargs["account_number"] == "COOP-WALLET-999"
+    assert mock_transfer.call_args.kwargs["account_number"] == service.settings.moolre_account_number
 
 
 def test_resolve_account_number_prefers_cooperative_wallet():
