@@ -21,8 +21,8 @@ from app.routes import (
     loans,
     production,
     transactions,
+    ussdk_hooks,
     webhooks,
-    auth,
 )
 from app.agro_ai.runtime import agro_ai as agro_ai_runtime
 
@@ -134,6 +134,7 @@ app.include_router(loans.router)
 app.include_router(production.router)
 app.include_router(communications.router)
 app.include_router(webhooks.router)
+app.include_router(ussdk_hooks.router)
 app.include_router(agro_ai.router)
 app.include_router(auth.router)
 
