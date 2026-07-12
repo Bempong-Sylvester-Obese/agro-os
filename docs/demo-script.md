@@ -142,22 +142,10 @@ Set `VITE_API_URL=http://localhost:8000` in `frontend/.env` for local wiring.
 |------|-----|--------|-----------------|
 | 1 | SMS broadcasts | Send dues reminder to cooperative | "AgroOS nudges farmers to pay through familiar SMS channels." |
 | 2 | USSD activity | Show menu log or describe *203* flow | "Farmers without smartphones reach the cooperative through USSD." |
-| 3 | USSD activity | Simulate payment on pending tx id | "Moolre confirms payment and AgroOS updates records instantly." |
+| 3 | USSD activity | Complete a live Moolre payment and refresh | "Moolre confirms payment and AgroOS updates records instantly." |
 | 4 | Overview / Scores | Show Trust Score movement for Abena | "Every payment builds alternative credit data for farmers." |
 | 5 | Loans | Approve Abena's input loan | "Cooperative admins decide loans with trust and ML scores side by side." |
 | 6 | Payments | Show completed transaction + webhook audit | "Finance teams reconcile Moolre payments in one dashboard." |
-
-### Fallback: simulate webhook without Moolre
-
-**Dashboard:** USSD activity tab → enter pending `transaction_id` → **Simulate payment**.
-
-**curl:**
-
-```bash
-curl -X POST "$VITE_API_URL/webhooks/moolre/payment/simulate" \
-  -H "Content-Type: application/json" \
-  -d '{"transaction_id": 1}'
-```
 
 ### Fallback: USSD without live short code
 

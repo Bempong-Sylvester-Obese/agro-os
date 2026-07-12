@@ -5,6 +5,14 @@ from app.database.purge_demo import purge_demo_cooperative
 from app.database.seed import seed_golden_path
 
 
+def test_payment_simulation_endpoint_does_not_exist(client):
+    resp = client.post(
+        "/webhooks/moolre/payment/simulate",
+        json={"transaction_id": 1},
+    )
+    assert resp.status_code == 404
+
+
 def test_list_transactions_requires_cooperative_scope(client):
     resp = client.get("/transactions/")
     assert resp.status_code == 400

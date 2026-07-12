@@ -85,9 +85,6 @@ When the database is seeded, Agro-AI assessments are built from DB farmer record
 | USSD log | GET | `/webhooks/ussd/logs` |
 | USSD handler (Moolre) | POST | `/webhooks/moolre/ussd` |
 | Payment webhook (Moolre) | POST | `/webhooks/moolre/payment` |
-| Demo simulate payment | POST | `/webhooks/moolre/payment/simulate` |
-
-Simulate endpoint is disabled when `APP_ENV=production`.
 
 ### Cooperative profile
 

@@ -2,6 +2,8 @@
 
 from unittest.mock import AsyncMock, patch
 
+from app.models.models import Transaction, TransactionStatus
+
 
 def _tp14_result(ext_ref: str) -> dict:
     return {
@@ -182,7 +184,7 @@ def test_verify_dues_collect_not_found(client):
     assert resp.status_code == 404
 
 
-def test_verify_dues_collect_not_pending(client, farmer):
+def test_verify_dues_collect_not_pending(client, farmer, db):
     with patch(
         "app.routes.transactions.MoolreService.initiate_payment",
         new_callable=AsyncMock,
@@ -195,10 +197,9 @@ def test_verify_dues_collect_not_pending(client, farmer):
         )
         tx_id = collect_resp.json()["transaction_id"]
 
-    client.post(
-        "/webhooks/moolre/payment/simulate",
-        json={"transaction_id": tx_id},
-    )
+    transaction = db.query(Transaction).filter(Transaction.id == tx_id).one()
+    transaction.status = TransactionStatus.completed
+    db.commit()
 
     verify_resp = client.post(
         "/transactions/dues/collect/verify",
