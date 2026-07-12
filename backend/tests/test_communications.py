@@ -79,3 +79,24 @@ def test_list_communication_logs(mock_send, client, cooperative, farmer):
     assert len(logs) >= 1
     assert logs[0]["body"] == "Test broadcast"
     assert logs[0]["recipients_count"] == 1
+
+
+@patch(
+    "app.services.communications_service.MoolreService.send_sms",
+    new_callable=AsyncMock,
+)
+def test_broadcast_sms_moolre_failure_returns_502(mock_send, client, cooperative, farmer):
+    mock_send.return_value = {
+        "success": False,
+        "message": "Authentication Error, authentication information is required",
+        "raw": {},
+    }
+    resp = client.post(
+        "/communications/sms/broadcast",
+        json={
+            "cooperative_id": cooperative["id"],
+            "message": "Meeting tomorrow.",
+        },
+    )
+    assert resp.status_code == 502
+    assert "Authentication Error" in resp.json()["detail"]

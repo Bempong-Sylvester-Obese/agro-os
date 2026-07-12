@@ -103,6 +103,26 @@ class MoolreService:
                 )
         return None
 
+    def validate_sms_config(self) -> str | None:
+        """Return a user-facing error when Moolre SMS credentials are incomplete."""
+        if not self.settings.moolre_api_user.strip():
+            return (
+                "Moolre API user is not configured on the server. "
+                "Set MOOLRE_API_USER in the backend environment."
+            )
+        if not self.settings.moolre_api_vaskey.strip():
+            return (
+                "Moolre VAS key is not configured on the server. "
+                "Set MOOLRE_API_VASKEY for SMS broadcasts (required in production)."
+            )
+        if self.settings.moolre_env.lower() == "live":
+            if not self.settings.moolre_api_key.strip() or not self.settings.moolre_api_pubkey.strip():
+                return (
+                    "Moolre live API keys are not configured on the server. "
+                    "Set MOOLRE_API_KEY and MOOLRE_API_PUBKEY for production."
+                )
+        return None
+
     @staticmethod
     def _http_error_payload(exc: httpx.HTTPStatusError) -> dict:
         try:
@@ -400,11 +420,25 @@ class MoolreService:
         ``recipients`` is a list of ``{"recipient": "<phone>", "message": "<text>"}``
         dicts, optionally including ``"ref": "<unique-ref>"``.
         """
+        config_error = self.validate_sms_config()
+        if config_error:
+            return {
+                "success": False,
+                "code": None,
+                "message": config_error,
+                "raw": {},
+            }
+
         sid = sender_id or self.settings.default_sms_sender_id
+        messages = []
+        for entry in recipients:
+            item = dict(entry)
+            item["recipient"] = self._normalize_phone(str(entry.get("recipient", "")))
+            messages.append(item)
         payload = {
             "type": 1,
             "senderid": sid,
-            "messages": recipients,
+            "messages": messages,
         }
         raw = await self._post("/open/sms/send", payload, headers=self._vaskey_headers())
         return {

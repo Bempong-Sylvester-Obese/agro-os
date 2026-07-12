@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
+from app.dependencies.cooperative_scope import resolve_cooperative_scope
 from app.models.models import CommunicationLog, Cooperative, User
 from app.services.auth_service import get_current_user
 from app.schemas.schemas import (
@@ -25,19 +26,30 @@ async def broadcast_sms(request: SMSBroadcastRequest, db: Session = Depends(get_
     Send a free-form SMS broadcast to all active members of a cooperative.
     Message must be ≤ 160 characters (enforced by schema).
     """
-    coop = db.query(Cooperative).filter(Cooperative.id == request.cooperative_id).first()
+    settings = get_settings()
+    scoped_id = resolve_cooperative_scope(
+        current_user=current_user,
+        cooperative_id=request.cooperative_id,
+        settings=settings,
+    )
+    coop = db.query(Cooperative).filter(Cooperative.id == scoped_id).first()
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
 
     service = CommunicationsService()
     result = await service.broadcast_to_cooperative(
-        cooperative_id=request.cooperative_id,
+        cooperative_id=scoped_id,
         message=request.message,
         db=db,
         sent_by=request.sent_by,
     )
+    if not result["success"]:
+        raise HTTPException(
+            status_code=502,
+            detail=result.get("message") or "Moolre SMS send failed",
+        )
     return SMSResponse(
-        status="success" if result["success"] else "failed",
+        status="success",
         recipients_count=result["recipients_count"],
         message=result["message"],
         log_id=result.get("log_id"),
@@ -50,20 +62,31 @@ async def send_dues_reminder(request: DuesReminderRequest, db: Session = Depends
     Send a dues-payment reminder SMS to all active members of a cooperative.
     Uses the Moolre merchant USSD code from config for the payment instruction.
     """
-    coop = db.query(Cooperative).filter(Cooperative.id == request.cooperative_id).first()
+    settings = get_settings()
+    scoped_id = resolve_cooperative_scope(
+        current_user=current_user,
+        cooperative_id=request.cooperative_id,
+        settings=settings,
+    )
+    coop = db.query(Cooperative).filter(Cooperative.id == scoped_id).first()
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
 
     service = CommunicationsService()
     result = await service.send_dues_reminder_to_cooperative(
-        cooperative_id=request.cooperative_id,
+        cooperative_id=scoped_id,
         amount=request.amount,
         due_date=request.due_date,
         db=db,
         sent_by=request.sent_by,
     )
+    if not result["success"]:
+        raise HTTPException(
+            status_code=502,
+            detail=result.get("message") or "Moolre SMS send failed",
+        )
     return SMSResponse(
-        status="success" if result["success"] else "failed",
+        status="success",
         recipients_count=result["recipients_count"],
         message=result["message"],
         log_id=result.get("log_id"),

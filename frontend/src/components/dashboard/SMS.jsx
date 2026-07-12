@@ -35,8 +35,8 @@ export default function SMS({ cooperativeId, memberCount = 0 }) {
       const newLogs = await fetchSMSLogs(cooperativeId)
       setLogs(newLogs)
       setTimeout(() => setSendSuccess(false), 3000)
-    } catch {
-      setSendError('Failed to send broadcast. Check your Moolre SMS configuration.')
+    } catch (err) {
+      setSendError(err.message || 'Failed to send broadcast. Check your Moolre SMS configuration.')
     } finally {
       setSending(false)
     }
