@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Plus, X, Loader2 } from 'lucide-react'
 import { collectDues, verifyDuesCollect } from '../../api/transactions'
 import { TableSectionSkeleton } from './DashboardSkeleton'
+import { useModal } from '../../hooks/useModal'
 
 function fmtGHS(amount) {
   return `GHS ${Number(amount).toLocaleString('en-GH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
@@ -10,6 +11,7 @@ function fmtGHS(amount) {
 
 // ── Collect Dues Modal ────────────────────────────────────────────────────────
 function CollectDuesModal({ farmers, onClose, onSuccess }) {
+  const { onBackdropClick, dialogProps } = useModal(onClose)
   const [form, setForm] = useState({ farmerId: '', amount: '', channel: '13' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -80,12 +82,16 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
   }
 
   return (
-    <div style={{
+    <div
+      onClick={onBackdropClick}
+      style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)',
       backdropFilter: 'blur(4px)', zIndex: 1000,
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
     }}>
-      <div style={{
+      <div
+        {...dialogProps}
+        style={{
         background: '#fff', borderRadius: 16, width: '100%', maxWidth: 400,
         boxShadow: '0 32px 80px rgba(0,0,0,0.22)',
       }}>
@@ -105,10 +111,16 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
             <>
               <div style={{ marginBottom: 16 }}>
                 <label style={{ fontSize: 13, fontWeight: 600 }}>Member</label>
-                <select style={input} value={form.farmerId} onChange={e => setForm({...form, farmerId: e.target.value})} required disabled={loading || msg}>
-                  <option value="">Select a member...</option>
-                  {activeFarmers.map(f => <option key={f.id} value={f.id}>{f.name} ({f.phone})</option>)}
-                </select>
+                {activeFarmers.length === 0 ? (
+                  <div style={{ marginTop: 6, padding: 12, background: 'var(--sage)', color: 'var(--g)', borderRadius: 8, fontSize: 13 }}>
+                    No active members available. Add members before collecting dues.
+                  </div>
+                ) : (
+                  <select style={input} value={form.farmerId} onChange={e => setForm({...form, farmerId: e.target.value})} required disabled={loading || msg}>
+                    <option value="">Select a member...</option>
+                    {activeFarmers.map(f => <option key={f.id} value={f.id}>{f.name} ({f.phone})</option>)}
+                  </select>
+                )}
               </div>
 
               <div style={{ marginBottom: 16 }}>
@@ -125,7 +137,7 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
                 </select>
               </div>
 
-              <button type="submit" className="btn-lg" disabled={loading || msg} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
+              <button type="submit" className="btn-lg" disabled={loading || msg || activeFarmers.length === 0} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
                 {loading ? <><Loader2 size={16} className="spin" /> Processing...</> : msg ? 'Prompt Sent ✓' : 'Send Payment Prompt'}
               </button>
             </>
