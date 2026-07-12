@@ -136,7 +136,6 @@ app.include_router(communications.router)
 app.include_router(webhooks.router)
 app.include_router(ussdk_hooks.router)
 app.include_router(agro_ai.router)
-app.include_router(auth.router)
 
 
 @app.get("/", tags=["health"])

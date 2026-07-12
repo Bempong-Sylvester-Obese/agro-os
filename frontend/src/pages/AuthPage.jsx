@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { login, signup, storeAuthToken, userFromAuthToken, userFromSignupResponse } from '../api/auth'
+import { login, signup, storeAuthToken, userFromAuthToken, userFromSignupResponse, warmAuthBackend } from '../api/auth'
 import { USERS } from '../data/users'
 import { Sprout, ArrowLeft, ArrowRight, Building2, Users, MapPin, Mail, Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 
@@ -146,6 +146,16 @@ export default function AuthPage({ onAuth }) {
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [backendWarming, setBackendWarming] = useState(false)
+
+  useEffect(() => {
+    let mounted = true
+    setBackendWarming(true)
+    warmAuthBackend().finally(() => {
+      if (mounted) setBackendWarming(false)
+    })
+    return () => { mounted = false }
+  }, [])
 
   useEffect(() => {
     setIsLogin(searchParams.get('mode') !== 'signup')
@@ -367,6 +377,12 @@ export default function AuthPage({ onAuth }) {
                 Access your cooperative dashboard
               </p>
 
+              {backendWarming && !error && (
+                <div className="info-banner" style={{ marginBottom: 20, fontSize: 13 }}>
+                  Connecting to AgroOS servers… first sign-in after idle may take up to a minute.
+                </div>
+              )}
+
               {error && (
                 <div style={{
                   padding: '10px 14px', backgroundColor: '#FEF2F2', color: '#991B1B',
@@ -436,6 +452,12 @@ export default function AuthPage({ onAuth }) {
               <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 28 }}>
                 Tell us about your farm or cooperative to get started.
               </p>
+
+              {backendWarming && !error && (
+                <div className="info-banner" style={{ marginBottom: 20, fontSize: 13 }}>
+                  Connecting to AgroOS servers… first sign-up after idle may take up to a minute.
+                </div>
+              )}
 
               {error && (
                 <div style={{

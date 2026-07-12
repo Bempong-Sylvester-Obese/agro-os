@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { resolveCooperativeId } from '../utils/auth'
+import { formatTransportError } from '../api/config'
 import { DASHBOARD_SECTIONS, dashboardPath } from '../constants/routes'
 import { fetchFarmers } from '../api/farmers'
 import { fetchCooperative } from '../api/cooperatives'
@@ -54,7 +55,7 @@ export default function DashboardPage({ user, onLogout }) {
   const [loans, setLoans]               = useState([])
   const [productions, setProductions]   = useState([])
   const [cooperative, setCooperative]   = useState(null)
-  const [cooperativeId, setCooperativeId] = useState(null)
+  const [cooperativeId, setCooperativeId] = useState(() => resolveCooperativeId(user))
   const [loading, setLoading]           = useState(true)
   const [fetchError, setFetchError]     = useState(null)
 
@@ -80,11 +81,15 @@ export default function DashboardPage({ user, onLogout }) {
       setLoans(loansData)
       setProductions(prodsData)
       setLoading(false)
-    }).catch(() => {
-      setFetchError('Could not load dashboard data. Check your connection and try again.')
+    }).catch((err) => {
+      setFetchError(formatTransportError(err))
       setLoading(false)
     })
   }
+
+  useEffect(() => {
+    setCooperativeId((prev) => prev ?? resolveCooperativeId(user))
+  }, [user])
 
   useEffect(() => { loadAll() }, [user])
 
@@ -150,7 +155,7 @@ export default function DashboardPage({ user, onLogout }) {
         </div>
 
         <div className="admin-content">
-          {fetchError && (
+          {fetchError && section !== 'sms' && section !== 'ussd' && section !== 'settings' && (
             <div
               className="info-banner"
               style={{
@@ -199,9 +204,9 @@ export default function DashboardPage({ user, onLogout }) {
           {!fetchError && section === 'scores' && (
             <Scores farmers={farmers} loading={loading} />
           )}
-          {!fetchError && section === 'sms' && (
+          {section === 'sms' && (
             <SMS
-              cooperativeId={cooperativeId}
+              cooperativeId={cooperativeId ?? resolveCooperativeId(user)}
               memberCount={farmers.length}
             />
           )}
@@ -221,15 +226,15 @@ export default function DashboardPage({ user, onLogout }) {
               onRefresh={loadAll}
             />
           )}
-          {!fetchError && section === 'settings' && (
+          {section === 'settings' && (
             <SettingsView
               cooperative={cooperative}
-              cooperativeId={cooperativeId}
-              loading={loading}
+              cooperativeId={cooperativeId ?? resolveCooperativeId(user)}
+              loading={loading && !fetchError}
               onRefresh={loadAll}
             />
           )}
-          {!fetchError && section === 'ussd' && (
+          {section === 'ussd' && (
             <USSD />
           )}
         </div>
