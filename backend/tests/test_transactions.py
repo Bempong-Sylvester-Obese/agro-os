@@ -38,20 +38,20 @@ def test_get_transaction_not_found(client):
     assert resp.status_code == 404
 
 
-def test_list_transactions(client, transaction):
-    resp = client.get("/transactions/")
+def test_list_transactions(client, transaction, cooperative):
+    resp = client.get(f"/transactions/?cooperative_id={cooperative['id']}")
     assert resp.status_code == 200
     assert any(t["id"] == transaction["id"] for t in resp.json())
 
 
-def test_list_transactions_filter_by_status(client, transaction):
-    resp = client.get("/transactions/?status=pending")
+def test_list_transactions_filter_by_status(client, transaction, cooperative):
+    resp = client.get(f"/transactions/?cooperative_id={cooperative['id']}&status=pending")
     assert resp.status_code == 200
     assert all(t["status"] == "pending" for t in resp.json())
 
 
-def test_list_transactions_filter_by_type(client, transaction):
-    resp = client.get("/transactions/?transaction_type=dues")
+def test_list_transactions_filter_by_type(client, transaction, cooperative):
+    resp = client.get(f"/transactions/?cooperative_id={cooperative['id']}&transaction_type=dues")
     assert resp.status_code == 200
     assert all(t["transaction_type"] == "dues" for t in resp.json())
 
