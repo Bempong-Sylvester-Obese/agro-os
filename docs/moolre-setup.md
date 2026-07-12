@@ -180,8 +180,15 @@ Steps 2–3 require a publicly reachable callback URL. Use ngrok as described in
 
 ### Outbound cooperative SMS
 
-Dues reminders, broadcasts, and payment confirmations use `POST /open/sms/send` with the `X-API-VASKEY` header. Ensure these env vars are set for sandbox SMS testing:
+Dues reminders, broadcasts, and payment confirmations use `POST /open/sms/send` with **`X-API-USER` and `X-API-VASKEY` headers only**. Do not send wallet keys (`X-API-KEY` / `X-API-PUBKEY`) or `accountnumber` on SMS requests — that triggers Moolre auth error `APY00`.
 
-- `MOOLRE_API_VASKEY`
-- `DEFAULT_SMS_SENDER_ID`
+Required env vars:
+
+- `MOOLRE_API_VASKEY` — live SMS VAS key from the Moolre **developer portal** (regenerate if broadcasts return `AIN01` / `Authentication Error`)
+- `MOOLRE_API_USER` — same API user as payments
+- `DEFAULT_SMS_SENDER_ID` — must be approved in [app.moolre.com](https://app.moolre.com)
 - `MOOLRE_MERCHANT_CODE` (included in dues reminder dial string)
+
+Payments/USSD continue to use `MOOLRE_API_KEY`, `MOOLRE_API_PUBKEY`, and `MOOLRE_ACCOUNT_NUMBER`.
+
+Check SMS auth without sending: `GET /communications/sms/diagnostics` (authenticated).
