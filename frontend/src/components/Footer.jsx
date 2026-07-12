@@ -27,7 +27,7 @@ export default function Footer() {
           <a href="/features" className="footer-link" onClick={go('features')}>Features</a>
           <a href="/pricing" className="footer-link" onClick={go('pricing')}>Pricing</a>
           <a href="/solutions#ussd-section" className="footer-link" onClick={go('solutions', { scrollTo: 'ussd-section' })}>USSD integration</a>
-          <a href="/features" className="footer-link" onClick={go('features')}>API docs</a>
+          <a href="/book-demo" className="footer-link" onClick={go('bookDemo')}>API docs</a>
         </div>
 
         <div>
@@ -49,7 +49,7 @@ export default function Footer() {
           <div className="footer-col-title">Company</div>
           <a href="/" className="footer-link" onClick={go('home')}>About</a>
           <a href="/login?mode=signup" className="footer-link" onClick={go('login', { loginMode: 'signup' })}>Request access</a>
-          <a href="/features" className="footer-link" onClick={go('features')}>Help center</a>
+          <a href="/book-demo" className="footer-link" onClick={go('bookDemo')}>Help center</a>
         </div>
       </div>
 
