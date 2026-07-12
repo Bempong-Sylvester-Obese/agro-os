@@ -1,0 +1,548 @@
+From 49cb74793f8e1c4d6c57d480943b436cdd49bc40 Mon Sep 17 00:00:00 2001
+From: Ramzy <ramzy@example.com>
+Date: Sun, 12 Jul 2026 02:18:45 +0000
+Subject: [PATCH 1/2] feat: add USSDK hook adapter for dues collection and loan
+ balance
+
+---
+ .env.example                      |   1 +
+ backend/.env.example              |   1 +
+ backend/app/config.py             |   3 +
+ backend/app/routes/ussdk_hooks.py | 157 ++++++++++++++++++++++++++++++
+ backend/main.py                   |   3 +-
+ backend/tests/test_ussdk_hooks.py | 114 ++++++++++++++++++++++
+ 6 files changed, 278 insertions(+), 1 deletion(-)
+ create mode 100644 backend/app/routes/ussdk_hooks.py
+ create mode 100644 backend/tests/test_ussdk_hooks.py
+
+diff --git a/.env.example b/.env.example
+index 21ed2cb..a393232 100644
+--- a/.env.example
++++ b/.env.example
+@@ -31,6 +31,7 @@ MOOLRE_ACCOUNT_NUMBER=
+ MOOLRE_MERCHANT_ID=
+ MOOLRE_MERCHANT_CODE=
+ MOOLRE_WEBHOOK_SECRET=
++USSDK_HOOK_SECRET=
+ 
+ # Notifications
+ DEFAULT_SMS_SENDER_ID=AgroOS
+diff --git a/backend/.env.example b/backend/.env.example
+index 3b83ef6..fc08cd8 100644
+--- a/backend/.env.example
++++ b/backend/.env.example
+@@ -28,6 +28,7 @@ MOOLRE_ACCOUNT_NUMBER=
+ MOOLRE_MERCHANT_ID=
+ MOOLRE_MERCHANT_CODE=
+ MOOLRE_WEBHOOK_SECRET=
++USSDK_HOOK_SECRET=
+ 
+ # Cooperative Defaults
+ DEFAULT_CURRENCY=
+diff --git a/backend/app/config.py b/backend/app/config.py
+index 22040c0..201689d 100644
+--- a/backend/app/config.py
++++ b/backend/app/config.py
+@@ -45,6 +45,9 @@ class Settings(BaseSettings):
+     moolre_merchant_code: str = ""
+     moolre_webhook_secret: str = ""
+ 
++    # USSDK hook verification
++    ussdk_hook_secret: str = ""
++
+     # Cooperative defaults
+     default_currency: str = "GHS"
+     default_sms_sender_id: str = "AgroOS"
+diff --git a/backend/app/routes/ussdk_hooks.py b/backend/app/routes/ussdk_hooks.py
+new file mode 100644
+index 0000000..6381637
+--- /dev/null
++++ b/backend/app/routes/ussdk_hooks.py
+@@ -0,0 +1,157 @@
++"""
++USSDK Hook Adapter Routes
++
++USSDK (https://www.ussdk.me) builds the USSD menu/screens visually and calls
++these endpoints as "hooks" before rendering each step. This module translates
++USSDK's hook payload shape into calls against the existing dues-collection
++logic in app/routes/transactions.py, so Moolre auth, OTP handling, transaction
++records, and Trust Score recalculation all stay in one place.
++
++USSDK hook request shape:
++{
++  "input": {"key": "2"},
++  "props": {
++    "session": {"msisdn": "0240000001", "network": "mtn", "serviceCode": "*123*45#"},
++    "values": {"amount": "5", "otp_code": "123456"}
++  }
++}
++"""
++
++import hashlib
++import hmac
++import logging
++import uuid
++
++from fastapi import APIRouter, Depends, Header, HTTPException, Request
++from sqlalchemy.orm import Session
++
++from app.config import get_settings
++from app.database.db import get_db
++from app.models.models import Farmer, Loan, LoanStatus
++from app.routes.transactions import _run_dues_collect
++
++logger = logging.getLogger(__name__)
++
++router = APIRouter(prefix="/ussdk", tags=["ussdk"])
++
++
++def _verify_ussdk_signature(body: bytes, signature: str | None) -> bool:
++    """Verify USSDK's X-USSDK-Signature header (HMAC-SHA256 of the raw body).
++
++    Mirrors the pattern already used for Moolre's webhook signature in
++    app/routes/webhooks.py. If no secret is configured, verification is
++    skipped for local development — never leave it unset in production.
++    """
++    settings = get_settings()
++    if not settings.ussdk_hook_secret:
++        logger.warning("USSDK_HOOK_SECRET not set — skipping signature verification")
++        return True
++    if not signature:
++        return False
++    expected = hmac.new(
++        settings.ussdk_hook_secret.encode(), body, hashlib.sha256
++    ).hexdigest()
++    return hmac.compare_digest(expected, signature.strip())
++
++
++async def _parsed_and_verified(
++    request: Request, x_ussdk_signature: str | None
++) -> dict:
++    body = await request.body()
++    if not _verify_ussdk_signature(body, x_ussdk_signature):
++        raise HTTPException(status_code=401, detail="Invalid USSDK signature")
++    try:
++        return await request.json()
++    except Exception:
++        raise HTTPException(status_code=400, detail="Invalid JSON payload")
++
++
++@router.post("/loan-balance")
++async def loan_balance(
++    request: Request,
++    db: Session = Depends(get_db),
++    x_ussdk_signature: str | None = Header(default=None),
++):
++    """Hook for the 'Check Loan Balance' USSD step."""
++    payload = await _parsed_and_verified(request, x_ussdk_signature)
++    msisdn = payload.get("props", {}).get("session", {}).get("msisdn", "")
++
++    farmer = db.query(Farmer).filter(Farmer.phone == msisdn).first()
++    if not farmer:
++        return {"registered": False, "balance": None, "name": None}
++
++    active_loans = (
++        db.query(Loan)
++        .filter(Loan.farmer_id == farmer.id, Loan.status == LoanStatus.disbursed)
++        .all()
++    )
++    total = sum(ln.amount for ln in active_loans)
++    return {"registered": True, "name": farmer.name, "balance": total}
++
++
++@router.post("/pay-dues")
++async def pay_dues(
++    request: Request,
++    db: Session = Depends(get_db),
++    x_ussdk_signature: str | None = Header(default=None),
++):
++    """Hook for the 'Pay Cooperative Dues' USSD step.
++
++    Called twice in the OTP-required case: once to start the push, and once
++    more with otp_code + external_ref set (from the previous response) to
++    resume the same transaction rather than starting a new one.
++    """
++    payload = await _parsed_and_verified(request, x_ussdk_signature)
++    session = payload.get("props", {}).get("session", {})
++    values = payload.get("props", {}).get("values", {})
++
++    msisdn = session.get("msisdn", "")
++    amount_raw = values.get("amount")
++    otp_code = values.get("otp_code") or None
++    external_ref = values.get("external_ref") or str(uuid.uuid4())
++
++    if not amount_raw:
++        return {
++            "action": "retry",
++            "message": "Enter a valid amount.",
++        }
++
++    try:
++        amount = float(amount_raw)
++    except (TypeError, ValueError):
++        return {"action": "retry", "message": "Enter a valid amount."}
++
++    farmer = db.query(Farmer).filter(Farmer.phone == msisdn).first()
++    if not farmer:
++        return {
++            "action": "end",
++            "message": "Phone not registered with AgroOS. Contact your cooperative.",
++        }
++
++    result = await _run_dues_collect(
++        farmer=farmer,
++        amount=amount,
++        channel="13",
++        description="Cooperative dues (USSD)",
++        external_ref=external_ref,
++        otp_code=otp_code,
++        db=db,
++    )
++
++    if result.outcome == "verification_required":
++        return {
++            "verification_required": True,
++            "external_ref": external_ref,
++            "message": result.message,
++        }
++
++    if result.status == "pending":
++        return {
++            "verification_required": False,
++            "message": "Approve the payment prompt on your phone to complete.",
++        }
++
++    return {
++        "action": "end",
++        "message": result.message or "Payment could not be started. Try again later.",
++    }
+diff --git a/backend/main.py b/backend/main.py
+index 49b8553..7b9ea55 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -21,8 +21,8 @@ from app.routes import (
+     loans,
+     production,
+     transactions,
++    ussdk_hooks,
+     webhooks,
+-    auth,
+ )
+ from app.agro_ai.runtime import agro_ai as agro_ai_runtime
+ 
+@@ -134,6 +134,7 @@ app.include_router(loans.router)
+ app.include_router(production.router)
+ app.include_router(communications.router)
+ app.include_router(webhooks.router)
++app.include_router(ussdk_hooks.router)
+ app.include_router(agro_ai.router)
+ app.include_router(auth.router)
+ 
+diff --git a/backend/tests/test_ussdk_hooks.py b/backend/tests/test_ussdk_hooks.py
+new file mode 100644
+index 0000000..9d58662
+--- /dev/null
++++ b/backend/tests/test_ussdk_hooks.py
+@@ -0,0 +1,114 @@
++"""Tests for /ussdk/loan-balance and /ussdk/pay-dues"""
++
++from unittest.mock import AsyncMock, patch
++
++
++def _tp14_result(ext_ref: str) -> dict:
++    return {
++        "success": False,
++        "outcome": "verification_required",
++        "moolre_code": "TP14",
++        "moolre_reference": ext_ref,
++        "external_ref": ext_ref,
++        "message": (
++            "Please complete the verification process sent to you via SMS "
++            "and try again."
++        ),
++    }
++
++
++def _tr099_result(ext_ref: str) -> dict:
++    return {
++        "success": True,
++        "outcome": "push_sent",
++        "moolre_code": "TR099",
++        "moolre_reference": ext_ref,
++        "external_ref": ext_ref,
++        "message": "Payment request sent",
++    }
++
++
++def _hook_payload(msisdn: str, values: dict | None = None) -> dict:
++    return {
++        "input": {},
++        "props": {
++            "session": {"msisdn": msisdn, "network": "mtn"},
++            "values": values or {},
++        },
++    }
++
++
++def test_pay_dues_unregistered_phone_ends_session(client):
++    resp = client.post(
++        "/ussdk/pay-dues",
++        json=_hook_payload("0200000000", {"amount": "5"}),
++    )
++    assert resp.status_code == 200
++    body = resp.json()
++    assert body["action"] == "end"
++    assert "not registered" in body["message"]
++
++
++def test_pay_dues_missing_amount_returns_retry(client, farmer):
++    resp = client.post(
++        "/ussdk/pay-dues",
++        json=_hook_payload(farmer["phone"], {}),
++    )
++    assert resp.status_code == 200
++    assert resp.json()["action"] == "retry"
++
++
++def test_pay_dues_success_prompts_phone_approval(client, farmer):
++    with patch(
++        "app.routes.transactions.MoolreService.initiate_payment",
++        new_callable=AsyncMock,
++    ) as mock_pay:
++        mock_pay.return_value = _tr099_result("ussd-ref-1")
++
++        resp = client.post(
++            "/ussdk/pay-dues",
++            json=_hook_payload(farmer["phone"], {"amount": "5"}),
++        )
++
++    assert resp.status_code == 200
++    body = resp.json()
++    assert body["verification_required"] is False
++    assert "phone" in body["message"].lower()
++
++
++def test_pay_dues_otp_required_returns_external_ref_for_retry(client, farmer):
++    with patch(
++        "app.routes.transactions.MoolreService.initiate_payment",
++        new_callable=AsyncMock,
++    ) as mock_pay:
++        mock_pay.return_value = _tp14_result("ussd-ref-2")
++
++        resp = client.post(
++            "/ussdk/pay-dues",
++            json=_hook_payload(farmer["phone"], {"amount": "5"}),
++        )
++
++    assert resp.status_code == 200
++    body = resp.json()
++    assert body["verification_required"] is True
++    assert body["external_ref"]
++
++
++def test_loan_balance_unregistered_phone(client):
++    resp = client.post(
++        "/ussdk/loan-balance",
++        json=_hook_payload("0200000000"),
++    )
++    assert resp.status_code == 200
++    assert resp.json()["registered"] is False
++
++
++def test_loan_balance_registered_farmer_no_loans(client, farmer):
++    resp = client.post(
++        "/ussdk/loan-balance",
++        json=_hook_payload(farmer["phone"]),
++    )
++    assert resp.status_code == 200
++    body = resp.json()
++    assert body["registered"] is True
++    assert body["balance"] == 0
+-- 
+2.43.0
+
+
+From 6bf4addeb25f437bf839d98592346b608a2a9984 Mon Sep 17 00:00:00 2001
+From: Ramzy <ramzy@example.com>
+Date: Sun, 12 Jul 2026 02:22:27 +0000
+Subject: [PATCH 2/2] feat: add wallet-balance and announcements USSDK hooks
+ (Moolre account/status + SMS)
+
+---
+ backend/app/routes/ussdk_hooks.py | 78 ++++++++++++++++++++++++++++++-
+ backend/tests/test_ussdk_hooks.py | 68 +++++++++++++++++++++++++++
+ 2 files changed, 145 insertions(+), 1 deletion(-)
+
+diff --git a/backend/app/routes/ussdk_hooks.py b/backend/app/routes/ussdk_hooks.py
+index 6381637..6dd796d 100644
+--- a/backend/app/routes/ussdk_hooks.py
++++ b/backend/app/routes/ussdk_hooks.py
+@@ -27,8 +27,9 @@ from sqlalchemy.orm import Session
+ 
+ from app.config import get_settings
+ from app.database.db import get_db
+-from app.models.models import Farmer, Loan, LoanStatus
++from app.models.models import Cooperative, Farmer, Loan, LoanStatus
+ from app.routes.transactions import _run_dues_collect
++from app.services.moolre_service import MoolreService
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -155,3 +156,78 @@ async def pay_dues(
+         "action": "end",
+         "message": result.message or "Payment could not be started. Try again later.",
+     }
++
++
++@router.post("/wallet-balance")
++async def wallet_balance(
++    request: Request,
++    db: Session = Depends(get_db),
++    x_ussdk_signature: str | None = Header(default=None),
++):
++    """Hook for a 'Check Cooperative Wallet Balance' USSD step.
++
++    Calls Moolre's real account/status endpoint via MoolreService.account_status,
++    using the farmer's cooperative wallet if set, falling back to the server-wide
++    MOOLRE_ACCOUNT_NUMBER otherwise.
++    """
++    payload = await _parsed_and_verified(request, x_ussdk_signature)
++    msisdn = payload.get("props", {}).get("session", {}).get("msisdn", "")
++
++    farmer = db.query(Farmer).filter(Farmer.phone == msisdn).first()
++    if not farmer:
++        return {
++            "action": "end",
++            "message": "Phone not registered with AgroOS. Contact your cooperative.",
++        }
++
++    cooperative = (
++        db.query(Cooperative).filter(Cooperative.id == farmer.cooperative_id).first()
++    )
++    coop_account = cooperative.moolre_account_number if cooperative else None
++
++    moolre = MoolreService()
++    result = await moolre.account_status(account_number=coop_account)
++
++    if not result.get("success"):
++        return {
++            "action": "end",
++            "message": "Could not reach Moolre right now. Try again later.",
++        }
++
++    balance = result.get("balance")
++    account_name = result.get("account_name") or "your cooperative"
++    return {
++        "message": f"{account_name} wallet balance: GHS {balance}",
++    }
++
++
++@router.post("/announcements")
++async def announcements(
++    request: Request,
++    db: Session = Depends(get_db),
++    x_ussdk_signature: str | None = Header(default=None),
++):
++    """Hook for a 'View Announcements' USSD step.
++
++    Shows the announcement on the USSD screen and also sends it via SMS
++    through Moolre's real SMS endpoint (MoolreService.send_single_sms),
++    so the announcement isn't lost when the USSD session times out.
++    """
++    payload = await _parsed_and_verified(request, x_ussdk_signature)
++    msisdn = payload.get("props", {}).get("session", {}).get("msisdn", "")
++
++    farmer = db.query(Farmer).filter(Farmer.phone == msisdn).first()
++    announcement_text = "No new announcements. Check with your cooperative leader."
++
++    if farmer:
++        moolre = MoolreService()
++        sms_result = await moolre.send_single_sms(
++            phone=farmer.phone,
++            message=announcement_text,
++            ref=f"announce-{farmer.id}",
++        )
++        if sms_result.get("success"):
++            return {"message": f"{announcement_text}\n(Also sent via SMS.)"}
++
++    return {"message": announcement_text}
++
+diff --git a/backend/tests/test_ussdk_hooks.py b/backend/tests/test_ussdk_hooks.py
+index 9d58662..ad951e3 100644
+--- a/backend/tests/test_ussdk_hooks.py
++++ b/backend/tests/test_ussdk_hooks.py
+@@ -112,3 +112,71 @@ def test_loan_balance_registered_farmer_no_loans(client, farmer):
+     body = resp.json()
+     assert body["registered"] is True
+     assert body["balance"] == 0
++
++
++def test_wallet_balance_unregistered_phone_ends_session(client):
++    resp = client.post(
++        "/ussdk/wallet-balance",
++        json=_hook_payload("0200000000"),
++    )
++    assert resp.status_code == 200
++    assert resp.json()["action"] == "end"
++
++
++def test_wallet_balance_success(client, farmer):
++    with patch(
++        "app.routes.ussdk_hooks.MoolreService.account_status",
++        new_callable=AsyncMock,
++    ) as mock_status:
++        mock_status.return_value = {
++            "success": True,
++            "balance": "1250.00",
++            "account_name": "Test Cooperative",
++        }
++        resp = client.post(
++            "/ussdk/wallet-balance",
++            json=_hook_payload(farmer["phone"]),
++        )
++
++    assert resp.status_code == 200
++    assert "1250.00" in resp.json()["message"]
++
++
++def test_wallet_balance_moolre_failure_ends_session(client, farmer):
++    with patch(
++        "app.routes.ussdk_hooks.MoolreService.account_status",
++        new_callable=AsyncMock,
++    ) as mock_status:
++        mock_status.return_value = {"success": False}
++        resp = client.post(
++            "/ussdk/wallet-balance",
++            json=_hook_payload(farmer["phone"]),
++        )
++
++    assert resp.status_code == 200
++    assert resp.json()["action"] == "end"
++
++
++def test_announcements_unregistered_phone_still_answers(client):
++    resp = client.post(
++        "/ussdk/announcements",
++        json=_hook_payload("0200000000"),
++    )
++    assert resp.status_code == 200
++    assert "No new announcements" in resp.json()["message"]
++
++
++def test_announcements_sends_sms_for_registered_farmer(client, farmer):
++    with patch(
++        "app.routes.ussdk_hooks.MoolreService.send_single_sms",
++        new_callable=AsyncMock,
++    ) as mock_sms:
++        mock_sms.return_value = {"success": True}
++        resp = client.post(
++            "/ussdk/announcements",
++            json=_hook_payload(farmer["phone"]),
++        )
++
++    assert resp.status_code == 200
++    mock_sms.assert_called_once()
++    assert "SMS" in resp.json()["message"]
+-- 
+2.43.0
+

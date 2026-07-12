@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     moolre_merchant_code: str = ""
     moolre_webhook_secret: str = ""
 
+    # USSDK hook verification
+    ussdk_hook_secret: str = ""
+
     # Cooperative defaults
     default_currency: str = "GHS"
     default_sms_sender_id: str = "AgroOS"
