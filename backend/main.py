@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
     """Initialise DB and create tables on startup."""
     _init_db()
 
-    if settings.seed_demo_data or settings.app_env == "development":
+    if settings.seed_demo_data:
         db = create_session()
         try:
             seed_golden_path(db)

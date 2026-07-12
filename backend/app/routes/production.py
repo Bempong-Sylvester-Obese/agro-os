@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.models.models import Farmer, Production, User
@@ -47,6 +48,7 @@ def create_production(production_in: ProductionCreate, db: Session = Depends(get
 def list_productions(
     farmer_id: int | None = None,
     crop_type: str | None = None,
+    cooperative_id: int | None = None,
     skip: int = 0,
     limit: int = Query(default=100, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
@@ -55,7 +57,18 @@ def list_productions(
     """List production records with optional filters."""
     query = db.query(Production)
     if current_user and current_user.cooperative_id:
-        query = query.join(Farmer, Production.farmer_id == Farmer.id).filter(Farmer.cooperative_id == current_user.cooperative_id)
+        query = query.join(Farmer, Production.farmer_id == Farmer.id).filter(
+            Farmer.cooperative_id == current_user.cooperative_id
+        )
+    elif cooperative_id is not None:
+        query = query.join(Farmer, Production.farmer_id == Farmer.id).filter(
+            Farmer.cooperative_id == cooperative_id
+        )
+    else:
+        settings = get_settings()
+        if settings.auth_enabled:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        raise HTTPException(status_code=400, detail="cooperative_id is required")
     if farmer_id is not None:
         query = query.filter(Production.farmer_id == farmer_id)
     if crop_type is not None:
