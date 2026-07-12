@@ -7,9 +7,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.config import get_settings
-from app.database.db import create_session, _init_db
+from app.database.db import create_session, engine, _init_db
 from app.database.seed import seed_golden_path
 from app.dependencies.auth import decode_access_token
 from app.routes import (
@@ -164,6 +165,50 @@ def health_check():
         "model_ready": model_ready,
         **model_meta,
     }
+
+
+def _readiness_payload() -> tuple[dict, bool]:
+    """Build readiness metadata and report whether all required components are ready."""
+    current_settings = get_settings()
+    model_meta = agro_ai_runtime.metadata
+    model_source = "synthetic" if model_meta["is_synthetic_fallback"] else "artifact"
+    require_artifact = (
+        current_settings.agro_ai_require_artifact
+        or current_settings.app_env.lower() in {"production", "prod"}
+    )
+    model_ready = not (require_artifact and model_source == "synthetic")
+
+    database = "ok"
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except Exception:
+        logging.exception("Database readiness probe failed")
+        database = "fail"
+
+    ready = database == "ok" and model_ready
+    return {
+        "status": "ready" if ready else "not_ready",
+        "database": database,
+        "model_source": model_source,
+        "model_ready": model_ready,
+        **model_meta,
+    }, ready
+
+
+@app.get("/health/live", tags=["health"])
+def health_live():
+    """Liveness probe: the API process can accept requests."""
+    return {"status": "ok"}
+
+
+@app.get("/health/ready", tags=["health"])
+def health_ready():
+    """Readiness probe: database connectivity and required model are available."""
+    payload, ready = _readiness_payload()
+    if not ready:
+        return JSONResponse(status_code=503, content=payload)
+    return payload
 
 
 if __name__ == "__main__":

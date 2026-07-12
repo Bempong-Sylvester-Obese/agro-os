@@ -259,7 +259,25 @@ secret from the portal.
 
 Run these checks after every production or staging deployment.
 
-### 9.1 Health check
+### 9.1 Health checks
+
+Use the lightweight liveness endpoint to confirm that the API process is up:
+```bash
+curl https://agro-os-api.onrender.com/health/live
+```
+
+Use readiness for database and model availability:
+```bash
+curl https://agro-os-api.onrender.com/health/ready
+```
+
+`/health/ready` returns HTTP 503 with `database: "fail"` when PostgreSQL is
+unreachable. In production it also returns 503 when the required Agro-AI
+artifact is unavailable. Keep Render's health-check path on `/health` until the
+production model artifact is deployed; then switch it to `/health/ready`.
+
+The existing aggregate endpoint remains available for frontend cold-start
+warming and operational diagnostics:
 ```bash
 curl https://agro-os-api.onrender.com/health
 ```
@@ -267,6 +285,7 @@ Expected response:
 ```json
 {
   "status": "healthy",
+  "model_ready": true,
   "model_version": "agro-ai-rf-v1",
   "feature_schema_version": "agro-ai-features-v1",
   "artifact_source": "..."
