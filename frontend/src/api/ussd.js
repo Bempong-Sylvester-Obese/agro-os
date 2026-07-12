@@ -1,21 +1,4 @@
-import { API_URL, apiResult, fetchJson, withDemoFallback } from './config'
-
-const DEMO_USSD = [
-  {
-    id: 1,
-    phone: '+233552341234',
-    input_path: '2',
-    response_text: 'Dial *203*AgroOS# to pay your dues via mobile money. Thank you!',
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: 2,
-    phone: '+233552341234',
-    input_path: '5',
-    response_text: 'Farmer: Abena Mensah\nTrust Score: 58.0/100\nStatus: Active',
-    created_at: new Date(Date.now() - 3600000).toISOString(),
-  },
-]
+import { API_URL, authHeaders, fetchJson, formatTransportError } from './config'
 
 export function formatUssdTime(isoDate) {
   if (!isoDate) return '—'
@@ -29,20 +12,14 @@ export function formatUssdTime(isoDate) {
   })
 }
 
-export function fetchUssdLogs() {
-  return withDemoFallback(
-    async () => apiResult('api', { logs: await fetchJson(`${API_URL}/webhooks/ussd/logs`) }),
-    () => apiResult('demo', { logs: DEMO_USSD }),
-  )
-}
-
-export function simulatePaymentWebhook({ transactionId, moolreReference }) {
-  return fetchJson(`${API_URL}/webhooks/moolre/payment/simulate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      transaction_id: transactionId ?? undefined,
-      moolre_reference: moolreReference ?? undefined,
-    }),
-  })
+/** Live USSD session log from the backend (no demo substitution in production). */
+export async function fetchUssdLogs() {
+  try {
+    const logs = await fetchJson(`${API_URL}/webhooks/ussd/logs`, {
+      headers: authHeaders(),
+    })
+    return { logs: logs || [], source: 'api' }
+  } catch (err) {
+    throw new Error(formatTransportError(err))
+  }
 }

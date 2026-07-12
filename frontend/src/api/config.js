@@ -8,7 +8,12 @@
 import { clearAuthSession, getAuthToken } from './auth'
 
 export const API_URL = import.meta.env.VITE_API_URL || 'https://previewbackendagro-os.onrender.com'
-export const FETCH_TIMEOUT_MS = 10000
+/** General API calls (dashboard data). Render cold starts can exceed 10s. */
+export const FETCH_TIMEOUT_MS = 45000
+/** Login/signup — allow time for free-tier backend wake + DB connect. */
+export const AUTH_FETCH_TIMEOUT_MS = 90000
+/** Production builds never silently substitute demo data. */
+export const LIVE_API_ONLY = import.meta.env.PROD && import.meta.env.VITE_ALLOW_DEMO_FALLBACK !== 'true'
 export const DEFAULT_COOP_ID = import.meta.env.VITE_COOPERATIVE_ID
 
 export function authHeaders(json = false) {
@@ -53,6 +58,17 @@ export function isTransportFailure(err) {
   if (err?.name === 'AbortError') return true
   if (err instanceof TypeError) return true
   return false
+}
+
+/** User-facing message for network timeouts (avoids raw AbortError text). */
+export function formatTransportError(err) {
+  if (err?.name === 'AbortError') {
+    return 'The server is still starting up or the connection timed out. Wait a moment and try again.'
+  }
+  if (err instanceof TypeError) {
+    return 'Could not reach the AgroOS API. Check your connection and try again.'
+  }
+  return err?.message || 'Network request failed'
 }
 
 export function apiResult(source, data) {
@@ -112,7 +128,7 @@ export async function fetchJson(url, options = {}) {
 /**
  * Run a live fetch; return demo payload only on transport-level failure.
  */
-export async function withDemoFallback(fetchLive, getDemo, { fallback = true } = {}) {
+export async function withDemoFallback(fetchLive, getDemo, { fallback = !LIVE_API_ONLY } = {}) {
   try {
     return await fetchLive()
   } catch (err) {
