@@ -5,8 +5,10 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
+from app.dependencies.cooperative_scope import resolve_cooperative_scope
 from app.models.models import Cooperative, Farmer, Loan, LoanStatus, Transaction, TransactionStatus, TransactionType, User
 from app.services.auth_service import get_current_user
 from app.schemas.schemas import LoanApprove, LoanCreate, LoanRepayVerifyRequest, LoanResponse
@@ -195,15 +197,22 @@ def create_loan(loan_in: LoanCreate, db: Session = Depends(get_db)):
 def list_loans(
     farmer_id: int | None = None,
     status: LoanStatus | None = None,
+    cooperative_id: int | None = None,
     skip: int = 0,
     limit: int = Query(default=100, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user),
 ):
     """List loans with optional filters."""
-    query = db.query(Loan)
-    if current_user and current_user.cooperative_id:
-        query = query.join(Farmer, Loan.farmer_id == Farmer.id).filter(Farmer.cooperative_id == current_user.cooperative_id)
+    settings = get_settings()
+    scoped_coop_id = resolve_cooperative_scope(
+        current_user=current_user,
+        cooperative_id=cooperative_id,
+        settings=settings,
+    )
+    query = db.query(Loan).join(Farmer, Loan.farmer_id == Farmer.id).filter(
+        Farmer.cooperative_id == scoped_coop_id
+    )
     if farmer_id is not None:
         query = query.filter(Loan.farmer_id == farmer_id)
     if status is not None:

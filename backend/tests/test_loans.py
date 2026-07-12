@@ -95,17 +95,17 @@ def test_create_loan_bad_farmer(client):
     assert resp.status_code == 404
 
 
-def test_list_loans(client, farmer):
+def test_list_loans(client, farmer, cooperative):
     client.post("/loans/", json={"farmer_id": farmer["id"], "amount": 200.0})
-    resp = client.get("/loans/")
+    resp = client.get(f"/loans/?cooperative_id={cooperative['id']}")
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
     assert len(resp.json()) >= 1
 
 
-def test_list_loans_filter_by_farmer(client, farmer):
+def test_list_loans_filter_by_farmer(client, farmer, cooperative):
     client.post("/loans/", json={"farmer_id": farmer["id"], "amount": 100.0})
-    resp = client.get(f"/loans/?farmer_id={farmer['id']}")
+    resp = client.get(f"/loans/?cooperative_id={cooperative['id']}&farmer_id={farmer['id']}")
     assert resp.status_code == 200
     assert all(ln["farmer_id"] == farmer["id"] for ln in resp.json())
 

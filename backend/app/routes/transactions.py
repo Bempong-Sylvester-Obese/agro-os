@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database.db import get_db
+from app.dependencies.cooperative_scope import resolve_cooperative_scope
 from app.models.models import Cooperative, Farmer, PaymentWebhookEvent, Transaction, TransactionStatus, TransactionType, User
 from app.services.auth_service import get_current_user
 from app.schemas.schemas import (
@@ -159,13 +160,15 @@ def list_transactions(
     current_user: User | None = Depends(get_current_user),
 ):
     """List transactions with optional filters."""
-    query = db.query(Transaction)
-
-    if current_user and current_user.cooperative_id:
-        query = query.join(Farmer, Transaction.farmer_id == Farmer.id).filter(Farmer.cooperative_id == current_user.cooperative_id)
-    elif cooperative_id is not None:
-        query = query.join(Farmer, Transaction.farmer_id == Farmer.id).filter(Farmer.cooperative_id == cooperative_id)
-        
+    settings = get_settings()
+    scoped_coop_id = resolve_cooperative_scope(
+        current_user=current_user,
+        cooperative_id=cooperative_id,
+        settings=settings,
+    )
+    query = db.query(Transaction).join(Farmer, Transaction.farmer_id == Farmer.id).filter(
+        Farmer.cooperative_id == scoped_coop_id
+    )
     if farmer_id is not None:
         query = query.filter(Transaction.farmer_id == farmer_id)
     if status is not None:
