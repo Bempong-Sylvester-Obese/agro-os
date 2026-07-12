@@ -1,4 +1,5 @@
 // src/pages/PricingPage.jsx
+import CTASection from '../components/CTASection'
 import Footer from '../components/Footer'
 import { useAppNavigate } from '../hooks/useAppNavigate'
 
@@ -51,6 +52,15 @@ const PLANS = [
 
 export default function PricingPage() {
   const setPage = useAppNavigate()
+
+  function handlePlanCta(cta) {
+    if (cta === 'Contact sales') {
+      setPage('bookDemo')
+      return
+    }
+    setPage('login', { loginMode: 'signup' })
+  }
+
   return (
     <>
       <div className="sol-hero">
@@ -67,30 +77,15 @@ export default function PricingPage() {
               <div
                 key={name}
                 className={`pricing-card${primary ? ' pricing-card--featured' : ''}`}
-                style={{
-                  background: primary ? 'var(--g)' : '#fff',
-                  border: `1px solid ${primary ? 'var(--g)' : 'var(--border)'}`,
-                  borderRadius: 16,
-                  padding: '32px 28px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  boxShadow: primary ? '0 24px 60px rgba(26,71,49,.2)' : 'none',
-                }}
               >
-                <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '.08em', textTransform: 'uppercase', color: primary ? 'var(--gold-l)' : 'var(--g)', marginBottom: 10 }}>
-                  {name}
-                </div>
-                <div style={{ fontFamily: "'Fraunces',serif", fontSize: 40, fontWeight: 900, color: primary ? '#fff' : 'var(--g)', marginBottom: 4 }}>
-                  {price}
-                </div>
-                <div style={{ fontSize: 13, color: primary ? 'rgba(255,255,255,.6)' : 'var(--muted)', marginBottom: 28 }}>
-                  {sub}
-                </div>
+                <div className="pricing-card__label">{name}</div>
+                <div className="pricing-card__price">{price}</div>
+                <div className="pricing-card__sub">{sub}</div>
 
-                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 28 }}>
+                <div className="pricing-card__features">
                   {features.map((f) => (
-                    <div key={f} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, color: primary ? 'rgba(255,255,255,.85)' : 'var(--text)' }}>
-                      <span style={{ color: primary ? 'var(--gold-l)' : 'var(--gl)', marginTop: 2 }}>✓</span>
+                    <div key={f} className="pricing-card__feature">
+                      <span className="pricing-card__check">✓</span>
                       {f}
                     </div>
                   ))}
@@ -98,24 +93,8 @@ export default function PricingPage() {
 
                 <button
                   type="button"
-                  onClick={() => {
-                    if (cta === 'Contact sales') {
-                      setPage('login', { loginMode: 'login' })
-                    } else {
-                      setPage('login', { loginMode: 'signup' })
-                    }
-                  }}
-                  style={{
-                    background: primary ? 'var(--gold)' : 'none',
-                    color: primary ? 'var(--g)' : 'var(--g)',
-                    border: primary ? 'none' : '1.5px solid var(--g)',
-                    padding: '12px 20px',
-                    borderRadius: 10,
-                    fontFamily: "'DM Sans',sans-serif",
-                    fontSize: 14,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                  }}
+                  className="pricing-card__btn"
+                  onClick={() => handlePlanCta(cta)}
                 >
                   {cta}
                 </button>
@@ -124,6 +103,15 @@ export default function PricingPage() {
           </div>
         </div>
       </section>
+
+      <CTASection
+        heading="Ready to modernize<br />your cooperative?"
+        subtext="Join cooperatives across Ghana who've replaced paper with AgroOS. Start free, upgrade when you're ready."
+        primaryLabel="Get started free"
+        secondaryLabel="Book a demo"
+        onPrimary={() => setPage('login', { loginMode: 'signup' })}
+        onSecondary={() => setPage('bookDemo')}
+      />
 
       <Footer />
     </>
