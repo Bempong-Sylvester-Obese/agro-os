@@ -21,7 +21,6 @@ class Settings(BaseSettings):
     auth_enabled: bool = False
     sentry_dsn: str = ""
     seed_demo_data: bool = False
-    allow_webhook_simulate: bool = False
 
     # Database
     database_url: str = "postgresql://user:password@localhost:5432/agro_os"

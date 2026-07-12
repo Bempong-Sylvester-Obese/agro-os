@@ -3,7 +3,6 @@ Moolre Webhook Routes
 
 Handles:
   - POST /webhooks/moolre/payment  — real-time payment confirmation
-  - POST /webhooks/moolre/payment/simulate — dev/demo webhook trigger
   - POST /webhooks/moolre/ussd     — USSD session menu handler
 """
 
@@ -19,7 +18,7 @@ from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.models.models import Farmer, PaymentWebhookEvent, Transaction, TransactionStatus, UssdSession
-from app.schemas.schemas import SimulateWebhookRequest, UssdSessionResponse
+from app.schemas.schemas import UssdSessionResponse
 from app.services.communications_service import CommunicationsService
 from app.services.trust_score_service import TrustScoreService
 
@@ -245,56 +244,6 @@ async def handle_moolre_payment_webhook(
         db,
         background_tasks,
         signature_valid=signature_valid,
-    )
-
-
-@router.post("/moolre/payment/simulate")
-async def simulate_moolre_payment_webhook(
-    request_body: SimulateWebhookRequest,
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
-):
-    """Dev/demo endpoint to fire a successful payment webhook without Moolre sandbox."""
-    if settings.app_env == "production":
-        raise HTTPException(status_code=403, detail="Simulation disabled in production")
-
-    tx: Transaction | None = None
-    if request_body.transaction_id is not None:
-        tx = db.query(Transaction).filter(Transaction.id == request_body.transaction_id).first()
-    elif request_body.moolre_reference:
-        tx = (
-            db.query(Transaction)
-            .filter(Transaction.moolre_reference == request_body.moolre_reference)
-            .first()
-        )
-
-    if not tx:
-        raise HTTPException(status_code=404, detail="Transaction not found")
-
-    if not tx.moolre_reference:
-        import uuid as _uuid
-
-        tx.moolre_reference = str(_uuid.uuid4())
-        db.commit()
-        db.refresh(tx)
-
-    payload = {
-        "status": 1,
-        "code": "P01",
-        "message": "Simulated Transaction Successful",
-        "data": {
-            "transactionid": f"SIM-{tx.id}",
-            "externalref": tx.moolre_reference,
-            "amount": str(tx.amount),
-            "payer": tx.payer_phone or "",
-        },
-        "simulated": True,
-    }
-    return _process_payment_payload(
-        payload,
-        db,
-        background_tasks,
-        signature_valid=True,
     )
 
 

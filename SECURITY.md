@@ -40,7 +40,6 @@ admin can access all cooperatives until role-based access is implemented.
 |---|---|
 | `POST /webhooks/moolre/payment` | HMAC-SHA256 via `X-Moolre-Signature` when `MOOLRE_WEBHOOK_SECRET` is set |
 | `POST /webhooks/moolre/ussd` | No signature verification today (see open issues) |
-| `POST /webhooks/moolre/payment/simulate` | Disabled when `APP_ENV=production` |
 
 When `MOOLRE_WEBHOOK_SECRET` is unset, payment webhook signature checks are
 skipped (development/sandbox only). Production deployments must set the secret.
