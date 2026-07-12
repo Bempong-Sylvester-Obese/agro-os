@@ -287,15 +287,21 @@ async def disburse_loan(loan_id: int, db: Session = Depends(get_db)):
             account_number=account_number,
             id_type="2",
         )
-        transfer_result = {"moolre_transfer_ref": existing_tx.moolre_transfer_ref}
-        return await _finalize_disbursement(
-            loan=loan,
-            farmer=farmer,
-            transfer_result=transfer_result,
-            status_result=status_result,
-            db=db,
-            existing_tx=existing_tx,
-        )
+        if status_result["status"] == "failed":
+            # The provider has definitively reversed the prior attempt. Record that
+            # outcome, then use this explicit Disburse click for one fresh attempt.
+            existing_tx.status = TransactionStatus.failed
+            db.commit()
+        else:
+            transfer_result = {"moolre_transfer_ref": existing_tx.moolre_transfer_ref}
+            return await _finalize_disbursement(
+                loan=loan,
+                farmer=farmer,
+                transfer_result=transfer_result,
+                status_result=status_result,
+                db=db,
+                existing_tx=existing_tx,
+            )
 
     transfer_result = await moolre.initiate_transfer(
         receiver_phone=farmer.phone,
