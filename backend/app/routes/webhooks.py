@@ -10,6 +10,7 @@ import hashlib
 import hmac
 import json
 import logging
+import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, Request
 from sqlalchemy.orm import Session
@@ -19,16 +20,20 @@ from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.models.models import (
     CooperativeMembership as Farmer,
+    Loan,
+    LoanStatus,
     PaymentWebhookEvent,
     Transaction,
     TransactionStatus,
     User,
     UssdSession,
 )
+from app.routes.transactions import _run_dues_collect
 from app.schemas.schemas import UssdSessionResponse
 from app.services.auth_service import get_current_user
 from app.services.communications_service import CommunicationsService
 from app.services.membership_service import memberships_for_phone
+from app.services.moolre_service import MoolreService
 from app.services.trust_score_service import TrustScoreService
 
 logger = logging.getLogger(__name__)
@@ -258,16 +263,38 @@ async def handle_moolre_payment_webhook(
 
 # ---------------------------------------------------------------------------
 # USSD session handler
+#
+# Moolre's USSD callback contract (docs.moolre.com/#/ussd):
+#   Request body:  {"sessionId", "new", "msisdn", "network", "message",
+#                    "extension", "data"}
+#   Response body: {"message": "<text to show>", "reply": true|false}
+#     reply=true  -> session continues, we expect another request with the
+#                    user's next keystroke in "message"
+#     reply=false -> session ends after this message is shown
+#
+# Unlike Africa's Talking-style gateways, "message" is NOT a cumulative
+# dialed string — it is only what the user typed at *this* step. Session
+# continuity comes entirely from "sessionId", so we keep a small in-memory
+# state machine keyed by sessionId. This resets if the Render dyno restarts,
+# which is an acceptable tradeoff for the demo (Issue #16 tracks moving this
+# to persistent storage later).
+#
+# Per SECURITY.md (Issue #30): the USSD callback is unsigned by Moolre,
+# unlike the HMAC-signed /moolre/payment webhook above, so no signature
+# check is applied here.
 # ---------------------------------------------------------------------------
 
 USSD_MENU_MAIN = (
     "Welcome to AgroOS\n"
     "1. Check Loan Balance\n"
-    "2. Pay Cooperative Dues\n"
-    "3. Request Input Loan\n"
-    "4. View Announcements\n"
-    "5. Check Farm Status"
+    "2. Pay Dues\n"
+    "3. Announcements"
 )
+
+NOT_REGISTERED_MSG = "Phone not registered with AgroOS. Contact your cooperative."
+
+# In-memory USSD session state: {sessionId: {...}}. See module docstring above.
+_ussd_sessions: dict[str, dict] = {}
 
 
 def _log_ussd_session(
@@ -311,151 +338,171 @@ def list_ussd_logs(
     )
 
 
+def _cooperative_menu(memberships: list[Farmer]) -> str:
+    return "Choose your cooperative\n" + "\n".join(
+        f"{index}. {membership.cooperative.name}"
+        for index, membership in enumerate(memberships, start=1)
+    )
+
+
 @router.post("/moolre/ussd")
 async def handle_ussd_session(
     request: Request,
     db: Session = Depends(get_db),
-    x_moolre_signature: str | None = Header(default=None),
 ):
-    """
-    Handle USSD session callbacks from Moolre.
-    Moolre posts session data; we respond with the next menu string.
-    """
+    """Handle USSD session callbacks from Moolre. See module docstring above
+    for the request/response contract."""
     body = await request.body()
-    if not _verify_signature(body, x_moolre_signature):
-        raise HTTPException(status_code=401, detail="Invalid webhook signature")
-
     try:
         payload = json.loads(body)
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
-    session_id: str = payload.get("sessionid", "")
-    phone: str = payload.get("phone", "")
-    input_text: str = str(payload.get("input", "")).strip()
+    session_id: str = payload.get("sessionId", "")
+    is_new: bool = bool(payload.get("new"))
+    msisdn: str = payload.get("msisdn", "")
+    message: str = str(payload.get("message", "")).strip()
 
-    memberships = memberships_for_phone(phone, db)
-    farmer = memberships[0] if len(memberships) == 1 else None
+    if not session_id:
+        raise HTTPException(status_code=400, detail="Missing sessionId")
 
-    if len(memberships) > 1:
-        parts = input_text.split("*") if input_text else []
-        if not parts:
-            menu = "Choose a cooperative\n" + "\n".join(
-                f"{index}. {membership.cooperative.name}"
-                for index, membership in enumerate(memberships, start=1)
-            )
-            _log_ussd_session(
-                db,
-                session_id=session_id,
-                phone=phone,
-                input_path="cooperative-menu",
-                response_text=menu,
-                farmer=None,
-            )
-            return {"response": menu, "action": "input"}
+    # ---- Fresh session: resolve cooperative membership, then show the menu
+    if is_new or session_id not in _ussd_sessions:
+        memberships = memberships_for_phone(msisdn, db)
+
+        if len(memberships) > 1:
+            _ussd_sessions[session_id] = {
+                "step": "select_coop",
+                "memberships": memberships,
+            }
+            menu = _cooperative_menu(memberships)
+            _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path="new", response_text=menu, farmer=None)
+            return {"message": menu, "reply": True}
+
+        farmer = memberships[0] if memberships else None
+        _ussd_sessions[session_id] = {"step": "main", "farmer_id": farmer.id if farmer else None}
+        _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path="new", response_text=USSD_MENU_MAIN, farmer=farmer)
+        return {"message": USSD_MENU_MAIN, "reply": True}
+
+    state = _ussd_sessions[session_id]
+
+    # ---- Cooperative selection step
+    if state["step"] == "select_coop":
+        memberships = state["memberships"]
         try:
-            selected_index = int(parts[0]) - 1
-            farmer = memberships[selected_index]
+            farmer = memberships[int(message) - 1]
         except (ValueError, IndexError):
-            msg = "Invalid cooperative selection. Please try again."
-            _log_ussd_session(
-                db,
-                session_id=session_id,
-                phone=phone,
-                input_path=input_text,
-                response_text=msg,
-                farmer=None,
-            )
-            return {"response": msg, "action": "end"}
-        if len(parts) == 1:
-            _log_ussd_session(
-                db,
-                session_id=session_id,
-                phone=phone,
-                input_path=input_text,
-                response_text=USSD_MENU_MAIN,
-                farmer=farmer,
-            )
-            return {"response": USSD_MENU_MAIN, "action": "input"}
+            menu = "Invalid choice.\n" + _cooperative_menu(memberships)
+            _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=menu, farmer=None)
+            return {"message": menu, "reply": True}
+        state["step"] = "main"
+        state["farmer_id"] = farmer.id
+        _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=USSD_MENU_MAIN, farmer=farmer)
+        return {"message": USSD_MENU_MAIN, "reply": True}
 
-    # ---- Main menu (no input yet)
-    if not input_text or input_text == "0":
-        response = {"response": USSD_MENU_MAIN, "action": "input"}
-        _log_ussd_session(
-            db,
-            session_id=session_id,
-            phone=phone,
-            input_path=input_text or "menu",
-            response_text=USSD_MENU_MAIN,
+    farmer = db.query(Farmer).filter(Farmer.id == state.get("farmer_id")).first() if state.get("farmer_id") else None
+
+    # ---- Main menu: dispatch on the option chosen
+    if state["step"] == "main":
+        if message == "1":
+            if not farmer:
+                _ussd_sessions.pop(session_id, None)
+                _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=NOT_REGISTERED_MSG, farmer=None)
+                return {"message": NOT_REGISTERED_MSG, "reply": False}
+            active_loans = (
+                db.query(Loan)
+                .filter(Loan.farmer_id == farmer.id, Loan.status == LoanStatus.disbursed)
+                .all()
+            )
+            if not active_loans:
+                msg = f"Hello {farmer.name}, you have no active loans."
+            else:
+                total = sum(ln.amount for ln in active_loans)
+                msg = f"Hello {farmer.name}, active loan balance: GHS {total:.2f}"
+            _ussd_sessions.pop(session_id, None)
+            _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
+            return {"message": msg, "reply": False}
+
+        if message == "2":
+            if not farmer:
+                _ussd_sessions.pop(session_id, None)
+                _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=NOT_REGISTERED_MSG, farmer=None)
+                return {"message": NOT_REGISTERED_MSG, "reply": False}
+            state["step"] = "pay_amount"
+            msg = "Enter amount to pay (GHS):"
+            _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
+            return {"message": msg, "reply": True}
+
+        if message == "3":
+            announcement_text = "No new announcements. Check with your cooperative leader."
+            if farmer:
+                moolre = MoolreService()
+                sms_result = await moolre.send_single_sms(
+                    phone=farmer.phone, message=announcement_text, ref=f"announce-{farmer.id}"
+                )
+                if sms_result.get("success"):
+                    announcement_text += "\n(Also sent via SMS.)"
+            _ussd_sessions.pop(session_id, None)
+            _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=announcement_text, farmer=farmer)
+            return {"message": announcement_text, "reply": False}
+
+        msg = "Invalid option.\n" + USSD_MENU_MAIN
+        _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
+        return {"message": msg, "reply": True}
+
+    # ---- Pay dues: amount entry
+    if state["step"] == "pay_amount":
+        try:
+            amount = float(message)
+            if amount <= 0:
+                raise ValueError
+        except ValueError:
+            msg = "Enter a valid amount (GHS):"
+            return {"message": msg, "reply": True}
+
+        external_ref = str(uuid.uuid4())
+        result = await _run_dues_collect(
             farmer=farmer,
+            amount=amount,
+            channel="13",
+            description="Cooperative dues (USSD)",
+            external_ref=external_ref,
+            otp_code=None,
+            db=db,
         )
-        return response
+        if result.outcome == "verification_required":
+            state["step"] = "pay_otp"
+            state["external_ref"] = external_ref
+            state["amount"] = amount
+            msg = "Enter the OTP sent to your phone:"
+            _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
+            return {"message": msg, "reply": True}
 
-    parts = input_text.split("*")
-    level_1 = parts[1] if len(memberships) > 1 else (parts[0] if parts else "")
-
-    # ---- Option 1: Check Loan Balance
-    if level_1 == "1":
-        if not farmer:
-            msg = "Phone not registered with AgroOS. Contact your cooperative."
-            _log_ussd_session(db, session_id=session_id, phone=phone, input_path=input_text, response_text=msg, farmer=None)
-            return {"response": msg, "action": "end"}
-        from app.models.models import Loan, LoanStatus
-
-        active_loans = (
-            db.query(Loan)
-            .filter(Loan.farmer_id == farmer.id, Loan.status == LoanStatus.disbursed)
-            .all()
+        _ussd_sessions.pop(session_id, None)
+        msg = result.message or (
+            "Payment request sent. Approve the prompt on your phone." if result.status == "pending" else "Payment could not be started. Try again later."
         )
-        if not active_loans:
-            msg = f"Hello {farmer.name}, you have no active loans."
-        else:
-            total = sum(ln.amount for ln in active_loans)
-            msg = f"Hello {farmer.name}, active loan balance: GHS {total:.2f}"
-        _log_ussd_session(db, session_id=session_id, phone=phone, input_path=input_text, response_text=msg, farmer=farmer)
-        return {"response": msg, "action": "end"}
+        _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
+        return {"message": msg, "reply": False}
 
-    # ---- Option 2: Pay Cooperative Dues (info — actual payment via USSD merchant code)
-    elif level_1 == "2":
-        merchant = settings.moolre_merchant_code or "AgroOS"
-        msg = f"Dial *203*{merchant}# to pay your dues via mobile money. Thank you!"
-        _log_ussd_session(db, session_id=session_id, phone=phone, input_path=input_text, response_text=msg, farmer=farmer)
-        return {"response": msg, "action": "end"}
-
-    # ---- Option 3: Request Input Loan
-    elif level_1 == "3":
-        if not farmer:
-            msg = "Phone not registered with AgroOS."
-            _log_ussd_session(db, session_id=session_id, phone=phone, input_path=input_text, response_text=msg, farmer=None)
-            return {"response": msg, "action": "end"}
-        msg = (
-            f"Hello {farmer.name}, loan requests must be submitted through your "
-            "cooperative administrator. They will process it in AgroOS."
+    # ---- Pay dues: OTP confirmation
+    if state["step"] == "pay_otp":
+        result = await _run_dues_collect(
+            farmer=farmer,
+            amount=state.get("amount", 0),
+            channel="13",
+            description="Cooperative dues (USSD)",
+            external_ref=state["external_ref"],
+            otp_code=message,
+            db=db,
         )
-        _log_ussd_session(db, session_id=session_id, phone=phone, input_path=input_text, response_text=msg, farmer=farmer)
-        return {"response": msg, "action": "end"}
+        _ussd_sessions.pop(session_id, None)
+        msg = result.message or "Payment could not be completed. Try again later."
+        _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
+        return {"message": msg, "reply": False}
 
-    # ---- Option 4: View Announcements
-    elif level_1 == "4":
-        msg = "No new announcements. Check with your cooperative leader."
-        _log_ussd_session(db, session_id=session_id, phone=phone, input_path=input_text, response_text=msg, farmer=farmer)
-        return {"response": msg, "action": "end"}
-
-    # ---- Option 5: Check Farm Status
-    elif level_1 == "5":
-        if not farmer:
-            msg = "Phone not registered with AgroOS."
-            _log_ussd_session(db, session_id=session_id, phone=phone, input_path=input_text, response_text=msg, farmer=None)
-            return {"response": msg, "action": "end"}
-        msg = (
-            f"Farmer: {farmer.name}\n"
-            f"Trust Score: {farmer.trust_score:.1f}/100\n"
-            f"Status: {farmer.membership_status.value.capitalize()}"
-        )
-        _log_ussd_session(db, session_id=session_id, phone=phone, input_path=input_text, response_text=msg, farmer=farmer)
-        return {"response": msg, "action": "end"}
-
-    else:
-        msg = "Invalid option. Please try again."
-        _log_ussd_session(db, session_id=session_id, phone=phone, input_path=input_text, response_text=msg, farmer=farmer)
-        return {"response": msg, "action": "end"}
+    # ---- Unknown state (shouldn't happen) — reset gracefully
+    _ussd_sessions.pop(session_id, None)
+    msg = "Session expired. Please dial again."
+    _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=None)
+    return {"message": msg, "reply": False}
