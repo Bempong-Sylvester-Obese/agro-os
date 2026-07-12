@@ -26,6 +26,19 @@ body {
 .serif { font-family: 'Fraunces', serif; }
 .mono  { font-family: 'JetBrains Mono', monospace; }
 
+/* ── Focus visible (keyboard navigation) ── */
+button:focus-visible,
+.nav-tab:focus-visible,
+.nav-mobile-link:focus-visible,
+.footer-link:focus-visible,
+.btn-ghost:focus-visible,
+.btn-nav:focus-visible,
+.admin-nav-item:focus-visible,
+.auth-input:focus-visible {
+  outline: 2px solid var(--g);
+  outline-offset: 2px;
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -39,6 +52,8 @@ body {
   cursor: pointer; transition: all .2s;
 }
 .btn-lg:hover { background: var(--gm); transform: translateY(-1px); box-shadow: 0 8px 24px rgba(26,71,49,.25); }
+.btn-lg:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-lg:disabled:hover { background: var(--g); transform: none; box-shadow: none; }
 
 .btn-out-lg {
   background: none; border: 1.5px solid var(--border); color: var(--text);
@@ -211,6 +226,9 @@ body {
 .score-bg   { flex: 1; height: 6px; background: var(--sage); border-radius: 100px; overflow: hidden; }
 .score-fill { height: 100%; border-radius: 100px; background: var(--g); }
 .score-val  { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; color: var(--g); width: 28px; text-align: right; }
+
+/* ── USSD section anchor (sticky nav offset) ── */
+#ussd-section { scroll-margin-top: 80px; }
 
 /* ── USSD phone ── */
 .ussd-phone  { background: #1A1A1A; border-radius: 20px; padding: 20px 14px; max-width: 210px; margin: 0 auto; box-shadow: 0 16px 48px rgba(0,0,0,.28); }
