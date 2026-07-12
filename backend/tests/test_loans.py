@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from unittest.mock import AsyncMock, patch
 
 from app.models.models import Transaction, TransactionStatus, TransactionType
+from app.routes.loans import _disburse_external_ref
 from app.services.moolre_service import MoolreService
 
 
@@ -70,6 +71,16 @@ def _payment_status_completed(amount: str | float = "150.0") -> dict:
         "amount": str(amount),
         "raw": {},
     }
+
+
+def test_disburse_external_ref_is_unique_numeric_moolre_format():
+    first = _disburse_external_ref(7)
+    second = _disburse_external_ref(7)
+
+    assert first.isdigit()
+    assert len(first) == 12
+    assert first.startswith("07")
+    assert second != first
 
 
 def _approve_and_disburse(client, farmer, amount: float, loan_id: int | None = None):
@@ -202,6 +213,7 @@ def test_disburse_loan(client, farmer):
     assert data["moolre_transfer_ref"] == "TEST-TRANSFER-001"
     mock_transfer.assert_called_once()
     mock_status.assert_called_once()
+    assert mock_status.call_args.kwargs["id_type"] == "2"
 
 
 def test_disburse_loan_uses_platform_wallet(client, farmer, cooperative):

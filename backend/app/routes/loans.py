@@ -20,12 +20,15 @@ router = APIRouter(prefix="/loans", tags=["loans"])
 
 
 def _disburse_external_ref(loan_id: int) -> str:
-    """A unique reference per payout attempt.
+    """Return Moolre's required numeric reference for each payout attempt.
 
-    A failed/reversed Moolre transfer must not reuse its external reference.
-    Pending attempts remain idempotent through their stored Moolre transaction ID.
+    Moolre coerces alphanumeric references to ``0``, which makes separate
+    attempts indistinguishable in its ledger. Keep this to 12 numeric digits,
+    matching the format used by Moolre's own transfer examples.
     """
-    return f"agro-loan-disburse-{loan_id}-{uuid.uuid4().hex[:12]}"
+    loan_prefix = str(loan_id % 100).zfill(2)
+    random_suffix = str(uuid.uuid4().int % 10_000_000_000).zfill(10)
+    return f"{loan_prefix}{random_suffix}"
 
 
 def _repay_external_ref(loan_id: int) -> str:
@@ -331,8 +334,9 @@ async def disburse_loan(loan_id: int, db: Session = Depends(get_db)):
         )
 
     status_result = await moolre.transfer_status(
-        reference=transfer_result.get("external_ref") or ext_ref,
+        reference=transfer_result.get("moolre_transfer_ref"),
         account_number=account_number,
+        id_type="2",
     )
     return await _finalize_disbursement(
         loan=loan,
