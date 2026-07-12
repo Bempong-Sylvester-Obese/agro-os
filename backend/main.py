@@ -12,6 +12,7 @@ from sqlalchemy import text
 from app.config import get_settings
 from app.database.db import create_session, engine, _init_db
 from app.database.seed import seed_golden_path
+from app.middleware.rate_limit import RouteRateLimitMiddleware
 from app.services.auth_service import decode_access_token
 from app.routes import (
     agro_ai,
@@ -116,6 +117,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RouteRateLimitMiddleware)
 
 
 @app.middleware("http")

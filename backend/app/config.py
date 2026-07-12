@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     auth_enabled: bool = False
     sentry_dsn: str = ""
     seed_demo_data: bool = False
+    rate_limit_enabled: bool = True
+    rate_limit_login_per_minute: int = 10
+    rate_limit_webhook_per_minute: int = 120
+    rate_limit_sms_per_minute: int = 5
+    rate_limit_dues_per_minute: int = 10
 
     # Database
     database_url: str = "postgresql://user:password@localhost:5432/agro_os"
