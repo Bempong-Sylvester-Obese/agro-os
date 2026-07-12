@@ -115,6 +115,11 @@ class MoolreService:
                 "Moolre VAS key is not configured on the server. "
                 "Set MOOLRE_API_VASKEY for SMS broadcasts (required in production)."
             )
+        if not self.resolve_account_number(None).strip():
+            return (
+                "Moolre wallet account is not configured. "
+                "Add your Moolre account number in Settings, or set MOOLRE_ACCOUNT_NUMBER on the server."
+            )
         if self.settings.moolre_env.lower() == "live":
             if not self.settings.moolre_api_key.strip() or not self.settings.moolre_api_pubkey.strip():
                 return (
@@ -413,6 +418,7 @@ class MoolreService:
         self,
         recipients: list[dict],
         sender_id: str | None = None,
+        account_number: str | None = None,
     ) -> dict[str, Any]:
         """
         Send bulk or single SMS.
@@ -430,6 +436,7 @@ class MoolreService:
             }
 
         sid = sender_id or self.settings.default_sms_sender_id
+        acc = self.resolve_account_number(account_number)
         messages = []
         for entry in recipients:
             item = dict(entry)
@@ -438,13 +445,21 @@ class MoolreService:
         payload = {
             "type": 1,
             "senderid": sid,
+            "accountnumber": acc,
             "messages": messages,
         }
         raw = await self._post("/open/sms/send", payload, headers=self._vaskey_headers())
+        moolre_ref = None
+        data = raw.get("data")
+        if isinstance(data, str):
+            moolre_ref = data
+        elif isinstance(data, dict):
+            moolre_ref = data.get("reference") or data.get("id")
         return {
             "success": raw.get("status") in (1, "1"),
             "code": raw.get("code"),
             "message": raw.get("message", ""),
+            "moolre_ref": moolre_ref,
             "raw": raw,
         }
 
@@ -454,12 +469,13 @@ class MoolreService:
         message: str,
         sender_id: str | None = None,
         ref: str | None = None,
+        account_number: str | None = None,
     ) -> dict[str, Any]:
         """Convenience wrapper for a single recipient SMS."""
         entry: dict = {"recipient": phone, "message": message}
         if ref:
             entry["ref"] = ref
-        return await self.send_sms([entry], sender_id=sender_id)
+        return await self.send_sms([entry], sender_id=sender_id, account_number=account_number)
 
     # ------------------------------------------------------------------
     # Payment Link

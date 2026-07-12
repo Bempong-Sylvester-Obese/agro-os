@@ -22,8 +22,9 @@ async def test_send_sms_requires_vaskey(monkeypatch):
 
 @pytest.mark.asyncio
 @patch.object(MoolreService, "_post", new_callable=AsyncMock)
-async def test_send_sms_normalizes_ghana_phones(mock_post, monkeypatch):
+async def test_send_sms_includes_account_number(mock_post, monkeypatch):
     monkeypatch.setenv("MOOLRE_API_VASKEY", "test-vas-key")
+    monkeypatch.setenv("MOOLRE_ACCOUNT_NUMBER", "ACC-12345")
     from app.config import get_settings
 
     get_settings.cache_clear()
@@ -33,4 +34,5 @@ async def test_send_sms_normalizes_ghana_phones(mock_post, monkeypatch):
     get_settings.cache_clear()
 
     payload = mock_post.call_args[0][1]
+    assert payload["accountnumber"] == "ACC-12345"
     assert payload["messages"][0]["recipient"] == "0244123456"
