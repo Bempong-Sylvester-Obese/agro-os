@@ -9,6 +9,7 @@ import FeaturesPage from './pages/FeaturesPage'
 import PricingPage from './pages/PricingPage'
 import BookDemoPage from './pages/BookDemoPage'
 import DashboardPage from './pages/DashboardPage'
+import { DashboardGateSkeleton } from './components/dashboard/DashboardSkeleton'
 import AuthPage from './pages/AuthPage'
 
 function safeNextPath(next) {
@@ -33,7 +34,7 @@ function ScrollToHash() {
 
 function DashboardGate({ user, authReady, onLogout }) {
   const location = useLocation()
-  if (!authReady) return null
+  if (!authReady) return <DashboardGateSkeleton />
   if (!user) {
     const next = encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)
     return <Navigate to={`/login?next=${next}`} replace />
@@ -65,7 +66,7 @@ function AppShell({ user, authReady, onAuth, onLogout }) {
       {showNavbar && <Navbar isAuthenticated={Boolean(user)} onLogout={onLogout} />}
       <Routes>
         <Route path="/" element={<HomePage user={user} />} />
-        <Route path="/solutions" element={<SolutionsPage />} />
+        <Route path="/solutions" element={<SolutionsPage user={user} />} />
         <Route path="/features" element={<FeaturesPage user={user} />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/book-demo" element={<BookDemoPage />} />

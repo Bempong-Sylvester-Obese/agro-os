@@ -3,8 +3,17 @@ import Footer from '../components/Footer'
 import CTASection from '../components/CTASection'
 import { useAppNavigate } from '../hooks/useAppNavigate'
 
-export default function SolutionsPage() {
+export default function SolutionsPage({ user }) {
   const setPage = useAppNavigate()
+
+  function exploreDashboard(section) {
+    if (user) {
+      setPage('dashboard', section ? { dashboardSection: section } : undefined)
+      return
+    }
+    const next = section ? `/dashboard/${section}` : '/dashboard'
+    setPage('login', { next })
+  }
   return (
     <>
       {/* ── Hero ── */}
@@ -25,7 +34,7 @@ export default function SolutionsPage() {
               Manage hundreds of members, track dues, run disbursements, and broadcast messages — all from a single
               admin dashboard. Replace the Excel sheets and WhatsApp groups.
             </p>
-            <button className="btn-sol" onClick={() => setPage('dashboard')}>Explore cooperative tools →</button>
+            <button className="btn-sol" onClick={() => exploreDashboard()}>Explore cooperative tools →</button>
           </div>
           <div>
             <div className="sol-visual">
@@ -88,7 +97,7 @@ export default function SolutionsPage() {
               Access AgroCredit Trust Scores for individual farmers — built from payment history, production output,
               and cooperative tenure. Make lending decisions backed by real behavioral data.
             </p>
-            <button className="btn-sol" onClick={() => setPage('dashboard', { dashboardSection: 'scores' })}>Explore AgroCredit →</button>
+            <button className="btn-sol" onClick={() => exploreDashboard('scores')}>Explore AgroCredit →</button>
           </div>
           <div>
             <div className="sol-visual">
@@ -120,7 +129,7 @@ export default function SolutionsPage() {
         primaryLabel="See pricing"
         secondaryLabel="Talk to us"
         onPrimary={() => setPage('pricing')}
-        onSecondary={() => setPage('login', { loginMode: 'signup' })}
+        onSecondary={() => setPage('bookDemo')}
       />
 
       <Footer />

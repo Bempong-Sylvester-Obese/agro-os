@@ -50,9 +50,14 @@ function ScoreDetail({ farmer }) {
 
   const handleRecalculate = async () => {
     setRecalculating(true)
-    const updated = await recalculateTrustScore(farmer.id)
-    if (updated) setBreakdown(updated)
-    setRecalculating(false)
+    try {
+      const updated = await recalculateTrustScore(farmer.id)
+      if (updated) setBreakdown(updated)
+    } catch {
+      // keep existing breakdown; button re-enables in finally
+    } finally {
+      setRecalculating(false)
+    }
   }
 
   if (!farmer) return null
