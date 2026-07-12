@@ -19,7 +19,7 @@ function fmtRepaymentDate(raw) {
 
 // ── Log Loan Request Modal ──────────────────────────────────────────────────────
 function RequestLoanModal({ farmers, onClose, onSuccess }) {
-  const { onBackdropClick, dialogProps } = useModal(onClose)
+  const { onBackdropClick, dialogProps, titleId, closeButtonProps } = useModal(onClose, { label: 'loan request dialog' })
   const [form, setForm] = useState({ farmerId: '', amount: '', purpose: '', repaymentDate: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -67,36 +67,36 @@ function RequestLoanModal({ farmers, onClose, onSuccess }) {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '24px 28px 20px', borderBottom: '1px solid var(--border)' }}>
           <div>
-            <div className="serif" style={{ fontWeight: 700, fontSize: 19 }}>Log Loan Request</div>
+            <div id={titleId} className="serif" style={{ fontWeight: 700, fontSize: 19 }}>Log Loan Request</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Log a new input or cash loan request from a member</div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={20} /></button>
+          <button {...closeButtonProps} onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={20} /></button>
         </div>
 
         <form onSubmit={handleSubmit} style={{ padding: '24px 28px' }}>
           {error && <div style={{ padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>}
           
           <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 13, fontWeight: 600 }}>Member</label>
-            <select style={input} value={form.farmerId} onChange={e => setForm({...form, farmerId: e.target.value})} required disabled={loading}>
+            <label htmlFor="loan-member" style={{ fontSize: 13, fontWeight: 600 }}>Member</label>
+            <select id="loan-member" style={input} value={form.farmerId} onChange={e => setForm({...form, farmerId: e.target.value})} required disabled={loading}>
               <option value="">Select a member...</option>
               {activeFarmers.map(f => <option key={f.id} value={f.id}>{f.name} ({f.phone})</option>)}
             </select>
           </div>
 
           <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 13, fontWeight: 600 }}>Amount (GHS)</label>
-            <input style={input} type="number" min="1" step="0.5" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} placeholder="e.g. 500" required disabled={loading}/>
+            <label htmlFor="loan-amount" style={{ fontSize: 13, fontWeight: 600 }}>Amount (GHS)</label>
+            <input id="loan-amount" style={input} type="number" min="1" step="0.5" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} placeholder="e.g. 500" required disabled={loading}/>
           </div>
 
           <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 13, fontWeight: 600 }}>Purpose</label>
-            <input style={input} type="text" value={form.purpose} onChange={e => setForm({...form, purpose: e.target.value})} placeholder="e.g. Fertilizer, Seeds" required disabled={loading}/>
+            <label htmlFor="loan-purpose" style={{ fontSize: 13, fontWeight: 600 }}>Purpose</label>
+            <input id="loan-purpose" style={input} type="text" value={form.purpose} onChange={e => setForm({...form, purpose: e.target.value})} placeholder="e.g. Fertilizer, Seeds" required disabled={loading}/>
           </div>
 
           <div style={{ marginBottom: 24 }}>
-            <label style={{ fontSize: 13, fontWeight: 600 }}>Expected Repayment Date</label>
-            <input style={input} type="date" value={form.repaymentDate} onChange={e => setForm({...form, repaymentDate: e.target.value})} required disabled={loading}/>
+            <label htmlFor="loan-repayment-date" style={{ fontSize: 13, fontWeight: 600 }}>Expected Repayment Date</label>
+            <input id="loan-repayment-date" style={input} type="date" value={form.repaymentDate} onChange={e => setForm({...form, repaymentDate: e.target.value})} required disabled={loading}/>
           </div>
 
           <button type="submit" className="btn-lg" disabled={loading} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>

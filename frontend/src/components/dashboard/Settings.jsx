@@ -98,17 +98,18 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
               <h3 className="serif" style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>General Profile</h3>
               <div className="settings-form-row" style={{ marginBottom: 16 }}>
                 <div style={{ flex: 2 }}>
-                  <label style={labelStyle}>Cooperative Name</label>
-                  <input style={inputStyle} type="text" value={form.name} onChange={e => setForm({...form, name: e.target.value})} required disabled={saving}/>
+                  <label htmlFor="settings-name" style={labelStyle}>Cooperative Name</label>
+                  <input id="settings-name" style={inputStyle} type="text" value={form.name} onChange={e => setForm({...form, name: e.target.value})} required disabled={saving}/>
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={labelStyle}>Location / Region</label>
-                  <input style={inputStyle} type="text" value={form.location} onChange={e => setForm({...form, location: e.target.value})} disabled={saving}/>
+                  <label htmlFor="settings-location" style={labelStyle}>Location / Region</label>
+                  <input id="settings-location" style={inputStyle} type="text" value={form.location} onChange={e => setForm({...form, location: e.target.value})} disabled={saving}/>
                 </div>
               </div>
               <div>
-                <label style={labelStyle}>Description</label>
+                <label htmlFor="settings-description" style={labelStyle}>Description</label>
                 <textarea 
+                  id="settings-description"
                   style={{ ...inputStyle, minHeight: 80, resize: 'vertical' }} 
                   value={form.description} 
                   onChange={e => setForm({...form, description: e.target.value})} 
@@ -126,15 +127,15 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
               
               <div className="settings-form-row" style={{ marginBottom: 16 }}>
                 <div style={{ flex: 1 }}>
-                  <label style={labelStyle}>Default Currency</label>
-                  <select style={inputStyle} value={form.default_currency} onChange={e => setForm({...form, default_currency: e.target.value})} disabled={saving}>
+                  <label htmlFor="settings-currency" style={labelStyle}>Default Currency</label>
+                  <select id="settings-currency" style={inputStyle} value={form.default_currency} onChange={e => setForm({...form, default_currency: e.target.value})} disabled={saving}>
                     <option value="GHS">Ghana Cedi (GHS)</option>
                     <option value="USD">US Dollar (USD)</option>
                   </select>
                 </div>
                 <div style={{ flex: 2 }}>
-                  <label style={labelStyle}>Moolre Account Number</label>
-                  <input style={inputStyle} type="text" value={form.moolre_account_number} onChange={e => setForm({...form, moolre_account_number: e.target.value})} placeholder="e.g. 1089700..." required disabled={saving}/>
+                  <label htmlFor="settings-moolre-account" style={labelStyle}>Moolre Account Number</label>
+                  <input id="settings-moolre-account" style={inputStyle} type="text" value={form.moolre_account_number} onChange={e => setForm({...form, moolre_account_number: e.target.value})} placeholder="e.g. 1089700..." required disabled={saving}/>
                 </div>
               </div>
             </div>

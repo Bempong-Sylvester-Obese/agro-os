@@ -28,7 +28,7 @@ function formatHarvestDate(prod) {
 
 // ── Log Production Modal ────────────────────────────────────────────────────────
 function LogProductionModal({ farmers, onClose, onSuccess }) {
-  const { onBackdropClick, dialogProps } = useModal(onClose)
+  const { onBackdropClick, dialogProps, titleId, closeButtonProps } = useModal(onClose, { label: 'production dialog' })
   const [form, setForm] = useState({ farmerId: '', cropType: '', expectedKg: '', quantityKg: '', harvestDate: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -76,18 +76,18 @@ function LogProductionModal({ farmers, onClose, onSuccess }) {
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', padding: '24px 28px 20px', borderBottom: '1px solid var(--border)' }}>
           <div>
-            <div className="serif" style={{ fontWeight: 700, fontSize: 19 }}>Log Production</div>
+            <div id={titleId} className="serif" style={{ fontWeight: 700, fontSize: 19 }}>Log Production</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Record a member's harvest yield</div>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={20} /></button>
+          <button {...closeButtonProps} onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={20} /></button>
         </div>
 
         <form onSubmit={handleSubmit} style={{ padding: '24px 28px' }}>
           {error && <div style={{ padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>}
           
           <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 13, fontWeight: 600 }}>Member</label>
-            <select style={input} value={form.farmerId} onChange={e => setForm({...form, farmerId: e.target.value})} required disabled={loading}>
+            <label htmlFor="production-member" style={{ fontSize: 13, fontWeight: 600 }}>Member</label>
+            <select id="production-member" style={input} value={form.farmerId} onChange={e => setForm({...form, farmerId: e.target.value})} required disabled={loading}>
               <option value="">Select a member...</option>
               {activeFarmers.map(f => <option key={f.id} value={f.id}>{f.name} ({f.phone})</option>)}
             </select>
@@ -95,23 +95,23 @@ function LogProductionModal({ farmers, onClose, onSuccess }) {
 
           <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 13, fontWeight: 600 }}>Crop Type</label>
-              <input style={input} type="text" value={form.cropType} onChange={e => setForm({...form, cropType: e.target.value})} placeholder="e.g. Maize" required disabled={loading}/>
+              <label htmlFor="production-crop" style={{ fontSize: 13, fontWeight: 600 }}>Crop Type</label>
+              <input id="production-crop" style={input} type="text" value={form.cropType} onChange={e => setForm({...form, cropType: e.target.value})} placeholder="e.g. Maize" required disabled={loading}/>
             </div>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 13, fontWeight: 600 }}>Expected yield (kg)</label>
-              <input style={input} type="number" min="0.1" step="0.1" value={form.expectedKg} onChange={e => setForm({...form, expectedKg: e.target.value})} placeholder="e.g. 600" required disabled={loading}/>
+              <label htmlFor="production-expected" style={{ fontSize: 13, fontWeight: 600 }}>Expected yield (kg)</label>
+              <input id="production-expected" style={input} type="number" min="0.1" step="0.1" value={form.expectedKg} onChange={e => setForm({...form, expectedKg: e.target.value})} placeholder="e.g. 600" required disabled={loading}/>
             </div>
           </div>
 
           <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 13, fontWeight: 600 }}>Harvest quantity (kg)</label>
-              <input style={input} type="number" min="1" step="1" value={form.quantityKg} onChange={e => setForm({...form, quantityKg: e.target.value})} placeholder="e.g. 500" required disabled={loading}/>
+              <label htmlFor="production-quantity" style={{ fontSize: 13, fontWeight: 600 }}>Harvest quantity (kg)</label>
+              <input id="production-quantity" style={input} type="number" min="1" step="1" value={form.quantityKg} onChange={e => setForm({...form, quantityKg: e.target.value})} placeholder="e.g. 500" required disabled={loading}/>
             </div>
             <div style={{ flex: 1 }}>
-              <label style={{ fontSize: 13, fontWeight: 600 }}>Harvest Date</label>
-              <input style={input} type="date" value={form.harvestDate} onChange={e => setForm({...form, harvestDate: e.target.value})} required disabled={loading}/>
+              <label htmlFor="production-date" style={{ fontSize: 13, fontWeight: 600 }}>Harvest Date</label>
+              <input id="production-date" style={input} type="date" value={form.harvestDate} onChange={e => setForm({...form, harvestDate: e.target.value})} required disabled={loading}/>
             </div>
           </div>
 
