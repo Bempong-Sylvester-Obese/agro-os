@@ -173,14 +173,14 @@ export default function DashboardPage({ user, onLogout }) {
               </button>
             </div>
           )}
-          {section === 'overview' && (
+          {!fetchError && section === 'overview' && (
             <Overview
               farmers={farmers}
               transactions={transactions}
               loading={loading}
             />
           )}
-          {section === 'members' && (
+          {!fetchError && section === 'members' && (
             <Members
               farmers={farmers}
               cooperativeId={cooperativeId}
@@ -188,7 +188,7 @@ export default function DashboardPage({ user, onLogout }) {
               loading={loading}
             />
           )}
-          {section === 'payments' && (
+          {!fetchError && section === 'payments' && (
             <Payments
               farmers={farmers}
               transactions={transactions}
@@ -196,16 +196,16 @@ export default function DashboardPage({ user, onLogout }) {
               onRefresh={loadAll}
             />
           )}
-          {section === 'scores' && (
+          {!fetchError && section === 'scores' && (
             <Scores farmers={farmers} loading={loading} />
           )}
-          {section === 'sms' && (
+          {!fetchError && section === 'sms' && (
             <SMS
               cooperativeId={cooperativeId}
               memberCount={farmers.length}
             />
           )}
-          {section === 'loans' && (
+          {!fetchError && section === 'loans' && (
             <Loans
               farmers={farmers}
               loans={loans}
@@ -213,7 +213,7 @@ export default function DashboardPage({ user, onLogout }) {
               onRefresh={loadAll}
             />
           )}
-          {section === 'production' && (
+          {!fetchError && section === 'production' && (
             <Production
               farmers={farmers}
               productions={productions}
@@ -221,7 +221,7 @@ export default function DashboardPage({ user, onLogout }) {
               onRefresh={loadAll}
             />
           )}
-          {section === 'settings' && (
+          {!fetchError && section === 'settings' && (
             <SettingsView
               cooperative={cooperative}
               cooperativeId={cooperativeId}
@@ -229,7 +229,7 @@ export default function DashboardPage({ user, onLogout }) {
               onRefresh={loadAll}
             />
           )}
-          {section === 'ussd' && (
+          {!fetchError && section === 'ussd' && (
             <USSD />
           )}
         </div>
