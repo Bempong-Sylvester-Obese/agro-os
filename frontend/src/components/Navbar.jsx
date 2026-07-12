@@ -1,20 +1,55 @@
 // src/components/Navbar.jsx
+import { useCallback, useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { pageKeyFromPath } from '../constants/routes'
+import { Menu } from 'lucide-react'
+import { pageKeyFromPath, MARKETING_PATHS } from '../constants/routes'
 import { useAppNavigate } from '../hooks/useAppNavigate'
 
 export default function Navbar({ isAuthenticated, onLogout }) {
   const setPage = useAppNavigate()
   const { pathname } = useLocation()
   const activePage = pageKeyFromPath(pathname)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   const links = [
     { key: 'home', label: 'Home' },
     { key: 'solutions', label: 'Solutions' },
     { key: 'features', label: 'Features' },
     { key: 'pricing', label: 'Pricing' },
+    { key: 'bookDemo', label: 'Book demo' },
     { key: 'dashboard', label: 'Dashboard' },
   ]
+
+  const closeMenu = useCallback(() => setMenuOpen(false), [])
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') closeMenu()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [menuOpen, closeMenu])
+
+  const showMarketingNav = activePage !== 'dashboard'
+
+  function navHref(key) {
+    if (key === 'dashboard') return '/dashboard'
+    return MARKETING_PATHS[key] || '/'
+  }
+
+  function isActive(key) {
+    if (key === 'bookDemo') return pathname.startsWith('/book-demo')
+    return activePage === key
+  }
+
+  function handleNav(key) {
+    return (e) => {
+      e.preventDefault()
+      setPage(key)
+      closeMenu()
+    }
+  }
 
   return (
     <nav className="nav">
@@ -34,14 +69,14 @@ export default function Navbar({ isAuthenticated, onLogout }) {
         <span className="nav-logo-text">AgroOS</span>
       </a>
 
-      {activePage !== 'dashboard' && (
+      {showMarketingNav && (
         <div className="nav-tabs">
           {links.map(({ key, label }) => (
             <a
               key={key}
-              href={`/${key === 'home' ? '' : key}`}
-              className={`nav-tab${activePage === key ? ' active' : ''}`}
-              onClick={(e) => { e.preventDefault(); setPage(key) }}
+              href={navHref(key)}
+              className={`nav-tab${isActive(key) ? ' active' : ''}`}
+              onClick={handleNav(key)}
             >
               {label}
             </a>
@@ -50,6 +85,18 @@ export default function Navbar({ isAuthenticated, onLogout }) {
       )}
 
       <div className="nav-right">
+        {showMarketingNav && (
+          <button
+            type="button"
+            className="nav-menu-toggle"
+            aria-label="Open menu"
+            aria-expanded={menuOpen}
+            aria-controls="nav-mobile-menu"
+            onClick={() => setMenuOpen((open) => !open)}
+          >
+            <Menu size={22} />
+          </button>
+        )}
         {isAuthenticated ? (
           <a href="#" className="btn-nav" onClick={(e) => { e.preventDefault(); onLogout?.() }}>Log out</a>
         ) : (
@@ -59,6 +106,25 @@ export default function Navbar({ isAuthenticated, onLogout }) {
           </>
         )}
       </div>
+
+      {showMarketingNav && (
+        <div
+          id="nav-mobile-menu"
+          className={`nav-mobile-panel${menuOpen ? ' open' : ''}`}
+          hidden={!menuOpen}
+        >
+          {links.map(({ key, label }) => (
+            <a
+              key={key}
+              href={navHref(key)}
+              className={`nav-mobile-link${isActive(key) ? ' active' : ''}`}
+              onClick={handleNav(key)}
+            >
+              {label}
+            </a>
+          ))}
+        </div>
+      )}
     </nav>
   )
 }
