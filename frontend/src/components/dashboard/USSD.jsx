@@ -1,22 +1,21 @@
 // src/components/dashboard/USSD.jsx
 import { useEffect, useState } from 'react'
-import { fetchUssdLogs, formatUssdTime, simulatePaymentWebhook } from '../../api/ussd'
+import { fetchUssdLogs, formatUssdTime } from '../../api/ussd'
 import { USSDLogsSkeleton } from './DashboardSkeleton'
 
 export default function USSD() {
   const [loading, setLoading] = useState(true)
   const [logs, setLogs] = useState([])
-  const [source, setSource] = useState('demo')
-  const [simulateTxId, setSimulateTxId] = useState('')
-  const [simulateMsg, setSimulateMsg] = useState('')
-  const [simulateErr, setSimulateErr] = useState('')
+  const [error, setError] = useState(null)
 
   function loadLogs() {
     setLoading(true)
+    setError(null)
     fetchUssdLogs()
-      .then((data) => {
-        setLogs(data.logs)
-        setSource(data.source)
+      .then((data) => setLogs(data.logs))
+      .catch((err) => {
+        setLogs([])
+        setError(err.message || 'Could not load USSD activity.')
       })
       .finally(() => setLoading(false))
   }
@@ -25,64 +24,50 @@ export default function USSD() {
     loadLogs()
   }, [])
 
-  async function handleSimulate(e) {
-    e.preventDefault()
-    setSimulateErr('')
-    setSimulateMsg('')
-    const txId = parseInt(simulateTxId, 10)
-    if (Number.isNaN(txId)) {
-      setSimulateErr('Enter a valid pending transaction ID.')
-      return
-    }
-    try {
-      const result = await simulatePaymentWebhook({ transactionId: txId })
-      setSimulateMsg(result.message || 'Payment simulated successfully.')
-      loadLogs()
-    } catch (err) {
-      setSimulateErr(err.message || 'Simulation failed.')
-    }
-  }
-
-  const sourceLabel = source === 'api' ? 'Live API' : 'Demo data'
-
   return (
     <>
       <div className="info-banner" style={{ marginBottom: 20 }}>
-        USSD sessions appear here after farmers interact with the Moolre short code.
-        Use the demo simulator below when Moolre sandbox access is unavailable.
+        Live USSD sessions from Moolre appear here when farmers dial your cooperative merchant code.
+        Payments confirmed via Moolre webhooks update the Payments tab automatically.
       </div>
 
-      <div className="admin-card" style={{ marginBottom: 20 }}>
-        <div className="admin-card-head">
-          <span className="admin-card-title serif">Simulate payment webhook</span>
-          <span className="admin-card-action">Demo fallback</span>
-        </div>
-        <form onSubmit={handleSimulate} style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div className="auth-field" style={{ flex: '1 1 200px' }}>
-            <label className="auth-label">Pending transaction ID</label>
-            <input
-              className="auth-input"
-              placeholder="e.g. 1"
-              value={simulateTxId}
-              onChange={(e) => setSimulateTxId(e.target.value)}
-            />
-          </div>
-          <button type="submit" className="btn-nav" style={{ fontSize: 12, padding: '10px 18px' }}>
-            Simulate payment →
+      {error && (
+        <div
+          className="info-banner"
+          style={{
+            marginBottom: 20,
+            background: '#FEF2F2',
+            borderColor: '#FECACA',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 16,
+          }}
+        >
+          <span>{error}</span>
+          <button
+            type="button"
+            className="btn-lg"
+            style={{ padding: '8px 16px', fontSize: 13, flexShrink: 0 }}
+            onClick={loadLogs}
+          >
+            Retry
           </button>
-        </form>
-        {simulateErr && <div className="auth-error" style={{ marginTop: 12 }}>{simulateErr}</div>}
-        {simulateMsg && (
-          <div className="info-banner" style={{ marginTop: 12, marginBottom: 0 }}>
-            {simulateMsg}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="admin-card">
         <div className="admin-card-head">
           <span className="admin-card-title serif">Recent USSD activity</span>
-          <span className="admin-card-action">{loading ? '' : sourceLabel}</span>
+          <button
+            type="button"
+            className="admin-card-action"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', font: 'inherit' }}
+            onClick={loadLogs}
+            disabled={loading}
+          >
+            {loading ? 'Loading…' : 'Refresh'}
+          </button>
         </div>
 
         <div className="table-scroll">
@@ -96,7 +81,9 @@ export default function USSD() {
             <USSDLogsSkeleton />
           ) : logs.length === 0 ? (
             <div className="mt-row mt-row-4">
-              <div className="pt-name">No USSD sessions recorded yet.</div>
+              <div className="pt-name" style={{ gridColumn: '1 / -1' }}>
+                No USSD sessions recorded yet. When a farmer dials your Moolre code, activity will show here.
+              </div>
             </div>
           ) : (
             logs.map((log) => (

@@ -1,5 +1,5 @@
-const API_URL = import.meta.env.VITE_API_URL || 'https://previewbackendagro-os.onrender.com'
-const FETCH_TIMEOUT_MS = 10000
+import { API_URL, AUTH_FETCH_TIMEOUT_MS, formatTransportError } from './config'
+
 export const TOKEN_KEY = 'agro_os_token'
 const USER_KEY = 'agro_os_user'
 const AVATAR_PREFIX = 'agro_os_avatar_'
@@ -27,56 +27,48 @@ export function clearProfileAvatar(email) {
 
 export { MAX_AVATAR_BYTES }
 
-export async function signupAdmin({ email, password, cooperative_name, location, member_count }) {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+async function authFetch(path, body, { retries = 2 } = {}) {
+  let lastError
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), AUTH_FETCH_TIMEOUT_MS)
+    try {
+      const response = await fetch(`${API_URL}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify(body),
+      })
 
-  try {
-    const response = await fetch(`${API_URL}/auth/signup`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
-        email,
-        password,
-        cooperative_name,
-        location: location || null,
-        member_count: member_count ?? null,
-      }),
-    })
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.detail || `Request failed (${response.status})`)
+      }
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.detail || 'Could not create account')
+      return response.json()
+    } catch (err) {
+      lastError = err
+      const isRetryable = err?.name === 'AbortError' || err instanceof TypeError
+      if (!isRetryable || attempt >= retries) break
+    } finally {
+      clearTimeout(timeoutId)
     }
-
-    return response.json()
-  } finally {
-    clearTimeout(timeoutId)
   }
+  throw new Error(formatTransportError(lastError))
+}
+
+export async function signupAdmin({ email, password, cooperative_name, location, member_count }) {
+  return authFetch('/auth/signup', {
+    email,
+    password,
+    cooperative_name,
+    location: location || null,
+    member_count: member_count ?? null,
+  })
 }
 
 export async function loginAdmin(email, password) {
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-
-  try {
-    const response = await fetch(`${API_URL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({ email, password }),
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.detail || 'Invalid email or password')
-    }
-
-    return response.json()
-  } finally {
-    clearTimeout(timeoutId)
-  }
+  return authFetch('/auth/login', { email, password })
 }
 
 export async function login(email, password) {
@@ -123,6 +115,19 @@ export async function register(email, password, cooperativeId = null) {
     throw new Error(errorData.detail || 'Registration failed')
   }
   return response.json()
+}
+
+/** Wake Render/free-tier backends before login/signup (no-op if already warm). */
+export async function warmAuthBackend() {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), AUTH_FETCH_TIMEOUT_MS)
+  try {
+    await fetch(`${API_URL}/health`, { signal: controller.signal })
+  } catch {
+    // Best-effort; auth retry handles cold starts.
+  } finally {
+    clearTimeout(timeoutId)
+  }
 }
 
 export function storeAuthToken(token) {
@@ -187,4 +192,3 @@ export function userFromAuthToken(token) {
     return null
   }
 }
-
