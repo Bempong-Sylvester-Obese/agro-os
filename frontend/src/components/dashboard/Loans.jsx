@@ -9,6 +9,14 @@ function fmtGHS(amount) {
   return `GHS ${Number(amount).toLocaleString('en-GH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 }
 
+function fmtRepaymentDate(raw) {
+  if (!raw) return '—'
+  const normalized = typeof raw === 'string' && raw.length === 10 ? `${raw}T12:00:00` : raw
+  const d = new Date(normalized)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+}
+
 // ── Log Loan Request Modal ──────────────────────────────────────────────────────
 function RequestLoanModal({ farmers, onClose, onSuccess }) {
   const { onBackdropClick, dialogProps } = useModal(onClose)
@@ -200,7 +208,7 @@ export default function Loans({ farmers = [], loans = [], loading, onRefresh }) 
             {sorted.map(loan => {
               const farmer = farmers.find(f => f.id === loan.farmer_id)
               const name = farmer ? farmer.name : `Farmer #${loan.farmer_id}`
-              const repayDate = new Date(loan.repayment_date).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
+              const repayDate = fmtRepaymentDate(loan.expected_repayment_date || loan.repayment_date)
               
               let cls = 'bdg-amber', label = loan.status
               if (['approved', 'disbursed', 'repaid'].includes(loan.status)) cls = 'bdg-green'

@@ -1,6 +1,6 @@
 """Pydantic Schemas for Request / Response"""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -187,6 +187,9 @@ class LoanCreate(BaseModel):
     amount: float = Field(..., gt=0)
     currency: str = "GHS"
     purpose: Optional[str] = None
+    expected_repayment_date: Optional[date] = Field(None, alias="repayment_date")
+
+    model_config = {"populate_by_name": True}
 
 
 class LoanApprove(BaseModel):
@@ -203,6 +206,7 @@ class LoanResponse(BaseModel):
     amount: float
     currency: str
     purpose: Optional[str] = None
+    expected_repayment_date: Optional[date] = None
     status: LoanStatus
     approved_by: Optional[str] = None
     approved_at: Optional[datetime] = None

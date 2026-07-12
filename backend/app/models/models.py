@@ -6,6 +6,7 @@ from datetime import datetime
 from sqlalchemy import (
     Boolean,
     Column,
+    Date,
     DateTime,
     Enum,
     Float,
@@ -182,6 +183,7 @@ class Loan(Base):
     amount = Column(Float, nullable=False)
     currency = Column(String, default="GHS")
     purpose = Column(Text, nullable=True)
+    expected_repayment_date = Column(Date, nullable=True)
     status = Column(Enum(LoanStatus), default=LoanStatus.requested)
     # Approval
     approved_by = Column(String, nullable=True)  # admin name / id

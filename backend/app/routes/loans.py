@@ -279,7 +279,10 @@ async def disburse_loan(loan_id: int, db: Session = Depends(get_db)):
 
     ext_ref = _disburse_external_ref(loan.id)
     moolre = MoolreService()
-    account_number = _cooperative_account(farmer, db)
+    coop_account = _cooperative_account(farmer, db)
+    account_number, wallet_error = await moolre.resolve_verified_account(coop_account)
+    if wallet_error:
+        raise HTTPException(status_code=502, detail=wallet_error)
 
     existing_tx = _latest_loan_transaction(db, loan=loan, transaction_type=TransactionType.payout)
     if existing_tx and existing_tx.status == TransactionStatus.completed:

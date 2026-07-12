@@ -1,8 +1,33 @@
 """Tests for /loans endpoints (with Moolre transfer mocked)"""
 
+from contextlib import contextmanager
 from unittest.mock import AsyncMock, patch
 
 from app.services.moolre_service import MoolreService
+
+
+@contextmanager
+def _mock_disburse_moolre(*, transfer_result=None, status_result=None, wallet_account="PLATFORM-ACC"):
+    transfer_result = transfer_result or _transfer_initiated()
+    status_result = status_result or _transfer_status_completed()
+    with (
+        patch(
+            "app.routes.loans.MoolreService.resolve_verified_account",
+            new_callable=AsyncMock,
+            return_value=(wallet_account, None),
+        ),
+        patch(
+            "app.routes.loans.MoolreService.initiate_transfer",
+            new_callable=AsyncMock,
+            return_value=transfer_result,
+        ) as mock_transfer,
+        patch(
+            "app.routes.loans.MoolreService.transfer_status",
+            new_callable=AsyncMock,
+            return_value=status_result,
+        ) as mock_status,
+    ):
+        yield mock_transfer, mock_status
 
 
 def _transfer_initiated(ext_ref: str = "some-uuid") -> dict:
@@ -54,18 +79,7 @@ def _approve_and_disburse(client, farmer, amount: float, loan_id: int | None = N
         loan_id = create_resp.json()["id"]
     client.post(f"/loans/{loan_id}/approve", json={"approved_by": "Admin"})
 
-    with (
-        patch(
-            "app.routes.loans.MoolreService.initiate_transfer",
-            new_callable=AsyncMock,
-            return_value=_transfer_initiated(),
-        ),
-        patch(
-            "app.routes.loans.MoolreService.transfer_status",
-            new_callable=AsyncMock,
-            return_value=_transfer_status_completed(amount),
-        ),
-    ):
+    with _mock_disburse_moolre(status_result=_transfer_status_completed(amount)):
         disburse_resp = client.post(f"/loans/{loan_id}/disburse")
     assert disburse_resp.status_code == 200, disburse_resp.text
     return loan_id
@@ -85,6 +99,21 @@ def test_create_loan(client, farmer):
     data = resp.json()
     assert data["status"] == "requested"
     assert data["amount"] == 500.0
+
+
+def test_create_loan_with_repayment_date(client, farmer):
+    resp = client.post(
+        "/loans/",
+        json={
+            "farmer_id": farmer["id"],
+            "amount": 500.0,
+            "purpose": "Seeds",
+            "repayment_date": "2026-07-26",
+        },
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["expected_repayment_date"] == "2026-07-26"
 
 
 def test_create_loan_bad_farmer(client):
@@ -163,18 +192,7 @@ def test_disburse_loan(client, farmer):
     loan_id = create_resp.json()["id"]
     client.post(f"/loans/{loan_id}/approve", json={"approved_by": "Admin"})
 
-    with (
-        patch(
-            "app.routes.loans.MoolreService.initiate_transfer",
-            new_callable=AsyncMock,
-            return_value=_transfer_initiated(),
-        ) as mock_transfer,
-        patch(
-            "app.routes.loans.MoolreService.transfer_status",
-            new_callable=AsyncMock,
-            return_value=_transfer_status_completed(),
-        ) as mock_status,
-    ):
+    with _mock_disburse_moolre() as (mock_transfer, mock_status):
         resp = client.post(f"/loans/{loan_id}/disburse")
 
     assert resp.status_code == 200
@@ -196,18 +214,7 @@ def test_disburse_loan_uses_cooperative_account(client, farmer, cooperative):
     loan_id = create_resp.json()["id"]
     client.post(f"/loans/{loan_id}/approve", json={"approved_by": "Admin"})
 
-    with (
-        patch(
-            "app.routes.loans.MoolreService.initiate_transfer",
-            new_callable=AsyncMock,
-            return_value=_transfer_initiated(),
-        ) as mock_transfer,
-        patch(
-            "app.routes.loans.MoolreService.transfer_status",
-            new_callable=AsyncMock,
-            return_value=_transfer_status_completed(),
-        ),
-    ):
+    with _mock_disburse_moolre(wallet_account="COOP-WALLET-999") as (mock_transfer, _mock_status):
         resp = client.post(f"/loans/{loan_id}/disburse")
 
     assert resp.status_code == 200
@@ -236,11 +243,7 @@ def test_disburse_loan_keeps_approved_when_transfer_fails(client, farmer):
         "raw": {},
     }
 
-    with patch(
-        "app.routes.loans.MoolreService.initiate_transfer",
-        new_callable=AsyncMock,
-        return_value=mock_result,
-    ):
+    with _mock_disburse_moolre(transfer_result=mock_result):
         resp = client.post(f"/loans/{loan_id}/disburse")
 
     assert resp.status_code == 502
@@ -255,17 +258,8 @@ def test_disburse_loan_keeps_approved_when_transfer_status_fails(client, farmer)
     loan_id = create_resp.json()["id"]
     client.post(f"/loans/{loan_id}/approve", json={"approved_by": "Admin"})
 
-    with (
-        patch(
-            "app.routes.loans.MoolreService.initiate_transfer",
-            new_callable=AsyncMock,
-            return_value=_transfer_initiated(),
-        ),
-        patch(
-            "app.routes.loans.MoolreService.transfer_status",
-            new_callable=AsyncMock,
-            return_value={"success": False, "status": "failed", "raw": {}},
-        ),
+    with _mock_disburse_moolre(
+        status_result={"success": False, "status": "failed", "raw": {}},
     ):
         resp = client.post(f"/loans/{loan_id}/disburse")
 
@@ -281,17 +275,8 @@ def test_disburse_loan_keeps_approved_when_transfer_pending(client, farmer):
     loan_id = create_resp.json()["id"]
     client.post(f"/loans/{loan_id}/approve", json={"approved_by": "Admin"})
 
-    with (
-        patch(
-            "app.routes.loans.MoolreService.initiate_transfer",
-            new_callable=AsyncMock,
-            return_value=_transfer_initiated(),
-        ),
-        patch(
-            "app.routes.loans.MoolreService.transfer_status",
-            new_callable=AsyncMock,
-            return_value={"success": False, "status": "pending", "raw": {}},
-        ),
+    with _mock_disburse_moolre(
+        status_result={"success": False, "status": "pending", "raw": {}},
     ):
         resp = client.post(f"/loans/{loan_id}/disburse")
 
