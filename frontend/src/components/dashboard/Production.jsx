@@ -202,7 +202,9 @@ export default function Production({ farmers = [], productions = [], loading, on
               <span className="pt-lbl">Harvest Date</span>
             </div>
             {sorted.map(prod => {
-              const farmer = farmers.find(f => f.id === prod.farmer_id)
+              const farmer = farmers.find(
+                f => Number(f.id) === Number(prod.farmer_id)
+              )
               const name = farmer ? farmer.name : `Farmer #${prod.farmer_id}`
 
               return (
