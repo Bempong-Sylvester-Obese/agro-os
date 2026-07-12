@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.models.models import CommunicationLog, Cooperative, User
@@ -75,12 +76,17 @@ def list_communication_logs(
     skip: int = 0,
     limit: int = Query(default=50, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_current_user),
 ):
     """List sent communication logs, optionally filtered by cooperative."""
     query = db.query(CommunicationLog)
-    if current_user.cooperative_id:
+    if current_user and current_user.cooperative_id:
         query = query.filter(CommunicationLog.cooperative_id == current_user.cooperative_id)
     elif cooperative_id is not None:
         query = query.filter(CommunicationLog.cooperative_id == cooperative_id)
+    else:
+        settings = get_settings()
+        if settings.auth_enabled:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        raise HTTPException(status_code=400, detail="cooperative_id is required")
     return query.order_by(CommunicationLog.sent_at.desc()).offset(skip).limit(limit).all()

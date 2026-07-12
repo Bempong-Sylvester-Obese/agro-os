@@ -1,6 +1,7 @@
 // src/pages/FeaturesPage.jsx
 import Footer from '../components/Footer'
 import CTASection from '../components/CTASection'
+import { useAppNavigate } from '../hooks/useAppNavigate'
 import { Users, Sprout, CreditCard, MessageSquare, Star, Smartphone, Activity, Shield, FileText } from 'lucide-react'
 
 const FEATURES = [
@@ -15,7 +16,17 @@ const FEATURES = [
   [<FileText size={28} />, 'Audit trails & receipts',  'Every transaction is logged with a timestamped receipt. Export to CSV for financial reporting.'],
 ]
 
-export default function FeaturesPage({ setPage }) {
+export default function FeaturesPage({ user }) {
+  const setPage = useAppNavigate()
+
+  function openDashboard() {
+    if (user) {
+      setPage('dashboard')
+      return
+    }
+    setPage('login', { next: '/dashboard' })
+  }
+
   return (
     <>
       <div className="sol-hero">
@@ -43,13 +54,13 @@ export default function FeaturesPage({ setPage }) {
       <CTASection
         heading="Ready to see it in action?"
         subtext="Try the live dashboard or book a walkthrough with the AgroOS team."
-        primaryLabel="Open dashboard"
+        primaryLabel={user ? 'Go to dashboard' : 'Open dashboard'}
         secondaryLabel="Book a demo"
-        onPrimary={() => setPage('dashboard')}
-        onSecondary={() => {}}
+        onPrimary={openDashboard}
+        onSecondary={() => setPage('bookDemo')}
       />
 
-      <Footer setPage={setPage} />
+      <Footer />
     </>
   )
 }

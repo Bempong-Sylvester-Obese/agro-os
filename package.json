@@ -9,6 +9,7 @@
     "api": "cd backend && ../.venv/bin/uvicorn main:app --reload",
     "train:ai": "PYTHONPATH=backend .venv/bin/python -m app.agro_ai.train",
     "test:backend": "PYTHONPATH=backend .venv/bin/python -m pytest backend/tests",
+    "test:frontend": "npm --prefix frontend run test",
     "setup:backend": "python3 -m venv .venv && .venv/bin/python -m pip install -r backend/requirements.txt",
     "setup:frontend": "npm --prefix frontend install"
   }

@@ -54,8 +54,8 @@ def test_get_farmer_not_found(client):
     assert resp.status_code == 404
 
 
-def test_list_farmers(client, farmer):
-    resp = client.get("/farmers/")
+def test_list_farmers(client, farmer, cooperative):
+    resp = client.get(f"/farmers/?cooperative_id={cooperative['id']}")
     assert resp.status_code == 200
     assert any(f["id"] == farmer["id"] for f in resp.json())
 

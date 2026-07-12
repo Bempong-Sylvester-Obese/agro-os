@@ -2,7 +2,39 @@
 import Footer from '../components/Footer'
 import DashboardMock from '../components/DashboardMock'
 import CTASection from '../components/CTASection'
-import { Sprout, Handshake, Smartphone, Globe, Users, CreditCard, MessageSquare, Star, Building, MapPin, Tractor, Landmark } from 'lucide-react'
+import { useAppNavigate } from '../hooks/useAppNavigate'
+import { Sprout, Handshake, Smartphone, Globe, Users, CreditCard, MessageSquare, Star, Building, MapPin, Tractor, Landmark, Banknote, ArrowRight } from 'lucide-react'
+
+const MOOLRE_PILLARS = [
+  {
+    icon: <CreditCard size={24} />,
+    title: 'Collections',
+    desc: 'Collect member dues via MoMo with payment links, receipts, and webhook confirmation.',
+    target: 'dashboard',
+    dashboardSection: 'payments',
+  },
+  {
+    icon: <Banknote size={24} />,
+    title: 'Disbursements',
+    desc: 'Approve and disburse loans straight to member wallets with full audit trails.',
+    target: 'dashboard',
+    dashboardSection: 'loans',
+  },
+  {
+    icon: <MessageSquare size={24} />,
+    title: 'SMS broadcasts',
+    desc: 'Send announcements to all members or filtered groups in one click.',
+    target: 'dashboard',
+    dashboardSection: 'sms',
+  },
+  {
+    icon: <Smartphone size={24} />,
+    title: 'USSD access',
+    desc: 'Farmers without smartphones check balances and pay dues through Moolre USSD menus.',
+    target: 'solutions',
+    scrollTo: 'ussd-section',
+  },
+]
 
 const PHOTO_STRIP = [
   ['#1A4731', <Users color="#A7F3D0" size={24} />, 'The team',      'Building AgroOS, in Ghana, for Africa.'],
@@ -27,7 +59,29 @@ const WHO = [
   [<Landmark size={32} />, 'Financiers & lenders', 'Access AgroCredit Trust Scores for individual farmers to assess creditworthiness with confidence.'],
 ]
 
-export default function HomePage({ setPage }) {
+export default function HomePage({ user }) {
+  const setPage = useAppNavigate()
+
+  function handleSeeDashboard() {
+    if (user) {
+      setPage('dashboard')
+      return
+    }
+    setPage('login', { next: '/dashboard' })
+  }
+
+  function handlePillarClick(pillar) {
+    if (pillar.target === 'dashboard') {
+      if (user) {
+        setPage('dashboard', { dashboardSection: pillar.dashboardSection })
+      } else {
+        setPage('login', { next: `/dashboard/${pillar.dashboardSection}` })
+      }
+      return
+    }
+    setPage(pillar.target, { scrollTo: pillar.scrollTo })
+  }
+
   return (
     <>
       {/* ── Hero ── */}
@@ -43,8 +97,17 @@ export default function HomePage({ setPage }) {
               leaders one platform to manage everything. No spreadsheets. No paper ledgers.
             </p>
             <div className="hero-ctas">
-              <button className="btn-lg" onClick={() => setPage('auth')}>Get started free</button>
-              <button className="btn-out-lg" onClick={() => setPage('dashboard')}>See the dashboard</button>
+              {user ? (
+                <>
+                  <button className="btn-lg" onClick={() => setPage('dashboard')}>Go to dashboard</button>
+                  <button className="btn-out-lg" onClick={() => setPage('bookDemo')}>Book a demo</button>
+                </>
+              ) : (
+                <>
+                  <button className="btn-lg" onClick={() => setPage('login', { loginMode: 'signup' })}>Get started free</button>
+                  <button className="btn-out-lg" onClick={handleSeeDashboard}>See the dashboard</button>
+                </>
+              )}
             </div>
           </div>
           <div>
@@ -140,18 +203,37 @@ export default function HomePage({ setPage }) {
         </div>
       </section>
 
-      {/* ── Moolre band ── */}
+      {/* ── Moolre band + integration ── */}
       <div className="moolre-band">
         <div className="moolre-inner">
-          <div>
-            <div className="moolre-tag">Moolre integration</div>
-            <h2 className="moolre-h2 serif">Built on Moolre.<br />Native from day one.</h2>
-            <p className="moolre-desc">
-              AgroOS uses Moolre's payment infrastructure natively — USSD menus, MoMo collections,
-              and disbursements flow directly through the Moolre ecosystem. No third-party payment setup required.
-            </p>
+          <div className="moolre-tag">Moolre integration</div>
+          <h2 className="moolre-h2 serif">Built on Moolre.<br />Native from day one.</h2>
+          <p className="moolre-desc">
+            AgroOS uses Moolre's payment infrastructure natively — USSD menus, MoMo collections,
+            and disbursements flow directly through the Moolre ecosystem. No third-party payment setup required.
+          </p>
+        </div>
+
+        <div className="moolre-cards-wrap" id="moolre-integration">
+          <h3 className="moolre-cards-heading serif">Explore the integration</h3>
+          <p className="moolre-cards-sub">Four native capabilities — choose one to learn more.</p>
+          <div className="moolre-cards">
+            {MOOLRE_PILLARS.map((pillar) => (
+              <button
+                key={pillar.title}
+                type="button"
+                className="moolre-card"
+                onClick={() => handlePillarClick(pillar)}
+              >
+                <div className="moolre-card-icon">{pillar.icon}</div>
+                <div className="moolre-card-title serif">{pillar.title}</div>
+                <p className="moolre-card-desc">{pillar.desc}</p>
+                <span className="moolre-card-link">
+                  Learn more <ArrowRight size={14} />
+                </span>
+              </button>
+            ))}
           </div>
-          <button className="btn-gold">Explore integration →</button>
         </div>
       </div>
 
@@ -159,13 +241,13 @@ export default function HomePage({ setPage }) {
       <CTASection
         heading="Ready to modernize<br />your cooperative?"
         subtext="Join cooperatives across Ghana who've replaced paper with AgroOS. Start free, upgrade when you're ready."
-        primaryLabel="Get started free"
+        primaryLabel={user ? 'Go to dashboard' : 'Get started free'}
         secondaryLabel="Book a demo"
-        onPrimary={() => {}}
-        onSecondary={() => {}}
+        onPrimary={() => (user ? setPage('dashboard') : setPage('login', { loginMode: 'signup' }))}
+        onSecondary={() => setPage('bookDemo')}
       />
 
-      <Footer setPage={setPage} />
+      <Footer />
     </>
   )
 }

@@ -1,6 +1,7 @@
 // src/components/dashboard/USSD.jsx
 import { useEffect, useState } from 'react'
 import { fetchUssdLogs, formatUssdTime, simulatePaymentWebhook } from '../../api/ussd'
+import { USSDLogsSkeleton } from './DashboardSkeleton'
 
 export default function USSD() {
   const [loading, setLoading] = useState(true)
@@ -81,7 +82,7 @@ export default function USSD() {
       <div className="admin-card">
         <div className="admin-card-head">
           <span className="admin-card-title serif">Recent USSD activity</span>
-          <span className="admin-card-action">{loading ? 'Loading…' : sourceLabel}</span>
+          <span className="admin-card-action">{loading ? '' : sourceLabel}</span>
         </div>
 
         <div className="table-scroll">
@@ -91,28 +92,24 @@ export default function USSD() {
             ))}
           </div>
 
-          {loading && (
-            <div className="mt-row mt-row-4">
-              <div className="pt-name">Loading USSD logs…</div>
-            </div>
-          )}
-
-          {!loading && logs.length === 0 && (
+          {loading ? (
+            <USSDLogsSkeleton />
+          ) : logs.length === 0 ? (
             <div className="mt-row mt-row-4">
               <div className="pt-name">No USSD sessions recorded yet.</div>
             </div>
+          ) : (
+            logs.map((log) => (
+              <div key={log.id} className="mt-row mt-row-4">
+                <span className="pt-m" style={{ fontSize: 11 }}>{log.phone}</span>
+                <span className="pt-m">{log.input_path || 'menu'}</span>
+                <span className="pt-m" style={{ fontSize: 11, whiteSpace: 'pre-line' }}>
+                  {(log.response_text || '').slice(0, 80)}{(log.response_text || '').length > 80 ? '…' : ''}
+                </span>
+                <span className="pt-m">{formatUssdTime(log.created_at)}</span>
+              </div>
+            ))
           )}
-
-          {!loading && logs.map((log) => (
-            <div key={log.id} className="mt-row mt-row-4">
-              <span className="pt-m" style={{ fontSize: 11 }}>{log.phone}</span>
-              <span className="pt-m">{log.input_path || 'menu'}</span>
-              <span className="pt-m" style={{ fontSize: 11, whiteSpace: 'pre-line' }}>
-                {(log.response_text || '').slice(0, 80)}{(log.response_text || '').length > 80 ? '…' : ''}
-              </span>
-              <span className="pt-m">{formatUssdTime(log.created_at)}</span>
-            </div>
-          ))}
         </div>
       </div>
     </>

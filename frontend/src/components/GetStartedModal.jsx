@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { signupAdmin, storeAuthToken } from '../api/auth'
 
+const ALLOW_DEMO_LOGIN = import.meta.env.DEV || import.meta.env.VITE_ALLOW_DEMO_LOGIN === 'true'
 const STEPS = ['Account', 'Cooperative', 'Done']
 
 function buildUserFromForm(form) {
@@ -67,8 +68,11 @@ export default function GetStartedModal({ onClose, onSignIn, onAuth }) {
       })
       setStep(2)
       return
-    } catch {
-      // Fall back to local demo signup when backend signup is unavailable.
+    } catch (err) {
+      if (!ALLOW_DEMO_LOGIN) {
+        setErr(err.message || 'Could not create account')
+        return
+      }
     } finally {
       setSubmitting(false)
     }

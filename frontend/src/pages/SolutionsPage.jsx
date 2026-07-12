@@ -58,7 +58,6 @@ export default function SolutionsPage() {
               Farmers interact with AgroOS through a native Moolre USSD menu — check balances, pay dues, and receive
               alerts directly from their basic phones. Designed for Ghana's rural reality.
             </p>
-            <button className="btn-sol" onClick={() => setPage('dashboard', { dashboardSection: 'ussd' })}>See how USSD works →</button>
           </div>
           <div style={{ display: 'flex', justifyContent: 'center' }}>
             <div className="ussd-phone">

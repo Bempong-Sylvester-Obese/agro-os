@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { Search, UserPlus, X, Loader2 } from 'lucide-react'
 import { createFarmer } from '../../api/farmers'
+import { MembersSkeleton } from './DashboardSkeleton'
 
 const STATUS_CLS = {
   active:    'bdg-green',
@@ -185,9 +186,7 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
     onMemberAdded()
   }
 
-  if (loading) {
-    return <div style={{ padding: 32, color: 'var(--muted)', fontSize: 14 }}>Loading members…</div>
-  }
+  if (loading) return <MembersSkeleton />
 
   return (
     <>

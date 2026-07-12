@@ -1,10 +1,18 @@
 // src/components/Navbar.jsx
-export default function Navbar({ activePage, setPage, isAuthenticated, onLogout }) {
+import { useLocation } from 'react-router-dom'
+import { pageKeyFromPath } from '../constants/routes'
+import { useAppNavigate } from '../hooks/useAppNavigate'
+
+export default function Navbar({ isAuthenticated, onLogout }) {
+  const setPage = useAppNavigate()
+  const { pathname } = useLocation()
+  const activePage = pageKeyFromPath(pathname)
+
   const links = [
-    { key: 'home',      label: 'Home' },
+    { key: 'home', label: 'Home' },
     { key: 'solutions', label: 'Solutions' },
-    { key: 'features',  label: 'Features' },
-    { key: 'pricing',   label: 'Pricing' },
+    { key: 'features', label: 'Features' },
+    { key: 'pricing', label: 'Pricing' },
     { key: 'dashboard', label: 'Dashboard' },
   ]
 
@@ -12,7 +20,7 @@ export default function Navbar({ activePage, setPage, isAuthenticated, onLogout 
     <nav className="nav">
       <a
         className="nav-logo"
-        href="#"
+        href="/"
         onClick={(e) => { e.preventDefault(); setPage('home') }}
       >
         <div className="nav-logo-mark">
@@ -31,7 +39,7 @@ export default function Navbar({ activePage, setPage, isAuthenticated, onLogout 
           {links.map(({ key, label }) => (
             <a
               key={key}
-              href="#"
+              href={`/${key === 'home' ? '' : key}`}
               className={`nav-tab${activePage === key ? ' active' : ''}`}
               onClick={(e) => { e.preventDefault(); setPage(key) }}
             >
@@ -43,16 +51,11 @@ export default function Navbar({ activePage, setPage, isAuthenticated, onLogout 
 
       <div className="nav-right">
         {isAuthenticated ? (
-          <>
-            {activePage !== 'dashboard' && (
-              <a href="#" className="btn-ghost" onClick={(e) => { e.preventDefault(); setPage('dashboard') }}>Dashboard</a>
-            )}
-            <a href="#" className="btn-nav"   onClick={(e) => { e.preventDefault(); onLogout() }}>Log out</a>
-          </>
+          <a href="#" className="btn-nav" onClick={(e) => { e.preventDefault(); onLogout?.() }}>Log out</a>
         ) : (
           <>
-            <a href="#" className="btn-ghost" onClick={(e) => { e.preventDefault(); setPage('auth') }}>Log in</a>
-            <a href="#" className="btn-nav"   onClick={(e) => { e.preventDefault(); setPage('auth') }}>Get started free</a>
+            <a href="/login" className="btn-ghost" onClick={(e) => { e.preventDefault(); setPage('login') }}>Log in</a>
+            <a href="/login" className="btn-nav" onClick={(e) => { e.preventDefault(); setPage('login', { loginMode: 'signup' }) }}>Get started free</a>
           </>
         )}
       </div>

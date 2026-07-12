@@ -9,7 +9,7 @@ export function useAppNavigate() {
   const navigate = useNavigate()
 
   return useCallback((target, options = {}) => {
-    const { loginMode, dashboardSection, scrollTo } = options
+    const { loginMode, dashboardSection, scrollTo, next } = options
 
     if (target === 'dashboard') {
       navigate(scrollTo ? `${dashboardPath(dashboardSection)}#${scrollTo}` : dashboardPath(dashboardSection))
@@ -17,8 +17,11 @@ export function useAppNavigate() {
       return
     }
 
-    if (target === 'login') {
-      const search = loginMode === 'signup' ? '?mode=signup' : ''
+    if (target === 'login' || target === 'auth') {
+      const params = new URLSearchParams()
+      if (loginMode === 'signup') params.set('mode', 'signup')
+      if (next && next.startsWith('/') && !next.startsWith('//')) params.set('next', next)
+      const search = params.toString() ? `?${params.toString()}` : ''
       navigate(`/login${search}`)
       window.scrollTo({ top: 0, behavior: 'instant' })
       return

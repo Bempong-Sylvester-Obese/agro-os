@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { Plus, X, Loader2, Check, XCircle, Send } from 'lucide-react'
 import { createLoan, approveLoan, rejectLoan, disburseLoan } from '../../api/loans'
+import { TableSectionSkeleton } from './DashboardSkeleton'
 
 function fmtGHS(amount) {
   return `GHS ${Number(amount).toLocaleString('en-GH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
@@ -101,7 +102,14 @@ export default function Loans({ farmers = [], loans = [], loading, onRefresh }) 
   const [actionError, setActionError] = useState(null)
 
   if (loading) {
-    return <div style={{ padding: 32, color: 'var(--muted)', fontSize: 14 }}>Loading loans…</div>
+    return (
+      <TableSectionSkeleton
+        statCount={3}
+        rows={6}
+        columns={6}
+        gridStyle={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 100px 140px' }}
+      />
+    )
   }
 
   const disbursed = loans.filter(l => l.status === 'disbursed')

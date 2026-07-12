@@ -2,8 +2,9 @@
 import { useState, useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
 import { updateCooperative } from '../../api/cooperatives'
+import { SettingsSkeleton } from './DashboardSkeleton'
 
-export default function Settings({ cooperative, onRefresh }) {
+export default function Settings({ cooperative, cooperativeId, loading, onRefresh }) {
   const [form, setForm] = useState({
     name: '',
     location: '',
@@ -11,7 +12,7 @@ export default function Settings({ cooperative, onRefresh }) {
     default_currency: 'GHS',
     moolre_account_number: ''
   })
-  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [successMsg, setSuccessMsg] = useState(null)
 
@@ -21,30 +22,50 @@ export default function Settings({ cooperative, onRefresh }) {
         name: cooperative.name || '',
         location: cooperative.location || '',
         description: cooperative.description || '',
-        default_currency: cooperative.default_currency || 'GHS',
+        default_currency: cooperative.currency || cooperative.default_currency || 'GHS',
         moolre_account_number: cooperative.moolre_account_number || ''
       })
     }
   }, [cooperative])
 
+  if (loading) return <SettingsSkeleton />
+
   if (!cooperative) {
-    return <div style={{ padding: 32, color: 'var(--muted)', fontSize: 14 }}>Loading settings…</div>
+    return (
+      <div style={{ padding: 32, maxWidth: 480 }}>
+        <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Could not load cooperative settings</div>
+        <p style={{ fontSize: 14, color: 'var(--muted)', marginBottom: 16, lineHeight: 1.5 }}>
+          {cooperativeId
+            ? 'Your cooperative profile could not be fetched. Check your connection and try again.'
+            : 'No cooperative is linked to your account. Log in with a cooperative admin account or complete signup.'}
+        </p>
+        {onRefresh && (
+          <button type="button" className="btn-lg" style={{ padding: '10px 20px', fontSize: 13 }} onClick={onRefresh}>
+            Retry
+          </button>
+        )}
+      </div>
+    )
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    setLoading(true)
+    setSaving(true)
     setError(null)
     setSuccessMsg(null)
-    
+
     try {
-      await updateCooperative(cooperative.id, form)
+      const { default_currency, ...rest } = form
+      await updateCooperative(cooperative.id, {
+        ...rest,
+        currency: default_currency,
+      })
       setSuccessMsg('Settings updated successfully.')
       if (onRefresh) onRefresh()
     } catch (err) {
       setError(err.message)
     } finally {
-      setLoading(false)
+      setSaving(false)
     }
   }
 
@@ -78,11 +99,11 @@ export default function Settings({ cooperative, onRefresh }) {
               <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
                 <div style={{ flex: 2 }}>
                   <label style={labelStyle}>Cooperative Name</label>
-                  <input style={inputStyle} type="text" value={form.name} onChange={e => setForm({...form, name: e.target.value})} required disabled={loading}/>
+                  <input style={inputStyle} type="text" value={form.name} onChange={e => setForm({...form, name: e.target.value})} required disabled={saving}/>
                 </div>
                 <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Location / Region</label>
-                  <input style={inputStyle} type="text" value={form.location} onChange={e => setForm({...form, location: e.target.value})} disabled={loading}/>
+                  <input style={inputStyle} type="text" value={form.location} onChange={e => setForm({...form, location: e.target.value})} disabled={saving}/>
                 </div>
               </div>
               <div>
@@ -91,7 +112,7 @@ export default function Settings({ cooperative, onRefresh }) {
                   style={{ ...inputStyle, minHeight: 80, resize: 'vertical' }} 
                   value={form.description} 
                   onChange={e => setForm({...form, description: e.target.value})} 
-                  disabled={loading}
+                  disabled={saving}
                 />
               </div>
             </div>
@@ -106,21 +127,21 @@ export default function Settings({ cooperative, onRefresh }) {
               <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
                 <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Default Currency</label>
-                  <select style={inputStyle} value={form.default_currency} onChange={e => setForm({...form, default_currency: e.target.value})} disabled={loading}>
+                  <select style={inputStyle} value={form.default_currency} onChange={e => setForm({...form, default_currency: e.target.value})} disabled={saving}>
                     <option value="GHS">Ghana Cedi (GHS)</option>
                     <option value="USD">US Dollar (USD)</option>
                   </select>
                 </div>
                 <div style={{ flex: 2 }}>
                   <label style={labelStyle}>Moolre Account Number</label>
-                  <input style={inputStyle} type="text" value={form.moolre_account_number} onChange={e => setForm({...form, moolre_account_number: e.target.value})} placeholder="e.g. 1089700..." required disabled={loading}/>
+                  <input style={inputStyle} type="text" value={form.moolre_account_number} onChange={e => setForm({...form, moolre_account_number: e.target.value})} placeholder="e.g. 1089700..." required disabled={saving}/>
                 </div>
               </div>
             </div>
             
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-              <button type="submit" className="btn-lg" disabled={loading} style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 8 }}>
-                {loading ? <><Loader2 size={16} className="spin" /> Saving...</> : 'Save Settings'}
+              <button type="submit" className="btn-lg" disabled={saving} style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                {saving ? <><Loader2 size={16} className="spin" /> Saving...</> : 'Save Settings'}
               </button>
             </div>
           </div>
