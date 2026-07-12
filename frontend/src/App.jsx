@@ -9,6 +9,7 @@ import FeaturesPage from './pages/FeaturesPage'
 import PricingPage from './pages/PricingPage'
 import BookDemoPage from './pages/BookDemoPage'
 import DashboardPage from './pages/DashboardPage'
+import { DashboardGateSkeleton } from './components/dashboard/DashboardSkeleton'
 import AuthPage from './pages/AuthPage'
 
 function safeNextPath(next) {
@@ -33,7 +34,7 @@ function ScrollToHash() {
 
 function DashboardGate({ user, authReady, onLogout }) {
   const location = useLocation()
-  if (!authReady) return null
+  if (!authReady) return <DashboardGateSkeleton />
   if (!user) {
     const next = encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)
     return <Navigate to={`/login?next=${next}`} replace />
