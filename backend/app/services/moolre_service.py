@@ -92,6 +92,84 @@ class MoolreService:
             return f"{base} {hints[code]}"
         return base
 
+    def _private_key_headers(self) -> dict:
+        """Transfer/payment write endpoints require USER + private API key (no PUBKEY)."""
+        headers: dict = {
+            "Content-Type": "application/json",
+            "X-API-USER": self.settings.moolre_api_user,
+        }
+        if self.settings.moolre_api_key:
+            headers["X-API-KEY"] = self.settings.moolre_api_key
+        return headers
+
+    @staticmethod
+    def detect_transfer_channel(phone: str) -> str:
+        """Map Ghana MSISDN prefix to Moolre transfer channel (1=MTN, 6=Telecel, 7=AT)."""
+        normalized = phone.strip().replace("+", "").replace(" ", "")
+        if normalized.startswith("233") and len(normalized) >= 12:
+            normalized = normalized[3:]
+        if normalized.startswith("0"):
+            normalized = normalized[1:]
+        prefix = normalized[:2]
+        if prefix in {"20", "50"}:
+            return "6"
+        if prefix in {"26", "27", "56", "57"}:
+            return "7"
+        return "1"
+
+    @staticmethod
+    def format_transfer_error(code: str | None, message: str | None) -> str:
+        base = (message or "Moolre transfer failed").strip()
+        if isinstance(base, list):
+            base = " ".join(str(part) for part in base)
+        hints = {
+            "AIN01": (
+                "Moolre rejected transfer credentials. Confirm MOOLRE_API_KEY is your live "
+                "private key (not the public key) and that payout/transfer access is enabled."
+            ),
+            "AIN11": (
+                "Moolre rejected the API key. Regenerate your live private key in the Moolre "
+                "developer portal and update MOOLRE_API_KEY on Render."
+            ),
+        }
+        if code in hints:
+            return f"{base} {hints[code]}"
+        if "authentication" in base.lower() and "not activated" in base.lower():
+            return (
+                f"{base} Enable transfer/payout API access for your Moolre merchant account "
+                "in app.moolre.com, then retry."
+            )
+        return base
+
+    async def resolve_verified_account(self, cooperative_account: str | None = None) -> tuple[str, str | None]:
+        """Return a Moolre wallet that responds to account/status, or an error message."""
+        config_error = self.validate_payment_config(cooperative_account)
+        if config_error:
+            return "", config_error
+
+        preferred = self.resolve_account_number(cooperative_account)
+        preferred_status = await self.account_status(account_number=preferred)
+        if preferred_status.get("success"):
+            return preferred, None
+
+        platform = self.settings.moolre_account_number.strip()
+        coop = (cooperative_account or "").strip()
+        if platform and platform != preferred:
+            platform_status = await self.account_status(account_number=platform)
+            if platform_status.get("success"):
+                return platform, None
+
+        raw = preferred_status.get("raw") or {}
+        code = raw.get("code")
+        message = raw.get("message") or "Could not access Moolre wallet for disbursement."
+        if coop and platform and coop != platform:
+            message = (
+                f"Moolre rejected cooperative wallet {coop}. "
+                "Update the Moolre account in Settings to match your live wallet, "
+                "or clear it to use the platform MOOLRE_ACCOUNT_NUMBER."
+            )
+        return preferred, self.format_transfer_error(code, message)
+
     def _pubkey_headers(self) -> dict:
         """Build headers for endpoints requiring public key."""
         headers: dict = {
@@ -379,7 +457,7 @@ class MoolreService:
         receiver_phone: str,
         amount: float,
         currency: str = "GHS",
-        channel: str = "1",
+        channel: str | None = None,
         external_ref: str | None = None,
         reference: str = "Loan disbursement",
         account_number: str | None = None,
@@ -391,11 +469,21 @@ class MoolreService:
         """
         ext_ref = external_ref or str(uuid.uuid4())
         acc = self.resolve_account_number(account_number)
+        config_error = self.validate_payment_config(account_number)
+        if config_error:
+            return {
+                "success": False,
+                "moolre_transfer_ref": ext_ref,
+                "external_ref": ext_ref,
+                "message": config_error,
+                "raw": {},
+            }
         normalized_phone = self._normalize_phone(receiver_phone)
+        transfer_channel = channel or self.detect_transfer_channel(normalized_phone)
 
         payload = {
             "type": 1,
-            "channel": channel,
+            "channel": transfer_channel,
             "currency": currency,
             "amount": str(amount),
             "receiver": normalized_phone,
@@ -404,16 +492,20 @@ class MoolreService:
             "accountnumber": acc,
         }
 
-        raw = await self._post("/open/transact/transfer", payload)
-        success = raw.get("status") in (1, "1") or raw.get("code", "").startswith("OBGH")
+        raw = await self._post("/open/transact/transfer", payload, headers=self._private_key_headers())
+        code = raw.get("code")
+        success = raw.get("status") in (1, "1") or str(code or "").startswith("OBGH")
         tx_data = raw.get("data", {}) or {}
+        message = raw.get("message") or raw.get("error", "")
+        if isinstance(message, list):
+            message = " ".join(str(part) for part in message)
+        if not success:
+            message = self.format_transfer_error(code, message)
         return {
             "success": success,
             "moolre_transfer_ref": tx_data.get("transactionid") or ext_ref,
             "external_ref": ext_ref,
-            "message": (
-                " ".join(raw["message"]) if isinstance(raw.get("message"), list) else str(raw.get("message", ""))
-            ),
+            "message": message,
             "raw": raw,
         }
 
@@ -430,7 +522,7 @@ class MoolreService:
             "id": external_ref,
             "accountnumber": acc,
         }
-        raw = await self._post("/open/transact/status", payload)
+        raw = await self._post("/open/transact/status", payload, headers=self._private_key_headers())
         tx_data = raw.get("data", {}) or {}
         tx_status_map = {1: "completed", 0: "pending", 2: "failed"}
         tx_status = tx_status_map.get(tx_data.get("txstatus"), "pending")
