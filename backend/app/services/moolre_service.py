@@ -479,7 +479,7 @@ class MoolreService:
             "verification_required": verification_required,
             "outcome": outcome,
             "moolre_code": code or None,
-            "moolre_reference": raw.get("data") or ext_ref,
+            "moolre_reference": (raw.get("data") if not verification_required else None) or ext_ref,
             "external_ref": ext_ref,
             "message": raw.get("message") or raw.get("error", ""),
             "raw": raw,
