@@ -35,7 +35,7 @@ export function handleUnauthorized() {
 async function handleAuthResponse(response) {
   if (response.status === 401) {
     handleUnauthorized()
-    throw await parseResponseError(response)
+    return response
   }
   return response
 }

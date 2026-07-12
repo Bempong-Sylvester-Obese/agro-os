@@ -191,7 +191,10 @@ class LoanCreate(BaseModel):
 
 class LoanApprove(BaseModel):
     approved_by: str
-    override_reason: Optional[str] = None
+
+
+class LoanRepayVerifyRequest(BaseModel):
+    otp_code: str = Field(..., min_length=1)
 
 
 class LoanResponse(BaseModel):

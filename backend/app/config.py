@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings
 
 _DEFAULT_SECRET_KEY = "your-secret-key-change-in-production"
 _DEFAULT_ADMIN_PASSWORD = "demo1234"
+_DEFAULT_DATABASE_URL = "postgresql://user:password@localhost:5432/agro_os"
 
 
 class Settings(BaseSettings):
@@ -74,6 +75,8 @@ class Settings(BaseSettings):
             raise ValueError("APP_ENV=production requires a non-default SECRET_KEY")
         if not self.database_url.strip():
             raise ValueError("APP_ENV=production requires DATABASE_URL")
+        if self.database_url == _DEFAULT_DATABASE_URL:
+            raise ValueError("APP_ENV=production requires a non-default DATABASE_URL")
         return self
 
     class Config:

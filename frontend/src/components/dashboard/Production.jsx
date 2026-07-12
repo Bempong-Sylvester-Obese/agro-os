@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { Plus, X, Loader2 } from 'lucide-react'
 import { logProduction } from '../../api/production'
+import { TableSectionSkeleton } from './DashboardSkeleton'
 
 function quantityKg(prod) {
   const value = prod.quantity_kg ?? prod.yield_amount
@@ -123,7 +124,14 @@ export default function Production({ farmers = [], productions = [], loading, on
   const [showModal, setShowModal] = useState(false)
 
   if (loading) {
-    return <div style={{ padding: 32, color: 'var(--muted)', fontSize: 14 }}>Loading production data…</div>
+    return (
+      <TableSectionSkeleton
+        statCount={3}
+        rows={6}
+        columns={5}
+        gridStyle={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}
+      />
+    )
   }
 
   const totalExpected = productions.reduce((sum, p) => sum + (expectedKg(p) ?? 0), 0)

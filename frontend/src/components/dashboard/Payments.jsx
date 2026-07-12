@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { Plus, X, Loader2 } from 'lucide-react'
 import { collectDues } from '../../api/transactions'
+import { TableSectionSkeleton } from './DashboardSkeleton'
 
 function fmtGHS(amount) {
   return `GHS ${Number(amount).toLocaleString('en-GH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
@@ -152,9 +153,7 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
 export default function Payments({ farmers = [], transactions = [], loading, onRefresh }) {
   const [showModal, setShowModal] = useState(false)
 
-  if (loading) {
-    return <div style={{ padding: 32, color: 'var(--muted)', fontSize: 14 }}>Loading payments…</div>
-  }
+  if (loading) return <TableSectionSkeleton statCount={3} rows={6} columns={5} />
 
   const completed = transactions.filter(t => t.status === 'completed')
   const totalCollected = completed.reduce((s, t) => s + t.amount, 0)

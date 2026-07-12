@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { login, signup, storeAuthToken, userFromAuthToken } from '../api/auth'
+import { login, signup, storeAuthToken, userFromAuthToken, userFromSignupResponse } from '../api/auth'
 import { USERS } from '../data/users'
 import { Sprout, ArrowLeft, ArrowRight, Building2, Users, MapPin, Mail, Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 
@@ -171,6 +171,7 @@ export default function AuthPage({ onAuth }) {
       storeAuthToken(data.access_token)
       completeAuth(data, {
         email: data.user?.email || email.trim(),
+        cooperative_id: data.user?.cooperative_id ?? userFromAuthToken(data.access_token)?.cooperative_id ?? null,
         cooperative: data.user?.cooperative || 'Kuapa Kokoo Demo Cooperative',
       })
       return
@@ -220,10 +221,7 @@ export default function AuthPage({ onAuth }) {
       storeAuthToken(data.access_token)
       setSuccess(true)
       setTimeout(() => {
-        completeAuth(data, {
-          email: signupEmail.trim(),
-          cooperative: data.cooperative_name || cooperativeName.trim(),
-        })
+        completeAuth(data, userFromSignupResponse(data, signupEmail.trim()))
       }, 1200)
     } catch (err) {
       setError(err.message)

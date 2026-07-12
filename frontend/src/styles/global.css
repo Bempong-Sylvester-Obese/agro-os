@@ -135,11 +135,14 @@ body {
 /* ── Moolre band ── */
 .moolre-band { background: var(--g); padding: 80px 48px; position: relative; overflow: hidden; }
 .moolre-band::before { content: ''; position: absolute; top: -50%; right: -10%; width: 600px; height: 600px; background: radial-gradient(circle, rgba(82,183,136,.18) 0%, transparent 70%); pointer-events: none; }
-.moolre-inner { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 48px; }
+.moolre-inner { max-width: 1200px; margin: 0 auto; }
 .moolre-tag  { font-size: 11px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--gold-l); margin-bottom: 14px; }
 .moolre-h2   { font-family: 'Fraunces', serif; font-size: 36px; font-weight: 900; color: #fff; line-height: 1.2; margin-bottom: 14px; }
-.moolre-desc { font-size: 16px; color: rgba(255,255,255,.7); line-height: 1.75; max-width: 520px; }
-.moolre-cards { max-width: 1200px; margin: 56px auto 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+.moolre-desc { font-size: 16px; color: rgba(255,255,255,.7); line-height: 1.75; max-width: 620px; }
+.moolre-cards-wrap { max-width: 1200px; margin: 56px auto 0; scroll-margin-top: 80px; }
+.moolre-cards-heading { font-family: 'Fraunces', serif; font-size: 24px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+.moolre-cards-sub { font-size: 14px; color: rgba(255,255,255,.65); margin-bottom: 22px; max-width: 480px; }
+.moolre-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
 .moolre-card { background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.14); border-radius: 12px; padding: 22px; text-align: left; cursor: pointer; transition: background .15s, border-color .15s, transform .15s; font-family: 'DM Sans', sans-serif; color: inherit; }
 .moolre-card:hover { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.22); transform: translateY(-2px); }
 .moolre-card-icon { width: 44px; height: 44px; border-radius: 10px; background: rgba(255,255,255,.12); display: flex; align-items: center; justify-content: center; color: var(--gold-l); margin-bottom: 14px; }
@@ -262,6 +265,15 @@ body {
 /* ── Stat row ── */
 .stat-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 18px; margin-bottom: 28px; }
 .stat-card { background: #fff; border-radius: 12px; padding: 22px; border: 1px solid var(--border); }
+.dash-skeleton {
+  background: linear-gradient(90deg, #e8ece9 0%, #f4f6f4 45%, #e8ece9 90%);
+  background-size: 200% 100%;
+  animation: dash-skeleton-shimmer 1.5s ease-in-out infinite;
+}
+@keyframes dash-skeleton-shimmer {
+  0%   { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
 .stat-lbl  { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 7px; }
 .stat-val  { font-family: 'Fraunces', serif; font-size: 30px; font-weight: 900; color: var(--g); }
 .stat-sub  { font-size: 11px; color: var(--muted); margin-top: 3px; }
@@ -401,12 +413,13 @@ body {
     gap: 32px;
   }
   .moolre-inner {
-    grid-template-columns: 1fr;
     gap: 28px;
+  }
+  .moolre-cards-wrap {
+    margin-top: 36px;
   }
   .moolre-cards {
     grid-template-columns: 1fr;
-    margin-top: 36px;
   }
   .hiw-steps::before {
     display: none;

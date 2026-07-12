@@ -12,7 +12,13 @@ def test_auth_login(client, demo_admin):
     assert body["user"]["email"] == "admin@agroos.demo"
 
 
-def test_simulate_payment_webhook(client, farmer):
+def test_simulate_payment_webhook(client, farmer, demo_admin, monkeypatch):
+    monkeypatch.setenv("AUTH_ENABLED", "true")
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-for-webhook-events")
+    monkeypatch.setenv("ADMIN_PASSWORD", "strong-admin-password")
+    from app.config import get_settings
+    get_settings.cache_clear()
+
     tx_resp = client.post(
         "/transactions/",
         json={
@@ -33,9 +39,21 @@ def test_simulate_payment_webhook(client, farmer):
     assert simulate.status_code == 200, simulate.text
     assert simulate.json()["status"] == "ok"
 
-    events = client.get("/transactions/webhook-events")
+    login = client.post(
+        "/auth/login",
+        json={"email": "admin@agroos.demo", "password": "demo1234"},
+    )
+    assert login.status_code == 200, login.text
+    token = login.json()["access_token"]
+
+    events = client.get(
+        "/transactions/webhook-events",
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert events.status_code == 200
     assert len(events.json()) >= 1
+
+    get_settings.cache_clear()
 
 
 def test_ussd_session_logged(client, farmer):

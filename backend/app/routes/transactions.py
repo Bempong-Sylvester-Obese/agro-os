@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.database.db import get_db
 from app.models.models import Farmer, PaymentWebhookEvent, Transaction, TransactionStatus, TransactionType, User
 from app.services.auth_service import get_current_user
@@ -64,7 +65,14 @@ async def _run_dues_collect(
     otp_code: str | None,
     db: Session,
 ) -> DuesCollectResponse:
-    tx = db.query(Transaction).filter(Transaction.moolre_reference == external_ref).first()
+    tx = (
+        db.query(Transaction)
+        .filter(
+            Transaction.moolre_reference == external_ref,
+            Transaction.farmer_id == farmer.id,
+        )
+        .first()
+    )
     if not tx:
         tx = Transaction(
             farmer_id=farmer.id,
@@ -82,15 +90,20 @@ async def _run_dues_collect(
         db.refresh(tx)
 
     moolre = MoolreService()
-    result = await moolre.initiate_payment(
-        payer_phone=farmer.phone,
-        amount=amount,
-        currency="GHS",
-        channel=channel,
-        external_ref=external_ref,
-        otpcode=otp_code,
-        reference=description or "Cooperative dues",
-    )
+    try:
+        result = await moolre.initiate_payment(
+            payer_phone=farmer.phone,
+            amount=amount,
+            currency="GHS",
+            channel=channel,
+            external_ref=external_ref,
+            otpcode=otp_code,
+            reference=description or "Cooperative dues",
+        )
+    except Exception:
+        tx.status = TransactionStatus.failed
+        db.commit()
+        raise
 
     if result.get("moolre_reference") and result["moolre_reference"] != external_ref:
         ref_val = str(result["moolre_reference"]).lower()
@@ -160,8 +173,15 @@ def list_webhook_events(
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
 ):
     """Audit log of incoming Moolre payment webhooks."""
+    settings = get_settings()
+    if settings.auth_enabled:
+        if current_user is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+    else:
+        raise HTTPException(status_code=404, detail="Not found")
     return (
         db.query(PaymentWebhookEvent)
         .order_by(PaymentWebhookEvent.received_at.desc())
@@ -181,6 +201,14 @@ def get_farmer_transactions(
     farmer = db.query(Farmer).filter(Farmer.id == farmer_id).first()
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")
+
+    settings = get_settings()
+    if settings.auth_enabled:
+        if current_user is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        if current_user.cooperative_id and farmer.cooperative_id != current_user.cooperative_id:
+            raise HTTPException(status_code=403, detail="Farmer not in your cooperative")
+
     return (
         db.query(Transaction)
         .filter(Transaction.farmer_id == farmer_id)
@@ -207,11 +235,12 @@ def update_transaction_status(
     transaction_id: int,
     update: TransactionStatusUpdate,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
 ):
     """Update non-payment transaction status (admin only; cannot force completed)."""
-    from app.config import get_settings
-
     settings = get_settings()
+    if settings.auth_enabled and current_user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
     if settings.app_env.lower() in ("production", "prod"):
         raise HTTPException(status_code=404, detail="Not found")
 
@@ -306,13 +335,22 @@ async def create_payment_link(request: PaymentLinkRequest, db: Session = Depends
     db.refresh(tx)
 
     moolre = MoolreService()
-    result = await moolre.generate_payment_link(
-        amount=request.amount,
-        email=request.email,
-        currency=request.currency,
-        external_ref=ext_ref,
-        metadata={"farmer_id": farmer.id, "transaction_id": tx.id},
-    )
+    try:
+        result = await moolre.generate_payment_link(
+            amount=request.amount,
+            email=request.email,
+            currency=request.currency,
+            external_ref=ext_ref,
+            metadata={"farmer_id": farmer.id, "transaction_id": tx.id},
+        )
+    except Exception:
+        tx.status = TransactionStatus.failed
+        db.commit()
+        raise
+
+    if not result.get("success"):
+        tx.status = TransactionStatus.failed
+        db.commit()
 
     return PaymentLinkResponse(
         success=result.get("success", False),

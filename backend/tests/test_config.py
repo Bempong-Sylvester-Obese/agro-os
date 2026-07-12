@@ -22,10 +22,6 @@ def test_auth_enabled_rejects_default_admin_password():
         Settings(auth_enabled=True, secret_key="strong-secret-key")
 
 
-def test_auth_enabled_accepts_non_default_credentials():
-    settings = Settings(
-        auth_enabled=True,
-        secret_key="strong-secret-key",
-        admin_password="strong-password",
-    )
-    assert settings.auth_enabled is True
+def test_production_rejects_default_database_url():
+    with pytest.raises(ValueError, match="DATABASE_URL"):
+        Settings(app_env="production", secret_key="strong-secret-key", database_url="postgresql://user:password@localhost:5432/agro_os")

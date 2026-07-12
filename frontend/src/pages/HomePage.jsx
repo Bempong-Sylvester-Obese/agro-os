@@ -204,34 +204,36 @@ export default function HomePage({ user }) {
       </section>
 
       {/* ── Moolre band + integration ── */}
-      <div className="moolre-band" id="moolre-integration">
+      <div className="moolre-band">
         <div className="moolre-inner">
-          <div>
-            <div className="moolre-tag">Moolre integration</div>
-            <h2 className="moolre-h2 serif">Built on Moolre.<br />Native from day one.</h2>
-            <p className="moolre-desc">
-              AgroOS uses Moolre's payment infrastructure natively — USSD menus, MoMo collections,
-              and disbursements flow directly through the Moolre ecosystem. No third-party payment setup required.
-            </p>
-          </div>
+          <div className="moolre-tag">Moolre integration</div>
+          <h2 className="moolre-h2 serif">Built on Moolre.<br />Native from day one.</h2>
+          <p className="moolre-desc">
+            AgroOS uses Moolre's payment infrastructure natively — USSD menus, MoMo collections,
+            and disbursements flow directly through the Moolre ecosystem. No third-party payment setup required.
+          </p>
         </div>
 
-        <div className="moolre-cards">
-          {MOOLRE_PILLARS.map((pillar) => (
-            <button
-              key={pillar.title}
-              type="button"
-              className="moolre-card"
-              onClick={() => handlePillarClick(pillar)}
-            >
-              <div className="moolre-card-icon">{pillar.icon}</div>
-              <div className="moolre-card-title serif">{pillar.title}</div>
-              <p className="moolre-card-desc">{pillar.desc}</p>
-              <span className="moolre-card-link">
-                Learn more <ArrowRight size={14} />
-              </span>
-            </button>
-          ))}
+        <div className="moolre-cards-wrap" id="moolre-integration">
+          <h3 className="moolre-cards-heading serif">Explore the integration</h3>
+          <p className="moolre-cards-sub">Four native capabilities — choose one to learn more.</p>
+          <div className="moolre-cards">
+            {MOOLRE_PILLARS.map((pillar) => (
+              <button
+                key={pillar.title}
+                type="button"
+                className="moolre-card"
+                onClick={() => handlePillarClick(pillar)}
+              >
+                <div className="moolre-card-icon">{pillar.icon}</div>
+                <div className="moolre-card-title serif">{pillar.title}</div>
+                <p className="moolre-card-desc">{pillar.desc}</p>
+                <span className="moolre-card-link">
+                  Learn more <ArrowRight size={14} />
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

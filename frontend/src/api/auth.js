@@ -84,13 +84,32 @@ export async function login(email, password) {
 }
 
 export async function signup({ email, password, cooperativeName, location, memberCount }) {
-  return signupAdmin({
+  const data = await signupAdmin({
     email,
     password,
     cooperative_name: cooperativeName,
     location,
     member_count: memberCount ? parseInt(memberCount, 10) : null,
   })
+  return {
+    ...data,
+    user: userFromSignupResponse(data, email),
+  }
+}
+
+export function userFromSignupResponse(data, email) {
+  const cooperativeName = data.cooperative_name || 'My Cooperative'
+  const resolvedEmail = data.user?.email || email?.trim() || ''
+  const name = data.user?.name || 'Cooperative Admin'
+  return {
+    id: data.user?.id ?? data.user_id ?? null,
+    email: resolvedEmail,
+    name,
+    initials: name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'CA',
+    role: data.user?.role || 'admin',
+    cooperative_id: data.cooperative_id ?? data.user?.cooperative_id ?? null,
+    cooperative: cooperativeName,
+  }
 }
 
 export async function register(email, password, cooperativeId = null) {
@@ -160,7 +179,7 @@ export function userFromAuthToken(token) {
       email,
       name: 'Cooperative Admin',
       initials: 'CA',
-      role: 'Finance Officer',
+      role: 'admin',
       cooperative_id: payload.cooperative_id ?? null,
       cooperative: 'Kuapa Kokoo Demo Cooperative',
     }

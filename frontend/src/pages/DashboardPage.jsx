@@ -1,7 +1,7 @@
 // src/pages/DashboardPage.jsx
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { getAuthInfo } from '../utils/auth'
+import { resolveCooperativeId } from '../utils/auth'
 import { DASHBOARD_SECTIONS, dashboardPath } from '../constants/routes'
 import { fetchFarmers } from '../api/farmers'
 import { fetchCooperative } from '../api/cooperatives'
@@ -18,6 +18,7 @@ import Production from '../components/dashboard/Production'
 import SettingsView from '../components/dashboard/Settings'
 import USSD from '../components/dashboard/USSD'
 import DashboardUserMenu from '../components/dashboard/DashboardUserMenu'
+import { SidebarCoopSkeleton } from '../components/dashboard/DashboardSkeleton'
 import { BarChart3, Users, CreditCard, Star, MessageSquare, Settings, Sprout, Banknote, Tractor } from 'lucide-react'
 
 const NAV_ITEMS = [
@@ -52,20 +53,24 @@ export default function DashboardPage({ user, onLogout }) {
   const [loans, setLoans]               = useState([])
   const [productions, setProductions]   = useState([])
   const [cooperative, setCooperative]   = useState(null)
+  const [cooperativeId, setCooperativeId] = useState(null)
   const [loading, setLoading]           = useState(true)
-
-  // Decode JWT once — cooperative_id scopes all queries
-  const { cooperative_id } = getAuthInfo()
 
   const loadAll = () => {
     setLoading(true)
+    const idHint = resolveCooperativeId(user)
+
     Promise.all([
-      fetchCooperative(cooperative_id).catch(() => null),
-      fetchFarmers(cooperative_id).catch(() => []),
-      fetchTransactions(cooperative_id).catch(() => []),
-      fetchLoans(cooperative_id).catch(() => []),
-      fetchProductions(cooperative_id).catch(() => []),
-    ]).then(([coop, farmersData, txData, loansData, prodsData]) => {
+      fetchFarmers(idHint).catch(() => []),
+      fetchTransactions(idHint).catch(() => []),
+      fetchLoans(idHint).catch(() => []),
+      fetchProductions(idHint).catch(() => []),
+    ]).then(async ([farmersData, txData, loansData, prodsData]) => {
+      const resolvedId = resolveCooperativeId(user, farmersData)
+      setCooperativeId(resolvedId)
+      const coop = resolvedId
+        ? await fetchCooperative(resolvedId).catch(() => null)
+        : null
       setCooperative(coop)
       setFarmers(farmersData)
       setTransactions(txData)
@@ -75,7 +80,7 @@ export default function DashboardPage({ user, onLogout }) {
     })
   }
 
-  useEffect(() => { loadAll() }, [cooperative_id])
+  useEffect(() => { loadAll() }, [user])
 
   useEffect(() => {
     setSection(sectionFromUrl)
@@ -88,7 +93,7 @@ export default function DashboardPage({ user, onLogout }) {
 
   // Called after a member is added — refreshes only the farmers list
   const handleMemberAdded = () => {
-    fetchFarmers(cooperative_id).then(setFarmers).catch(() => {})
+    fetchFarmers(cooperativeId).then(setFarmers).catch(() => {})
   }
 
   return (
@@ -101,7 +106,7 @@ export default function DashboardPage({ user, onLogout }) {
             <div className="admin-side-title">AgroOS</div>
           </div>
           <div className="admin-side-sub">
-            {loading ? '...' : (cooperative?.name ?? 'My Cooperative')}
+            {loading ? <SidebarCoopSkeleton /> : (cooperative?.name ?? 'My Cooperative')}
           </div>
         </div>
 
@@ -145,7 +150,7 @@ export default function DashboardPage({ user, onLogout }) {
           {section === 'members' && (
             <Members
               farmers={farmers}
-              cooperativeId={cooperative_id}
+              cooperativeId={cooperativeId}
               onMemberAdded={handleMemberAdded}
               loading={loading}
             />
@@ -163,7 +168,7 @@ export default function DashboardPage({ user, onLogout }) {
           )}
           {section === 'sms' && (
             <SMS
-              cooperativeId={cooperative_id}
+              cooperativeId={cooperativeId}
               memberCount={farmers.length}
             />
           )}
@@ -186,6 +191,8 @@ export default function DashboardPage({ user, onLogout }) {
           {section === 'settings' && (
             <SettingsView
               cooperative={cooperative}
+              cooperativeId={cooperativeId}
+              loading={loading}
               onRefresh={loadAll}
             />
           )}

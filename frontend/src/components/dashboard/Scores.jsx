@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import { fetchFarmerTrustScore, recalculateTrustScore } from '../../api/farmers'
 import { RefreshCw, Loader2 } from 'lucide-react'
+import { ScoresSkeleton, Skeleton } from './DashboardSkeleton'
 
 const scoreTier = (score) => {
   if (score >= 82) return 'sh'
@@ -88,8 +89,13 @@ function ScoreDetail({ farmer }) {
 
       {/* Trust score breakdown */}
       {loadingBreakdown ? (
-        <div style={{ padding: 16, color: 'var(--muted)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Loading breakdown…
+        <div className="feature-grid">
+          {FACTOR_LABELS.map(({ key, weight }) => (
+            <div key={key} className="feature-pill">
+              <Skeleton width="72%" height={11} radius={4} />
+              <Skeleton width={28} height={14} radius={4} style={{ marginTop: 6 }} />
+            </div>
+          ))}
         </div>
       ) : breakdown ? (
         <div className="feature-grid">
@@ -147,9 +153,7 @@ export default function Scores({ farmers = [], loading }) {
   const sorted = [...farmers].sort((a, b) => b.trust_score - a.trust_score)
   const selectedFarmer = farmers.find(f => f.id === selectedId) || sorted[0] || null
 
-  if (loading) {
-    return <div style={{ padding: 32, color: 'var(--muted)', fontSize: 14 }}>Loading scores…</div>
-  }
+  if (loading) return <ScoresSkeleton />
 
   if (farmers.length === 0) {
     return (

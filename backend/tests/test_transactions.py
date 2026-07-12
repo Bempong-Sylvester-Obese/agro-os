@@ -65,6 +65,30 @@ def test_update_transaction_status(client, transaction):
     assert resp.json()["status"] == "failed"
 
 
+def test_update_transaction_status_completed_forbidden(client, transaction):
+    resp = client.patch(
+        f"/transactions/{transaction['id']}/status",
+        json={"status": "completed"},
+    )
+    assert resp.status_code == 403
+
+
+def test_update_transaction_status_hidden_in_production(client, transaction, monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("SECRET_KEY", "strong-secret-key")
+    from app.config import get_settings
+    get_settings.cache_clear()
+    try:
+        resp = client.patch(
+            f"/transactions/{transaction['id']}/status",
+            json={"status": "failed"},
+        )
+        assert resp.status_code == 404
+    finally:
+        monkeypatch.setenv("APP_ENV", "test")
+        get_settings.cache_clear()
+
+
 def test_get_farmer_transactions(client, farmer, transaction):
     resp = client.get(f"/transactions/farmer/{farmer['id']}")
     assert resp.status_code == 200

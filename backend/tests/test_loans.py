@@ -15,12 +15,12 @@ def _transfer_initiated(ext_ref: str = "some-uuid") -> dict:
     }
 
 
-def _transfer_status_completed() -> dict:
+def _transfer_status_completed(amount: str | float = "250.0") -> dict:
     return {
         "success": True,
         "status": "completed",
         "transaction_id": "TEST-TRANSFER-001",
-        "amount": "250.0",
+        "amount": str(amount),
         "raw": {},
     }
 
@@ -36,12 +36,12 @@ def _payment_initiated(ext_ref: str = "repay-uuid") -> dict:
     }
 
 
-def _payment_status_completed() -> dict:
+def _payment_status_completed(amount: str | float = "150.0") -> dict:
     return {
         "success": True,
         "status": "completed",
         "transaction_id": "TEST-PAYMENT-001",
-        "amount": "150.0",
+        "amount": str(amount),
         "raw": {},
     }
 
@@ -63,10 +63,11 @@ def _approve_and_disburse(client, farmer, amount: float, loan_id: int | None = N
         patch(
             "app.routes.loans.MoolreService.transfer_status",
             new_callable=AsyncMock,
-            return_value=_transfer_status_completed(),
+            return_value=_transfer_status_completed(amount),
         ),
     ):
-        client.post(f"/loans/{loan_id}/disburse")
+        disburse_resp = client.post(f"/loans/{loan_id}/disburse")
+    assert disburse_resp.status_code == 200, disburse_resp.text
     return loan_id
 
 
@@ -312,7 +313,7 @@ def test_repay_loan(client, farmer):
         patch(
             "app.routes.loans.MoolreService.payment_status",
             new_callable=AsyncMock,
-            return_value=_payment_status_completed(),
+            return_value=_payment_status_completed(150.0),
         ) as mock_status,
     ):
         repay_resp = client.post(f"/loans/{loan_id}/repay")
@@ -360,7 +361,7 @@ def test_repay_loan_uses_cooperative_account(client, farmer, cooperative):
         patch(
             "app.routes.loans.MoolreService.payment_status",
             new_callable=AsyncMock,
-            return_value=_payment_status_completed(),
+            return_value=_payment_status_completed(120.0),
         ),
     ):
         resp = client.post(f"/loans/{loan_id}/repay")

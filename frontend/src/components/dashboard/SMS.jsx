@@ -1,6 +1,7 @@
 // src/components/dashboard/SMS.jsx
 import { useState, useEffect } from 'react'
 import { fetchSMSLogs, sendBroadcast } from '../../api/communications'
+import { SMSLogsSkeleton } from './DashboardSkeleton'
 
 export default function SMS({ cooperativeId, memberCount = 0 }) {
   const [msg, setMsg]                 = useState('')
@@ -115,10 +116,11 @@ export default function SMS({ cooperativeId, memberCount = 0 }) {
       <div className="admin-card">
         <div className="admin-card-head">
           <span className="admin-card-title serif">Broadcast history</span>
-          {loadingLogs && <span className="admin-card-action">Loading…</span>}
         </div>
 
-        {!loadingLogs && mappedLogs.length === 0 ? (
+        {loadingLogs ? (
+          <SMSLogsSkeleton />
+        ) : mappedLogs.length === 0 ? (
           <div style={{ padding: '28px 20px', color: 'var(--muted)', fontSize: 14 }}>
             No broadcasts sent yet. Send your first message to members above.
           </div>

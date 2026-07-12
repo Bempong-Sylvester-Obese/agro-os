@@ -1,4 +1,5 @@
 // src/components/dashboard/Overview.jsx
+import { OverviewSkeleton } from './DashboardSkeleton'
 
 const scoreTier = (score) => {
   if (score >= 82) return 'sh'
@@ -11,13 +12,7 @@ function fmtGHS(amount) {
 }
 
 export default function Overview({ farmers = [], transactions = [], loading }) {
-  if (loading) {
-    return (
-      <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)', fontSize: 14 }}>
-        Loading overview…
-      </div>
-    )
-  }
+  if (loading) return <OverviewSkeleton />
 
   // ── Real computed stats ──────────────────────────────────────────────────
   const totalMembers  = farmers.length
