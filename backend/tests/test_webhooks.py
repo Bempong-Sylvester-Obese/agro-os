@@ -179,7 +179,7 @@ def test_ussd_option_1_known_farmer(client, farmer):
     assert farmer["name"] in body["message"]
 
 
-def test_direct_ussd_selects_cooperative_for_multi_membership(client, farmer):
+def test_direct_ussd_skips_cooperative_selection_for_multi_membership(client, farmer):
     second_coop = client.post(
         "/cooperatives/",
         json={"name": "Direct USSD Cooperative", "currency": "GHS"},
@@ -193,16 +193,14 @@ def test_direct_ussd_selects_cooperative_for_multi_membership(client, farmer):
         },
     )
 
-    selection = client.post("/webhooks/moolre/ussd", json=_ussd_new("multi-1", farmer["phone"]))
-    assert selection.status_code == 200
-    sel_body = selection.json()
-    assert sel_body["reply"] is True
-    assert "Choose your cooperative" in sel_body["message"]
-    assert second_coop["name"] in sel_body["message"]
-
-    main_menu = client.post("/webhooks/moolre/ussd", json=_ussd_step("multi-1", farmer["phone"], "2"))
-    assert main_menu.json()["reply"] is True
-    assert "Check Loan Balance" in main_menu.json()["message"]
+    # A farmer with multiple memberships goes straight to the main menu now —
+    # no cooperative-selection prompt.
+    welcome = client.post("/webhooks/moolre/ussd", json=_ussd_new("multi-1", farmer["phone"]))
+    assert welcome.status_code == 200
+    welcome_body = welcome.json()
+    assert welcome_body["reply"] is True
+    assert "Check Loan Balance" in welcome_body["message"]
+    assert "Choose your cooperative" not in welcome_body["message"]
 
     loan_balance = client.post("/webhooks/moolre/ussd", json=_ussd_step("multi-1", farmer["phone"], "1"))
     assert loan_balance.json()["reply"] is False
