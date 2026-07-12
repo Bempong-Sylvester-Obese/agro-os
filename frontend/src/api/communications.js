@@ -30,7 +30,14 @@ export async function sendBroadcast(cooperativeId, message) {
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail || 'Failed to send broadcast')
+    const detail = err.detail
+    throw new Error(
+      typeof detail === 'string' ? detail : 'Failed to send broadcast'
+    )
   }
-  return res.json()
+  const data = await res.json()
+  if (data.status !== 'success') {
+    throw new Error(data.message || 'Failed to send broadcast')
+  }
+  return data
 }
