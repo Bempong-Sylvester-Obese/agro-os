@@ -46,6 +46,7 @@ function Field({ label, icon: Icon, type = 'text', value, onChange, placeholder,
         )}
         <input
           type={type}
+          className="auth-input"
           value={value}
           onChange={onChange}
           required={required}
@@ -188,7 +189,7 @@ export default function AuthPage({ onAuth }) {
       u => u.email.toLowerCase() === email.trim().toLowerCase() && u.password === password
     )
     if (!demoUser) {
-      setError('Invalid email or password. Try admin@agroos.demo / demo1234 when the API is running.')
+      setError('Invalid email or password. Try kwabena@ashantifarmers.gh / harvest2026 when the API is unavailable.')
       return
     }
     onAuth(demoUser)
@@ -397,6 +398,7 @@ export default function AuthPage({ onAuth }) {
                     <button
                       type="button"
                       onClick={() => setShowPw(!showPw)}
+                      aria-label={showPw ? 'Hide password' : 'Show password'}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 0 }}
                     >
                       {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
@@ -524,6 +526,7 @@ export default function AuthPage({ onAuth }) {
                     <button
                       type="button"
                       onClick={() => setShowSignupPw(!showSignupPw)}
+                      aria-label={showSignupPw ? 'Hide password' : 'Show password'}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 0 }}
                     >
                       {showSignupPw ? <EyeOff size={16} /> : <Eye size={16} />}
