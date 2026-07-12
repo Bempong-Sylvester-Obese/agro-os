@@ -240,9 +240,13 @@ button:focus-visible,
 /* ── Admin shell ── */
 .admin-shell     { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; background: #F4F6F4; }
 .admin-side      { background: var(--g); display: flex; flex-direction: column; overflow: hidden; }
-.admin-side-head { padding: 22px 20px; border-bottom: 1px solid rgba(255,255,255,.1); }
-.admin-side-title{ font-family: 'Fraunces', serif; font-size: 15px; font-weight: 700; color: #fff; }
-.admin-side-sub  { font-size: 10px; color: rgba(255,255,255,.45); margin-top: 2px; }
+.admin-side-head { padding: 20px; border-bottom: 1px solid rgba(255,255,255,.1); }
+.admin-side-brand { display: flex; align-items: center; gap: 10px; }
+.admin-side-mark { width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--gl); background: rgba(255,255,255,.1); }
+.admin-side-title{ font-family: 'Fraunces', serif; font-size: 19px; line-height: 1; font-weight: 700; letter-spacing: -.02em; color: #fff; }
+.admin-side-sub  { min-width: 0; margin-top: 12px; padding-left: 40px; display: flex; flex-direction: column; gap: 2px; }
+.admin-side-sub-label { font-size: 8px; line-height: 1.2; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: rgba(255,255,255,.38); }
+.admin-side-sub-name { overflow: hidden; color: rgba(255,255,255,.72); font-size: 11px; font-weight: 600; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
 .admin-nav       { padding: 16px 12px; flex: 1; }
 .admin-nav-lbl   { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.3); padding: 0 8px; margin: 14px 0 5px; }
 .admin-nav-item  { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 500; color: rgba(255,255,255,.6); margin-bottom: 2px; transition: all .12s; border: none; background: none; width: 100%; text-align: left; font-family: 'DM Sans', sans-serif; }
@@ -544,6 +548,19 @@ button:focus-visible,
   .admin-side {
     border-right: none;
     border-bottom: 1px solid rgba(255,255,255,.1);
+  }
+  .admin-side-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 20px;
+  }
+  .admin-side-sub {
+    max-width: 45%;
+    margin-top: 0;
+    padding-left: 0;
+    text-align: right;
   }
   .admin-nav {
     display: flex;

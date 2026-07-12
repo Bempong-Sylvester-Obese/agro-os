@@ -128,12 +128,17 @@ export default function DashboardPage({ user, onLogout }) {
       {/* ── Sidebar ── */}
       <div className="admin-side">
         <div className="admin-side-head">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-            <Sprout size={16} color="var(--gl)" />
+          <div className="admin-side-brand">
+            <div className="admin-side-mark">
+              <Sprout size={18} aria-hidden="true" />
+            </div>
             <div className="admin-side-title">AgroOS</div>
           </div>
           <div className="admin-side-sub">
-            {loading ? <SidebarCoopSkeleton /> : (cooperative?.name ?? 'My Cooperative')}
+            <span className="admin-side-sub-label">Cooperative</span>
+            <span className="admin-side-sub-name" title={cooperative?.name}>
+              {loading ? <SidebarCoopSkeleton /> : (cooperative?.name ?? 'My Cooperative')}
+            </span>
           </div>
         </div>
 
