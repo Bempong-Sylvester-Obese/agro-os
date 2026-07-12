@@ -293,7 +293,9 @@ body {
 .mt-row-4 { display: grid; grid-template-columns: 1.2fr 1fr 1.2fr 1fr; gap: 10px; padding: 13px 20px; border-bottom: 1px solid var(--border); align-items: center; }
 .sc-row  { display: grid; grid-template-columns: 2fr 1fr 1fr 60px; gap: 10px; padding: 13px 20px; border-bottom: 1px solid var(--border); align-items: center; }
 .pt-row:last-child, .mt-row:last-child, .mt-row-4:last-child, .sc-row:last-child { border-bottom: none; }
-.table-scroll { overflow-x: auto; }
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.loans-table .pay-head,
+.loans-table .pay-row { grid-template-columns: 2fr 1fr 1fr 1fr 100px 140px; }
 .pt-name { font-size: 12px; font-weight: 600; }
 .pt-id   { font-size: 10px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 1px; }
 .pt-v    { font-size: 12px; font-family: 'JetBrains Mono', monospace; }
@@ -553,9 +555,18 @@ body {
   /* Tables (Horizontal Scrolling) */
   .admin-card {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    box-shadow: inset -10px 0 10px -10px rgba(0,0,0,.06);
+  }
+  .table-scroll {
+    box-shadow: inset -10px 0 10px -10px rgba(0,0,0,.06);
   }
   .pt-head, .pt-row, .mt-head, .mt-row, .mt-head-4, .mt-row-4, .sc-head, .sc-row, .pay-head, .pay-row {
-    min-width: 600px; /* Force minimum width to trigger scroll on mobile */
+    min-width: 600px;
+  }
+  .loans-table .pay-head,
+  .loans-table .pay-row {
+    min-width: 760px;
   }
   .modal-row { grid-template-columns: 1fr; }
   .settings-form-row { flex-direction: column; }
