@@ -48,10 +48,16 @@ request body and query-string cooperative IDs cannot override that scope.
 When `MOOLRE_WEBHOOK_SECRET` is unset, payment webhook signature checks are
 skipped (development/sandbox only). Production deployments must set the secret.
 
+## Rate Limits
+
+Abuse-sensitive POST routes use per-client, one-minute limits: login 10,
+Moolre/USSDK callbacks 120, SMS sends 5, and dues collection 10. A rejected
+request returns HTTP 429 with `Retry-After`. Limits can be adjusted with the
+`RATE_LIMIT_*` environment variables; health probes are always exempt.
+
 ## Known Limitations (Hackathon Phase)
 
 - USSD webhook callbacks are not authenticated
-- No rate limiting is currently applied to API endpoints
 - Supabase row-level security policies are not yet deployed
 
 For production hardening work in progress, see the open GitHub issues labeled

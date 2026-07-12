@@ -48,6 +48,11 @@ Copy from `backend/.env.example` before running locally or deploying.
 | `DEFAULT_SMS_SENDER_ID` | Approved SMS sender ID | `AgroOS` |
 | `SENTRY_DSN` | Optional Sentry DSN for backend error tracking | `https://...@sentry.io/...` |
 | `AGRO_AI_REQUIRE_ARTIFACT` | Fail health check when synthetic model is used | `true` / `false` |
+| `RATE_LIMIT_ENABLED` | Enable route-specific abuse protection | `true` |
+| `RATE_LIMIT_LOGIN_PER_MINUTE` | Per-client login attempts | `10` |
+| `RATE_LIMIT_WEBHOOK_PER_MINUTE` | Per-client Moolre/USSDK callbacks | `120` |
+| `RATE_LIMIT_SMS_PER_MINUTE` | Per-client SMS send requests | `5` |
+| `RATE_LIMIT_DUES_PER_MINUTE` | Per-client dues collection requests | `10` |
 
 > ⚠️ Never commit `.env` to the repository. It is in `.gitignore`.
 > Use Render's environment variable dashboard for production secrets.

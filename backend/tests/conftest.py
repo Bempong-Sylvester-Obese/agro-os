@@ -26,9 +26,18 @@ from sqlalchemy.orm import sessionmaker
 
 from app.config import get_settings
 from app.database.db import Base, get_db
+from app.middleware.rate_limit import rate_limiter
 
 get_settings.cache_clear()
 from main import app
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    """Keep process-local rate counters isolated between tests."""
+    rate_limiter.reset()
+    yield
+    rate_limiter.reset()
 
 # --------------------------------------------------------------------------
 # Shared in-memory SQLite engine
