@@ -319,28 +319,35 @@ def test_disburse_retry_updates_pending_transaction_without_duplicate(client, fa
         patch(
             "app.routes.loans.MoolreService.transfer_status",
             new_callable=AsyncMock,
-            return_value={
-                "success": False,
-                "status": "failed",
-                "transaction_id": pending_tx.moolre_transfer_ref,
-                "raw": {"message": "Transaction Failed"},
-            },
+            side_effect=[
+                {
+                    "success": False,
+                    "status": "failed",
+                    "transaction_id": pending_tx.moolre_transfer_ref,
+                    "raw": {"message": "Transaction Failed"},
+                },
+                _transfer_status_completed(250.0),
+            ],
         ) as mock_status,
         patch(
             "app.routes.loans.MoolreService.initiate_transfer",
             new_callable=AsyncMock,
+            return_value={
+                **_transfer_initiated("fresh-attempt"),
+                "moolre_transfer_ref": "TEST-TRANSFER-002",
+            },
         ) as mock_transfer,
     ):
         retry_resp = client.post(f"/loans/{loan_id}/disburse")
 
-    assert retry_resp.status_code == 502
-    assert retry_resp.json()["detail"] == "Transaction Failed"
-    mock_transfer.assert_not_called()
-    assert mock_status.call_args.kwargs["id_type"] == "2"
+    assert retry_resp.status_code == 200
+    assert retry_resp.json()["status"] == "disbursed"
+    mock_transfer.assert_called_once()
+    assert mock_status.call_args_list[0].kwargs["id_type"] == "2"
     assert db.query(Transaction).filter(
         Transaction.transaction_type == TransactionType.payout,
         Transaction.description == f"Loan disbursement #{loan_id}",
-    ).count() == 1
+    ).count() == 2
     db.refresh(pending_tx)
     assert pending_tx.status == TransactionStatus.failed
 
