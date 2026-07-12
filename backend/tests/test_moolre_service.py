@@ -48,10 +48,10 @@ def test_detect_transfer_channel() -> None:
     assert service.detect_transfer_channel("0261234567") == "7"
 
 
-def test_transfer_receiver_uses_international_format() -> None:
+def test_transfer_receiver_uses_local_format() -> None:
     service = MoolreService()
-    assert service._transfer_receiver("0540456262") == "233540456262"
-    assert service._transfer_receiver("233540456262") == "233540456262"
+    assert service._transfer_receiver("0540456262") == "0540456262"
+    assert service._transfer_receiver("233540456262") == "0540456262"
 
 
 def test_format_transfer_amount() -> None:

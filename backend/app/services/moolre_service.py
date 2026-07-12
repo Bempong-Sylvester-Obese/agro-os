@@ -188,11 +188,8 @@ class MoolreService:
         return phone
 
     def _transfer_receiver(self, phone: str) -> str:
-        """Format payout receiver as 233XXXXXXXXX — matches successful inbound MoMo IDs on Moolre."""
-        local = self._normalize_phone(phone)
-        if local.startswith("0") and len(local) == 10:
-            return f"233{local[1:]}"
-        return local
+        """Format payout receiver as the local 0XXXXXXXXX form required by Moolre."""
+        return self._normalize_phone(phone)
 
     @staticmethod
     def _format_transfer_amount(amount: float) -> str:
@@ -590,15 +587,16 @@ class MoolreService:
 
     async def transfer_status(
         self,
-        external_ref: str,
+        reference: str,
         account_number: str | None = None,
+        id_type: str = "1",
     ) -> dict[str, Any]:
         """Check the status of a transfer."""
         acc = self.resolve_account_number(account_number)
         payload = {
             "type": 1,
-            "idtype": "1",
-            "id": external_ref,
+            "idtype": id_type,
+            "id": reference,
             "accountnumber": acc,
         }
         raw = await self._post("/open/transact/status", payload, headers=self._private_key_headers())

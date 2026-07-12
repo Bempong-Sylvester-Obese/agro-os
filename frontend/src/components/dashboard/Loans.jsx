@@ -114,6 +114,7 @@ export default function Loans({ farmers = [], loans = [], loading, onRefresh }) 
   const [showModal, setShowModal] = useState(false)
   const [processing, setProcessing] = useState(null) // ID of loan being processed
   const [actionError, setActionError] = useState(null)
+  const [actionMessage, setActionMessage] = useState(null)
 
   if (loading) {
     return (
@@ -136,10 +137,16 @@ export default function Loans({ farmers = [], loans = [], loading, onRefresh }) 
   const handleAction = async (loanId, action) => {
     setProcessing(loanId)
     setActionError(null)
+    setActionMessage(null)
     try {
       if (action === 'approve') await approveLoan(loanId)
       if (action === 'reject') await rejectLoan(loanId)
-      if (action === 'disburse') await disburseLoan(loanId)
+      if (action === 'disburse') {
+        const result = await disburseLoan(loanId)
+        if (result.status === 'approved') {
+          setActionMessage('Moolre accepted the payout and it is processing. The loan will remain approved until Moolre confirms completion.')
+        }
+      }
       if (onRefresh) onRefresh()
     } catch (err) {
       setActionError(err.message || 'Action failed')
@@ -168,6 +175,11 @@ export default function Loans({ farmers = [], loans = [], loading, onRefresh }) 
       {actionError && (
         <div style={{ padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
           {actionError}
+        </div>
+      )}
+      {actionMessage && (
+        <div style={{ padding: 12, background: '#EFF6FF', color: '#1E40AF', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
+          {actionMessage}
         </div>
       )}
 

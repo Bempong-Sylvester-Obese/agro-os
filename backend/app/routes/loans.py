@@ -1,6 +1,7 @@
 """Loan Management Routes"""
 
 from datetime import datetime
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -19,7 +20,12 @@ router = APIRouter(prefix="/loans", tags=["loans"])
 
 
 def _disburse_external_ref(loan_id: int) -> str:
-    return f"agro-loan-disburse-{loan_id}"
+    """A unique reference per payout attempt.
+
+    A failed/reversed Moolre transfer must not reuse its external reference.
+    Pending attempts remain idempotent through their stored Moolre transaction ID.
+    """
+    return f"agro-loan-disburse-{loan_id}-{uuid.uuid4().hex[:12]}"
 
 
 def _repay_external_ref(loan_id: int) -> str:
@@ -73,72 +79,55 @@ async def _finalize_disbursement(
     transfer_result: dict,
     status_result: dict,
     db: Session,
+    existing_tx: Transaction | None = None,
 ) -> Loan:
-    if status_result["status"] == "failed":
-        failed_tx = Transaction(
-            farmer_id=farmer.id,
-            transaction_type=TransactionType.payout,
-            amount=loan.amount,
-            currency=loan.currency,
-            status=TransactionStatus.failed,
-            moolre_transfer_ref=transfer_result.get("moolre_transfer_ref"),
-            payee_phone=farmer.phone,
-            description=f"Loan disbursement #{loan.id}",
-        )
-        db.add(failed_tx)
-        db.commit()
-        raise HTTPException(status_code=502, detail="Moolre transfer failed reconciliation")
+    transfer_ref = (
+        transfer_result.get("moolre_transfer_ref")
+        or status_result.get("transaction_id")
+    )
 
-    if status_result["status"] == "pending":
-        pending_tx = Transaction(
+    tx = existing_tx
+    if tx is None:
+        tx = Transaction(
             farmer_id=farmer.id,
             transaction_type=TransactionType.payout,
             amount=loan.amount,
             currency=loan.currency,
             status=TransactionStatus.pending,
-            moolre_transfer_ref=transfer_result.get("moolre_transfer_ref"),
+            moolre_transfer_ref=transfer_ref,
             payee_phone=farmer.phone,
             description=f"Loan disbursement #{loan.id}",
         )
-        db.add(pending_tx)
+        db.add(tx)
+    elif transfer_ref and not tx.moolre_transfer_ref:
+        tx.moolre_transfer_ref = transfer_ref
+
+    if status_result["status"] == "failed":
+        tx.status = TransactionStatus.failed
         db.commit()
+        provider_message = (status_result.get("raw") or {}).get("message")
         raise HTTPException(
             status_code=502,
-            detail="Moolre transfer pending — loan remains approved until transfer completes",
+            detail=provider_message or "Moolre reversed the transfer. The loan remains approved and can be retried.",
         )
 
+    if status_result["status"] == "pending":
+        tx.status = TransactionStatus.pending
+        db.commit()
+        db.refresh(loan)
+        return loan
+
     if not _provider_amount_matches(loan.amount, status_result.get("amount")):
-        pending_tx = Transaction(
-            farmer_id=farmer.id,
-            transaction_type=TransactionType.payout,
-            amount=loan.amount,
-            currency=loan.currency,
-            status=TransactionStatus.pending,
-            moolre_transfer_ref=transfer_result.get("moolre_transfer_ref"),
-            payee_phone=farmer.phone,
-            description=f"Loan disbursement #{loan.id}",
-        )
-        db.add(pending_tx)
+        tx.status = TransactionStatus.pending
         db.commit()
         raise HTTPException(
             status_code=502,
             detail="Moolre transfer amount mismatch — loan remains approved",
         )
 
-    tx = Transaction(
-        farmer_id=farmer.id,
-        transaction_type=TransactionType.payout,
-        amount=loan.amount,
-        currency=loan.currency,
-        status=TransactionStatus.completed,
-        moolre_transfer_ref=transfer_result.get("moolre_transfer_ref"),
-        payee_phone=farmer.phone,
-        description=f"Loan disbursement #{loan.id}",
-    )
-    db.add(tx)
-
+    tx.status = TransactionStatus.completed
     loan.status = LoanStatus.disbursed
-    loan.moolre_transfer_ref = transfer_result.get("moolre_transfer_ref")
+    loan.moolre_transfer_ref = transfer_ref
     loan.disbursed_at = datetime.utcnow()
     db.commit()
     db.refresh(loan)
@@ -294,16 +283,18 @@ async def disburse_loan(loan_id: int, db: Session = Depends(get_db)):
 
     if existing_tx and existing_tx.status == TransactionStatus.pending:
         status_result = await moolre.transfer_status(
-            external_ref=ext_ref,
+            reference=existing_tx.moolre_transfer_ref,
             account_number=account_number,
+            id_type="2",
         )
-        transfer_result = {"moolre_transfer_ref": existing_tx.moolre_transfer_ref, "external_ref": ext_ref}
+        transfer_result = {"moolre_transfer_ref": existing_tx.moolre_transfer_ref}
         return await _finalize_disbursement(
             loan=loan,
             farmer=farmer,
             transfer_result=transfer_result,
             status_result=status_result,
             db=db,
+            existing_tx=existing_tx,
         )
 
     transfer_result = await moolre.initiate_transfer(
@@ -334,7 +325,7 @@ async def disburse_loan(loan_id: int, db: Session = Depends(get_db)):
         )
 
     status_result = await moolre.transfer_status(
-        external_ref=transfer_result.get("external_ref") or ext_ref,
+        reference=transfer_result.get("external_ref") or ext_ref,
         account_number=account_number,
     )
     return await _finalize_disbursement(
