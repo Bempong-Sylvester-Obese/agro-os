@@ -16,8 +16,16 @@ from app.schemas.schemas import (
     SMSResponse,
 )
 from app.services.communications_service import CommunicationsService
+from app.services.moolre_service import MoolreService
 
 router = APIRouter(prefix="/communications", tags=["communications"])
+
+
+@router.get("/sms/diagnostics")
+async def sms_diagnostics(current_user: User = Depends(get_current_user)):
+    """Check Moolre SMS credentials without sending a message."""
+    _ = current_user
+    return await MoolreService().diagnose_sms()
 
 
 @router.post("/sms/broadcast", response_model=SMSResponse)

@@ -22,20 +22,30 @@ async def test_send_sms_requires_vaskey(monkeypatch):
 
 @pytest.mark.asyncio
 @patch.object(MoolreService, "_post", new_callable=AsyncMock)
-async def test_send_sms_includes_account_number(mock_post, monkeypatch):
+async def test_send_sms_uses_vas_headers_only(mock_post, monkeypatch):
     monkeypatch.setenv("MOOLRE_API_VASKEY", "test-vas-key")
-    monkeypatch.setenv("MOOLRE_ACCOUNT_NUMBER", "ACC-12345")
+    monkeypatch.setenv("MOOLRE_API_KEY", "test-api-key")
+    monkeypatch.setenv("MOOLRE_API_PUBKEY", "test-pub-key")
+    monkeypatch.setenv("DEFAULT_SMS_SENDER_ID", "AgroOs")
     from app.config import get_settings
 
     get_settings.cache_clear()
-    mock_post.return_value = {"status": 1, "message": "Queued"}
+    mock_post.return_value = {"status": 1, "message": "Success", "code": "SMS01"}
     service = MoolreService()
     await service.send_sms([{"recipient": "+233244123456", "message": "Hello"}])
     get_settings.cache_clear()
 
     payload = mock_post.call_args[0][1]
     headers = mock_post.call_args[1]["headers"]
-    assert payload["accountnumber"] == "ACC-12345"
+    assert "accountnumber" not in payload
     assert payload["messages"][0]["recipient"] == "0244123456"
     assert headers["X-API-VASKEY"] == "test-vas-key"
     assert "X-API-USER" in headers
+    assert "X-API-KEY" not in headers
+    assert "X-API-PUBKEY" not in headers
+
+
+def test_format_sms_error_includes_vas_hint():
+    message = MoolreService.format_sms_error("AIN01", "Authentication Error", "AgroOs")
+    assert "MOOLRE_API_VASKEY" in message
+    assert "Authentication Error" in message
