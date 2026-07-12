@@ -338,13 +338,6 @@ def list_ussd_logs(
     )
 
 
-def _cooperative_menu(memberships: list[Farmer]) -> str:
-    return "Choose your cooperative\n" + "\n".join(
-        f"{index}. {membership.cooperative.name}"
-        for index, membership in enumerate(memberships, start=1)
-    )
-
-
 @router.post("/moolre/ussd")
 async def handle_ussd_session(
     request: Request,
@@ -366,39 +359,15 @@ async def handle_ussd_session(
     if not session_id:
         raise HTTPException(status_code=400, detail="Missing sessionId")
 
-    # ---- Fresh session: resolve cooperative membership, then show the menu
+    # ---- Fresh session: silently resolve the farmer's membership, then show the menu
     if is_new or session_id not in _ussd_sessions:
         memberships = memberships_for_phone(msisdn, db)
-
-        if len(memberships) > 1:
-            _ussd_sessions[session_id] = {
-                "step": "select_coop",
-                "memberships": memberships,
-            }
-            menu = _cooperative_menu(memberships)
-            _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path="new", response_text=menu, farmer=None)
-            return {"message": menu, "reply": True}
-
         farmer = memberships[0] if memberships else None
         _ussd_sessions[session_id] = {"step": "main", "farmer_id": farmer.id if farmer else None}
         _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path="new", response_text=USSD_MENU_MAIN, farmer=farmer)
         return {"message": USSD_MENU_MAIN, "reply": True}
 
     state = _ussd_sessions[session_id]
-
-    # ---- Cooperative selection step
-    if state["step"] == "select_coop":
-        memberships = state["memberships"]
-        try:
-            farmer = memberships[int(message) - 1]
-        except (ValueError, IndexError):
-            menu = "Invalid choice.\n" + _cooperative_menu(memberships)
-            _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=menu, farmer=None)
-            return {"message": menu, "reply": True}
-        state["step"] = "main"
-        state["farmer_id"] = farmer.id
-        _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=USSD_MENU_MAIN, farmer=farmer)
-        return {"message": USSD_MENU_MAIN, "reply": True}
 
     farmer = db.query(Farmer).filter(Farmer.id == state.get("farmer_id")).first() if state.get("farmer_id") else None
 
