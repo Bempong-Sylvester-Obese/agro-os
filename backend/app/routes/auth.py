@@ -5,7 +5,13 @@ from datetime import timedelta
 from app.database.db import get_db
 from app.models.models import User, Cooperative
 from app.schemas.auth import UserCreate, UserLogin, UserResponse, Token, SignupRequest, SignupResponse
-from app.services.auth_service import get_password_hash, verify_password, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
+from app.services.auth_service import (
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    create_access_token,
+    get_password_hash,
+    require_roles,
+    verify_password,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -49,7 +55,12 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
     # 4. Issue JWT
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": new_user.email, "user_id": new_user.id, "cooperative_id": new_coop.id},
+        data={
+            "sub": new_user.email,
+            "user_id": new_user.id,
+            "cooperative_id": new_coop.id,
+            "role": new_user.role,
+        },
         expires_delta=access_token_expires,
     )
 
@@ -62,7 +73,11 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/register", response_model=UserResponse)
-def register(user_in: UserCreate, db: Session = Depends(get_db)):
+def register(
+    user_in: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("admin")),
+):
     db_user = db.query(User).filter(User.email == user_in.email).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -71,7 +86,8 @@ def register(user_in: UserCreate, db: Session = Depends(get_db)):
     new_user = User(
         email=user_in.email,
         hashed_password=hashed_password,
-        cooperative_id=user_in.cooperative_id,
+        cooperative_id=current_user.cooperative_id,
+        role=user_in.role,
     )
     db.add(new_user)
     db.commit()
@@ -91,7 +107,12 @@ def login(user_in: UserLogin, db: Session = Depends(get_db)):
 
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        data={"sub": user.email, "user_id": user.id, "cooperative_id": user.cooperative_id},
+        data={
+            "sub": user.email,
+            "user_id": user.id,
+            "cooperative_id": user.cooperative_id,
+            "role": user.role,
+        },
         expires_delta=access_token_expires,
     )
     return {

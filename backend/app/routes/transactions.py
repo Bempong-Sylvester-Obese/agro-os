@@ -9,7 +9,7 @@ from app.config import get_settings
 from app.database.db import get_db
 from app.dependencies.cooperative_scope import resolve_cooperative_scope
 from app.models.models import Cooperative, Farmer, PaymentWebhookEvent, Transaction, TransactionStatus, TransactionType, User
-from app.services.auth_service import get_current_user
+from app.services.auth_service import enforce_cooperative_scope, get_current_user, require_roles
 from app.schemas.schemas import (
     DuesCollectRequest,
     DuesCollectResponse,
@@ -135,11 +135,16 @@ async def _run_dues_collect(
 
 
 @router.post("/", response_model=TransactionResponse, status_code=201)
-def create_transaction(transaction_in: TransactionCreate, db: Session = Depends(get_db)):
+def create_transaction(
+    transaction_in: TransactionCreate,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+):
     """Create a manual transaction record."""
     farmer = db.query(Farmer).filter(Farmer.id == transaction_in.farmer_id).first()
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")
+    enforce_cooperative_scope(current_user, farmer.cooperative_id)
 
     tx = Transaction(**transaction_in.model_dump())
     db.add(tx)
@@ -192,8 +197,15 @@ def list_webhook_events(
             raise HTTPException(status_code=401, detail="Authentication required")
     else:
         raise HTTPException(status_code=404, detail="Not found")
+    query = db.query(PaymentWebhookEvent)
+    if current_user is not None:
+        query = (
+            query.join(Transaction, PaymentWebhookEvent.transaction_id == Transaction.id)
+            .join(Farmer, Transaction.farmer_id == Farmer.id)
+            .filter(Farmer.cooperative_id == current_user.cooperative_id)
+        )
     return (
-        db.query(PaymentWebhookEvent)
+        query
         .order_by(PaymentWebhookEvent.received_at.desc())
         .offset(skip)
         .limit(limit)
@@ -216,8 +228,7 @@ def get_farmer_transactions(
     if settings.auth_enabled:
         if current_user is None:
             raise HTTPException(status_code=401, detail="Authentication required")
-        if current_user.cooperative_id and farmer.cooperative_id != current_user.cooperative_id:
-            raise HTTPException(status_code=403, detail="Farmer not in your cooperative")
+        enforce_cooperative_scope(current_user, farmer.cooperative_id)
 
     return (
         db.query(Transaction)
@@ -237,6 +248,10 @@ def get_transaction(
     tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
+    farmer = db.query(Farmer).filter(Farmer.id == tx.farmer_id).first()
+    if not farmer:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    enforce_cooperative_scope(current_user, farmer.cooperative_id)
     return tx
 
 
@@ -245,7 +260,7 @@ def update_transaction_status(
     transaction_id: int,
     update: TransactionStatusUpdate,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(get_current_user),
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
 ):
     """Update non-payment transaction status (admin only; cannot force completed)."""
     settings = get_settings()
@@ -263,6 +278,10 @@ def update_transaction_status(
     tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
+    farmer = db.query(Farmer).filter(Farmer.id == tx.farmer_id).first()
+    if not farmer:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    enforce_cooperative_scope(current_user, farmer.cooperative_id)
     tx.status = update.status
     db.commit()
     db.refresh(tx)
@@ -275,7 +294,11 @@ def update_transaction_status(
 
 
 @router.post("/dues/collect", response_model=DuesCollectResponse)
-async def collect_dues(request: DuesCollectRequest, db: Session = Depends(get_db)):
+async def collect_dues(
+    request: DuesCollectRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+):
     """
     Initiate cooperative dues collection via Moolre USSD payment push.
     Supports OTP verification retry if `external_ref` and `otp_code` are provided.
@@ -285,6 +308,7 @@ async def collect_dues(request: DuesCollectRequest, db: Session = Depends(get_db
     farmer = db.query(Farmer).filter(Farmer.id == request.farmer_id).first()
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")
+    enforce_cooperative_scope(current_user, farmer.cooperative_id)
 
     ext_ref = request.external_ref or str(uuid.uuid4())
     return await _run_dues_collect(
@@ -299,7 +323,11 @@ async def collect_dues(request: DuesCollectRequest, db: Session = Depends(get_db
 
 
 @router.post("/dues/collect/verify", response_model=DuesCollectResponse)
-async def verify_dues_collect(request: DuesCollectVerifyRequest, db: Session = Depends(get_db)):
+async def verify_dues_collect(
+    request: DuesCollectVerifyRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+):
     """Retry a dues collection after OTP verification."""
     tx = db.query(Transaction).filter(Transaction.id == request.transaction_id).first()
     if not tx:
@@ -310,6 +338,7 @@ async def verify_dues_collect(request: DuesCollectVerifyRequest, db: Session = D
     farmer = db.query(Farmer).filter(Farmer.id == tx.farmer_id).first()
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")
+    enforce_cooperative_scope(current_user, farmer.cooperative_id)
 
     return await _run_dues_collect(
         farmer=farmer,
@@ -323,11 +352,16 @@ async def verify_dues_collect(request: DuesCollectVerifyRequest, db: Session = D
 
 
 @router.post("/payment-link", response_model=PaymentLinkResponse)
-async def create_payment_link(request: PaymentLinkRequest, db: Session = Depends(get_db)):
+async def create_payment_link(
+    request: PaymentLinkRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+):
     """Generate a hosted Moolre payment page for a farmer."""
     farmer = db.query(Farmer).filter(Farmer.id == request.farmer_id).first()
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")
+    enforce_cooperative_scope(current_user, farmer.cooperative_id)
 
     ext_ref = str(uuid.uuid4())
     tx = Transaction(
@@ -380,6 +414,7 @@ async def list_moolre_transactions(
     start_date: str | None = None,
     end_date: str | None = None,
     limit: int = 50,
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
 ):
     """
     Proxy to Moolre List Transactions API for the cooperative wallet.
@@ -394,7 +429,9 @@ async def list_moolre_transactions(
 
 
 @router.get("/moolre/wallet-balance")
-async def get_wallet_balance():
+async def get_wallet_balance(
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+):
     """Check cooperative Moolre wallet balance."""
     moolre = MoolreService()
     return await moolre.account_status()

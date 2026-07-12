@@ -8,7 +8,7 @@ from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.dependencies.cooperative_scope import resolve_cooperative_scope
 from app.models.models import CommunicationLog, Cooperative, User
-from app.services.auth_service import get_current_user
+from app.services.auth_service import get_current_user, require_roles
 from app.schemas.schemas import (
     CommunicationLogResponse,
     DuesReminderRequest,
@@ -22,14 +22,20 @@ router = APIRouter(prefix="/communications", tags=["communications"])
 
 
 @router.get("/sms/diagnostics")
-async def sms_diagnostics(current_user: User = Depends(get_current_user)):
+async def sms_diagnostics(
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+):
     """Check Moolre SMS credentials without sending a message."""
     _ = current_user
     return await MoolreService().diagnose_sms()
 
 
 @router.post("/sms/broadcast", response_model=SMSResponse)
-async def broadcast_sms(request: SMSBroadcastRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def broadcast_sms(
+    request: SMSBroadcastRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+):
     """
     Send a free-form SMS broadcast to all active members of a cooperative.
     Message must be ≤ 160 characters (enforced by schema).
@@ -65,7 +71,11 @@ async def broadcast_sms(request: SMSBroadcastRequest, db: Session = Depends(get_
 
 
 @router.post("/sms/dues-reminder", response_model=SMSResponse)
-async def send_dues_reminder(request: DuesReminderRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def send_dues_reminder(
+    request: DuesReminderRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+):
     """
     Send a dues-payment reminder SMS to all active members of a cooperative.
     Uses the Moolre merchant USSD code from config for the payment instruction.

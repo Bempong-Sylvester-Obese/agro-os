@@ -94,13 +94,22 @@ When the database is seeded, Agro-AI assessments are built from DB farmer record
 
 Optional env: `VITE_COOPERATIVE_ID`.
 
-### Authentication (optional)
+### Authentication and cooperative roles
 
 | UI | Method | Path |
 |----|--------|------|
 | Login | POST | `/auth/login` |
+| Signup | POST | `/auth/signup` |
+| Add cooperative user | POST | `/auth/register` |
 
-When `AUTH_ENABLED=true`, mutating routes require `Authorization: Bearer <token>`. Webhooks and login remain public.
+When `AUTH_ENABLED=true`, every route except signup/login, health probes, and
+the exact Moolre/USSDK callback paths requires `Authorization: Bearer <token>`.
+Tokens contain `cooperative_id` and `role`; authenticated query/body scope is
+always replaced by the token's cooperative.
+
+`admin` can manage members, production, cooperative settings, finance, loans,
+and communications. `finance_officer` can manage finance, loans, and
+communications but receives `403` for admin-only resources.
 
 Default demo credentials: `admin@agroos.demo` / `demo1234`.
 

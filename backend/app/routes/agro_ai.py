@@ -40,7 +40,10 @@ def list_farmer_assessments(current_user: User = Depends(get_current_user)) -> l
 
 
 @router.get("/api/farmers/{farmer_id}/credit-assessment")
-def get_credit_assessment(farmer_id: str) -> dict[str, Any]:
+def get_credit_assessment(
+    farmer_id: str,
+    current_user: User | None = Depends(get_current_user),
+) -> dict[str, Any]:
     assessment = agro_ai.get_farmer_assessment(farmer_id)
     if assessment is None:
         raise HTTPException(status_code=404, detail="Farmer not found")
@@ -77,7 +80,10 @@ def get_credit_summary(current_user: User = Depends(get_current_user)) -> dict[s
 
 
 @router.post("/api/agro-ai/predict")
-def predict_creditworthiness(payload: PredictionRequest) -> dict[str, Any]:
+def predict_creditworthiness(
+    payload: PredictionRequest,
+    current_user: User | None = Depends(get_current_user),
+) -> dict[str, Any]:
     prediction = agro_ai.predict(
         payload.features.model_dump(),
         requested_credit_amount=payload.requested_credit_amount,
@@ -89,14 +95,18 @@ def predict_creditworthiness(payload: PredictionRequest) -> dict[str, Any]:
         context={
             "source": "ad_hoc_prediction",
             "farmer_id": payload.farmer_id,
-            "cooperative_id": payload.cooperative_id,
-            "actor_id": payload.actor_id,
+            "cooperative_id": (
+                str(current_user.cooperative_id) if current_user is not None else payload.cooperative_id
+            ),
+            "actor_id": str(current_user.id) if current_user is not None else payload.actor_id,
         },
     )
     return {
         "requested_credit_amount": payload.requested_credit_amount,
         "farmer_id": payload.farmer_id,
-        "cooperative_id": payload.cooperative_id,
+        "cooperative_id": (
+            str(current_user.cooperative_id) if current_user is not None else payload.cooperative_id
+        ),
         "features": payload.features.model_dump(),
         **prediction.__dict__,
     }
