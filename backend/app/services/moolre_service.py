@@ -53,10 +53,18 @@ class MoolreService:
         return headers
 
     def _vaskey_headers(self) -> dict:
-        """Build headers specifically for VAS endpoints like SMS."""
-        headers = self._build_base_headers()
+        """Build headers for SMS/VAS endpoints (USER + VASKEY per Moolre docs)."""
+        headers: dict = {
+            "Content-Type": "application/json",
+            "X-API-USER": self.settings.moolre_api_user,
+        }
         if self.settings.moolre_api_vaskey:
             headers["X-API-VASKEY"] = self.settings.moolre_api_vaskey
+        if self.settings.moolre_env.lower() == "live":
+            if self.settings.moolre_api_key:
+                headers["X-API-KEY"] = self.settings.moolre_api_key
+            if self.settings.moolre_api_pubkey:
+                headers["X-API-PUBKEY"] = self.settings.moolre_api_pubkey
         return headers
 
     def _pubkey_headers(self) -> dict:
@@ -103,6 +111,10 @@ class MoolreService:
                 )
         return None
 
+    def resolve_sms_account_number(self) -> str:
+        """SMS credits are billed to the platform VAS wallet, not cooperative payment wallets."""
+        return self.settings.moolre_account_number.strip()
+
     def validate_sms_config(self) -> str | None:
         """Return a user-facing error when Moolre SMS credentials are incomplete."""
         if not self.settings.moolre_api_user.strip():
@@ -115,10 +127,10 @@ class MoolreService:
                 "Moolre VAS key is not configured on the server. "
                 "Set MOOLRE_API_VASKEY for SMS broadcasts (required in production)."
             )
-        if not self.resolve_account_number(None).strip():
+        if not self.resolve_sms_account_number():
             return (
                 "Moolre wallet account is not configured. "
-                "Add your Moolre account number in Settings, or set MOOLRE_ACCOUNT_NUMBER on the server."
+                "Set MOOLRE_ACCOUNT_NUMBER on the server for SMS billing."
             )
         if self.settings.moolre_env.lower() == "live":
             if not self.settings.moolre_api_key.strip() or not self.settings.moolre_api_pubkey.strip():
@@ -418,13 +430,15 @@ class MoolreService:
         self,
         recipients: list[dict],
         sender_id: str | None = None,
-        account_number: str | None = None,
     ) -> dict[str, Any]:
         """
         Send bulk or single SMS.
 
         ``recipients`` is a list of ``{"recipient": "<phone>", "message": "<text>"}``
         dicts, optionally including ``"ref": "<unique-ref>"``.
+
+        SMS billing uses the platform ``MOOLRE_ACCOUNT_NUMBER`` tied to ``MOOLRE_API_VASKEY``,
+        not per-cooperative payment wallets.
         """
         config_error = self.validate_sms_config()
         if config_error:
@@ -436,7 +450,7 @@ class MoolreService:
             }
 
         sid = sender_id or self.settings.default_sms_sender_id
-        acc = self.resolve_account_number(account_number)
+        acc = self.resolve_sms_account_number()
         messages = []
         for entry in recipients:
             item = dict(entry)
@@ -469,13 +483,12 @@ class MoolreService:
         message: str,
         sender_id: str | None = None,
         ref: str | None = None,
-        account_number: str | None = None,
     ) -> dict[str, Any]:
         """Convenience wrapper for a single recipient SMS."""
         entry: dict = {"recipient": phone, "message": message}
         if ref:
             entry["ref"] = ref
-        return await self.send_sms([entry], sender_id=sender_id, account_number=account_number)
+        return await self.send_sms([entry], sender_id=sender_id)
 
     # ------------------------------------------------------------------
     # Payment Link
