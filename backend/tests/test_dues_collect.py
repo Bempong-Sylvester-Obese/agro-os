@@ -234,6 +234,36 @@ def test_initiate_payment_tp14_not_success():
     assert result["moolre_code"] == "TP14"
 
 
+def test_initiate_payment_tp14_field_name_echo_not_used_as_reference():
+    """Regression test: Moolre's TP14 response can echo a field name (e.g. 'otpcode')
+    in the 'data' field instead of a real reference. That must never be stored as
+    moolre_reference — it isn't unique across requests and previously caused an
+    IntegrityError on the second OTP attempt when reused across transactions."""
+    import asyncio
+
+    from app.services.moolre_service import MoolreService
+
+    service = MoolreService()
+
+    async def fake_post(path, payload, headers=None):
+        return {
+            "status": 1,
+            "code": "TP14",
+            "message": "Please complete the verification process sent to you via SMS and try again.",
+            "data": "otpcode",  # field-name echo, NOT a real reference
+        }
+
+    with patch.object(service, "_post", new=fake_post):
+        result = asyncio.run(
+            service.initiate_payment(payer_phone="233551000001", amount=1.0, external_ref="otp-echo-ref")
+        )
+
+    assert result["verification_required"] is True
+    # Must fall back to the real external_ref, never the echoed field name.
+    assert result["moolre_reference"] == "otp-echo-ref"
+    assert result["moolre_reference"] != "otpcode"
+
+
 def test_initiate_payment_includes_otpcode_in_payload():
     import asyncio
 
