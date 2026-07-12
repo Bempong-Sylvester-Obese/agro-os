@@ -82,6 +82,51 @@ class MoolreService:
             return cooperative_account.strip()
         return self.settings.moolre_account_number
 
+    def validate_payment_config(self, cooperative_account: str | None = None) -> str | None:
+        """Return a user-facing error when Moolre payment credentials are incomplete."""
+        if not self.settings.moolre_api_user.strip():
+            return (
+                "Moolre API user is not configured on the server. "
+                "Set MOOLRE_API_USER in the backend environment."
+            )
+        account = self.resolve_account_number(cooperative_account)
+        if not account.strip():
+            return (
+                "Moolre wallet account is not configured. "
+                "Add your Moolre account number in Settings, or set MOOLRE_ACCOUNT_NUMBER on the server."
+            )
+        if self.settings.moolre_env.lower() == "live":
+            if not self.settings.moolre_api_key.strip() or not self.settings.moolre_api_pubkey.strip():
+                return (
+                    "Moolre live API keys are not configured on the server. "
+                    "Set MOOLRE_API_KEY and MOOLRE_API_PUBKEY for production."
+                )
+        return None
+
+    @staticmethod
+    def _http_error_payload(exc: httpx.HTTPStatusError) -> dict:
+        try:
+            body = exc.response.json()
+            if isinstance(body, dict):
+                message = body.get("message") or body.get("error") or str(exc)
+                return {
+                    **body,
+                    "status": body.get("status", 0),
+                    "code": body.get("code", ""),
+                    "message": message,
+                    "success": False,
+                    "status_code": exc.response.status_code,
+                }
+        except Exception:
+            pass
+        return {
+            "status": 0,
+            "code": "",
+            "message": str(exc),
+            "success": False,
+            "status_code": exc.response.status_code,
+        }
+
     # ------------------------------------------------------------------
     # Internal HTTP helpers
     # ------------------------------------------------------------------
@@ -97,11 +142,7 @@ class MoolreService:
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code >= 500 and attempt < 2:
                     continue
-                return {
-                    "success": False,
-                    "error": str(exc),
-                    "status_code": exc.response.status_code,
-                }
+                return self._http_error_payload(exc)
             except httpx.RequestError as exc:
                 if attempt < 2:
                     continue
@@ -119,11 +160,7 @@ class MoolreService:
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code >= 500 and attempt < 2:
                     continue
-                return {
-                    "success": False,
-                    "error": str(exc),
-                    "status_code": exc.response.status_code,
-                }
+                return self._http_error_payload(exc)
             except httpx.RequestError as exc:
                 if attempt < 2:
                     continue
@@ -153,6 +190,18 @@ class MoolreService:
         """
         ext_ref = external_ref or str(uuid.uuid4())
         acc = self.resolve_account_number(account_number)
+        config_error = self.validate_payment_config(account_number)
+        if config_error:
+            return {
+                "success": False,
+                "verification_required": False,
+                "outcome": "failed",
+                "moolre_code": None,
+                "moolre_reference": ext_ref,
+                "external_ref": ext_ref,
+                "message": config_error,
+                "raw": {},
+            }
         normalized_phone = self._normalize_phone(payer_phone)
 
         payload = {

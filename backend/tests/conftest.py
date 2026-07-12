@@ -14,6 +14,7 @@ import os
 # --------------------------------------------------------------------------
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["MOOLRE_API_USER"] = "test-user"
+os.environ["MOOLRE_ACCOUNT_NUMBER"] = "TEST-ACCOUNT-001"
 os.environ["AUTH_ENABLED"] = "false"
 os.environ["APP_ENV"] = "test"
 os.environ["MOOLRE_WEBHOOK_SECRET"] = ""

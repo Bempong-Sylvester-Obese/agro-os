@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database.db import get_db
-from app.models.models import Farmer, PaymentWebhookEvent, Transaction, TransactionStatus, TransactionType, User
+from app.models.models import Cooperative, Farmer, PaymentWebhookEvent, Transaction, TransactionStatus, TransactionType, User
 from app.services.auth_service import get_current_user
 from app.schemas.schemas import (
     DuesCollectRequest,
@@ -23,6 +23,11 @@ from app.schemas.schemas import (
 from app.services.moolre_service import MoolreService
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
+
+
+def _cooperative_account(farmer: Farmer, db: Session) -> str | None:
+    cooperative = db.query(Cooperative).filter(Cooperative.id == farmer.cooperative_id).first()
+    return cooperative.moolre_account_number if cooperative else None
 
 
 def _dues_collect_response(tx: Transaction, result: dict) -> DuesCollectResponse:
@@ -90,6 +95,7 @@ async def _run_dues_collect(
         db.refresh(tx)
 
     moolre = MoolreService()
+    coop_account = _cooperative_account(farmer, db)
     try:
         result = await moolre.initiate_payment(
             payer_phone=farmer.phone,
@@ -99,6 +105,7 @@ async def _run_dues_collect(
             external_ref=external_ref,
             otpcode=otp_code,
             reference=description or "Cooperative dues",
+            account_number=coop_account,
         )
     except Exception:
         tx.status = TransactionStatus.failed

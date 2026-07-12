@@ -39,6 +39,44 @@ def _failed_result(ext_ref: str) -> dict:
     }
 
 
+def test_collect_dues_uses_cooperative_account(client, farmer, cooperative):
+    client.put(
+        f"/cooperatives/{cooperative['id']}",
+        json={"moolre_account_number": "COOP-DUES-777"},
+    )
+
+    with patch(
+        "app.routes.transactions.MoolreService.initiate_payment",
+        new_callable=AsyncMock,
+    ) as mock_pay:
+        mock_pay.return_value = _tr099_result("coop-dues-ref")
+
+        resp = client.post(
+            "/transactions/dues/collect",
+            json={"farmer_id": farmer["id"], "amount": 10.0, "channel": "13"},
+        )
+
+    assert resp.status_code == 200
+    assert mock_pay.call_args.kwargs["account_number"] == "COOP-DUES-777"
+
+
+def test_initiate_payment_rejects_missing_moolre_user(monkeypatch):
+    import asyncio
+
+    from app.config import get_settings
+    from app.services.moolre_service import MoolreService
+
+    monkeypatch.setenv("MOOLRE_API_USER", "")
+    get_settings.cache_clear()
+    service = MoolreService()
+    result = asyncio.run(
+        service.initiate_payment(payer_phone="0551000001", amount=1.0, external_ref="cfg-test")
+    )
+    get_settings.cache_clear()
+    assert result["outcome"] == "failed"
+    assert "MOOLRE_API_USER" in result["message"]
+
+
 def test_collect_dues_tp14_verification_required(client, farmer):
     with patch(
         "app.routes.transactions.MoolreService.initiate_payment",
