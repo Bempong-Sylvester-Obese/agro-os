@@ -66,7 +66,7 @@ function AppShell({ user, authReady, onAuth, onLogout }) {
       {showNavbar && <Navbar isAuthenticated={Boolean(user)} onLogout={onLogout} />}
       <Routes>
         <Route path="/" element={<HomePage user={user} />} />
-        <Route path="/solutions" element={<SolutionsPage />} />
+        <Route path="/solutions" element={<SolutionsPage user={user} />} />
         <Route path="/features" element={<FeaturesPage user={user} />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/book-demo" element={<BookDemoPage />} />

@@ -98,7 +98,7 @@ export default function Navbar({ isAuthenticated, onLogout }) {
           </button>
         )}
         {isAuthenticated ? (
-          <a href="#" className="btn-nav" onClick={(e) => { e.preventDefault(); onLogout?.() }}>Log out</a>
+          <button type="button" className="btn-nav" onClick={() => onLogout?.()}>Log out</button>
         ) : (
           <>
             <a href="/login" className="btn-ghost" onClick={(e) => { e.preventDefault(); setPage('login') }}>Log in</a>
