@@ -18,7 +18,6 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
   const [msg, setMsg] = useState(null)
   const [otpRequired, setOtpRequired] = useState(false)
   const [otpCode, setOtpCode] = useState('')
-  const [externalRef, setExternalRef] = useState(null)
   const [transactionId, setTransactionId] = useState(null)
 
   const activeFarmers = farmers.filter(f => f.membership_status === 'active')
@@ -39,7 +38,6 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
         const res = await collectDues(form.farmerId, form.amount, form.channel, 'Cooperative dues')
         if (res.verification_required) {
           setOtpRequired(true)
-          setExternalRef(res.moolre_reference)
           setTransactionId(res.transaction_id)
           setMsg('Moolre sent an SMS with an OTP to the member. Please enter it below.')
         } else if (res.status === 'pending') {

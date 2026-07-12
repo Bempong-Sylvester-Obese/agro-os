@@ -95,7 +95,7 @@ function ScoreDetail({ farmer }) {
       {/* Trust score breakdown */}
       {loadingBreakdown ? (
         <div className="feature-grid">
-          {FACTOR_LABELS.map(({ key, weight }) => (
+          {FACTOR_LABELS.map(({ key }) => (
             <div key={key} className="feature-pill">
               <Skeleton width="72%" height={11} radius={4} />
               <Skeleton width={28} height={14} radius={4} style={{ marginTop: 6 }} />
