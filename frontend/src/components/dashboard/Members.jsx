@@ -19,7 +19,7 @@ const scoreTier = (score) => {
 
 // ── Add Member Modal ──────────────────────────────────────────────────────────
 function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
-  const { onBackdropClick, dialogProps } = useModal(onClose)
+  const { onBackdropClick, dialogProps, titleId, closeButtonProps } = useModal(onClose, { label: 'add member dialog' })
   const [form, setForm] = useState({
     name: '', phone: '', email: '', location: '', crop_type: '', acreage: '',
   })
@@ -90,7 +90,7 @@ function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
               <UserPlus size={22} color="var(--g)" />
             </div>
             <div>
-              <div className="serif" style={{ fontWeight: 700, fontSize: 19, lineHeight: 1.2 }}>
+              <div id={titleId} className="serif" style={{ fontWeight: 700, fontSize: 19, lineHeight: 1.2 }}>
                 Add new member
               </div>
               <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
@@ -99,6 +99,7 @@ function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
             </div>
           </div>
           <button
+            {...closeButtonProps}
             onClick={onClose}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4, marginTop: -2 }}
           >
@@ -121,28 +122,28 @@ function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
 
           <div className="modal-row">
             <div>
-              <label style={lbl}>Full name *</label>
-              <input style={input} value={form.name} onChange={set('name')} placeholder="e.g. Kofi Asante" required />
+              <label htmlFor="member-name" style={lbl}>Full name *</label>
+              <input id="member-name" style={input} value={form.name} onChange={set('name')} placeholder="e.g. Kofi Asante" required />
             </div>
             <div>
-              <label style={lbl}>Phone number *</label>
-              <input style={input} value={form.phone} onChange={set('phone')} placeholder="e.g. 024 123 4567" required />
+              <label htmlFor="member-phone" style={lbl}>Phone number *</label>
+              <input id="member-phone" style={input} value={form.phone} onChange={set('phone')} placeholder="e.g. 024 123 4567" required />
             </div>
             <div>
-              <label style={lbl}>Email <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
-              <input style={input} type="email" value={form.email} onChange={set('email')} placeholder="farmer@example.com" />
+              <label htmlFor="member-email" style={lbl}>Email <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+              <input id="member-email" style={input} type="email" value={form.email} onChange={set('email')} placeholder="farmer@example.com" />
             </div>
             <div>
-              <label style={lbl}>Location <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
-              <input style={input} value={form.location} onChange={set('location')} placeholder="e.g. Kumasi, Ashanti" />
+              <label htmlFor="member-location" style={lbl}>Location <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+              <input id="member-location" style={input} value={form.location} onChange={set('location')} placeholder="e.g. Kumasi, Ashanti" />
             </div>
             <div>
-              <label style={lbl}>Crop type <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
-              <input style={input} value={form.crop_type} onChange={set('crop_type')} placeholder="e.g. Maize, Cocoa, Rice" />
+              <label htmlFor="member-crop" style={lbl}>Crop type <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+              <input id="member-crop" style={input} value={form.crop_type} onChange={set('crop_type')} placeholder="e.g. Maize, Cocoa, Rice" />
             </div>
             <div>
-              <label style={lbl}>Farm size (acres) <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
-              <input style={input} type="number" min="0" step="0.1" value={form.acreage} onChange={set('acreage')} placeholder="e.g. 3.5" />
+              <label htmlFor="member-acreage" style={lbl}>Farm size (acres) <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+              <input id="member-acreage" style={input} type="number" min="0" step="0.1" value={form.acreage} onChange={set('acreage')} placeholder="e.g. 3.5" />
             </div>
           </div>
 

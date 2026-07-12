@@ -7,11 +7,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.config import get_settings
-from app.database.db import create_session, _init_db
+from app.database.db import create_session, engine, _init_db
 from app.database.seed import seed_golden_path
-from app.dependencies.auth import decode_access_token
+from app.middleware.rate_limit import RouteRateLimitMiddleware
+from app.services.auth_service import decode_access_token
 from app.routes import (
     agro_ai,
     auth,
@@ -30,10 +32,23 @@ logging.basicConfig(level=logging.INFO)
 
 settings = get_settings()
 
-# Moolre callback POSTs must stay unauthenticated; other /webhooks routes do not.
-_MOOLRE_CALLBACK_PATHS = frozenset({
+# Only these routes are public when authentication is enabled.
+_PUBLIC_PATHS = frozenset({
+    "/",
+    "/health",
+    "/health/live",
+    "/health/ready",
+    "/auth/login",
+    "/auth/signup",
     "/webhooks/moolre/payment",
     "/webhooks/moolre/ussd",
+    "/ussdk/loan-balance",
+    "/ussdk/pay-dues",
+    "/ussdk/wallet-balance",
+    "/ussdk/announcements",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
 })
 
 if settings.sentry_dsn:
@@ -102,16 +117,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RouteRateLimitMiddleware)
 
 
 @app.middleware("http")
 async def optional_admin_auth(request: Request, call_next):
-    """Protect mutating API routes when AUTH_ENABLED=true."""
-    if not settings.auth_enabled or request.method in {"GET", "HEAD", "OPTIONS"}:
+    """Fail closed for every non-public API route when authentication is enabled."""
+    current_settings = get_settings()
+    if not current_settings.auth_enabled or request.method == "OPTIONS":
         return await call_next(request)
 
     path = request.url.path
-    if path.startswith("/auth/login") or path in _MOOLRE_CALLBACK_PATHS:
+    if path in _PUBLIC_PATHS:
         return await call_next(request)
 
     auth_header = request.headers.get("Authorization", "")
@@ -164,6 +181,50 @@ def health_check():
         "model_ready": model_ready,
         **model_meta,
     }
+
+
+def _readiness_payload() -> tuple[dict, bool]:
+    """Build readiness metadata and report whether all required components are ready."""
+    current_settings = get_settings()
+    model_meta = agro_ai_runtime.metadata
+    model_source = "synthetic" if model_meta["is_synthetic_fallback"] else "artifact"
+    require_artifact = (
+        current_settings.agro_ai_require_artifact
+        or current_settings.app_env.lower() in {"production", "prod"}
+    )
+    model_ready = not (require_artifact and model_source == "synthetic")
+
+    database = "ok"
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except Exception:
+        logging.exception("Database readiness probe failed")
+        database = "fail"
+
+    ready = database == "ok" and model_ready
+    return {
+        "status": "ready" if ready else "not_ready",
+        "database": database,
+        "model_source": model_source,
+        "model_ready": model_ready,
+        **model_meta,
+    }, ready
+
+
+@app.get("/health/live", tags=["health"])
+def health_live():
+    """Liveness probe: the API process can accept requests."""
+    return {"status": "ok"}
+
+
+@app.get("/health/ready", tags=["health"])
+def health_ready():
+    """Readiness probe: database connectivity and required model are available."""
+    payload, ready = _readiness_payload()
+    if not ready:
+        return JSONResponse(status_code=503, content=payload)
+    return payload
 
 
 if __name__ == "__main__":

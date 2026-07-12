@@ -71,8 +71,9 @@ export default function SMS({ cooperativeId, memberCount = 0 }) {
             )}
           </div>
 
-          <div className="sms-lbl">Message</div>
+          <label htmlFor="sms-message" className="sms-lbl">Message</label>
           <textarea
+            id="sms-message"
             className="sms-textarea"
             placeholder="Type your message here…"
             value={msg}

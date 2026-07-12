@@ -7,7 +7,7 @@ from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.models.models import Farmer, Production, User
-from app.services.auth_service import get_current_user
+from app.services.auth_service import enforce_cooperative_scope, get_current_user, require_roles
 from app.schemas.schemas import (
     ProductionCreate,
     ProductionResponse,
@@ -18,10 +18,16 @@ from app.schemas.schemas import (
 router = APIRouter(prefix="/production", tags=["production"])
 
 
-def _get_production_or_404(production_id: int, db: Session) -> Production:
+def _get_production_or_404(
+    production_id: int, db: Session, current_user: User | None = None
+) -> Production:
     record = db.query(Production).filter(Production.id == production_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Production record not found")
+    farmer = db.query(Farmer).filter(Farmer.id == record.farmer_id).first()
+    if not farmer:
+        raise HTTPException(status_code=404, detail="Production record not found")
+    enforce_cooperative_scope(current_user, farmer.cooperative_id)
     return record
 
 
@@ -31,11 +37,16 @@ def _get_production_or_404(production_id: int, db: Session) -> Production:
 
 
 @router.post("/", response_model=ProductionResponse, status_code=201)
-def create_production(production_in: ProductionCreate, db: Session = Depends(get_db)):
+def create_production(
+    production_in: ProductionCreate,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+):
     """Log a new crop / production cycle."""
     farmer = db.query(Farmer).filter(Farmer.id == production_in.farmer_id).first()
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")
+    enforce_cooperative_scope(current_user, farmer.cooperative_id)
 
     record = Production(**production_in.model_dump())
     db.add(record)
@@ -77,11 +88,16 @@ def list_productions(
 
 
 @router.get("/farmer/{farmer_id}", response_model=list[ProductionResponse])
-def get_farmer_productions(farmer_id: int, db: Session = Depends(get_db)):
+def get_farmer_productions(
+    farmer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+):
     """Get all production records for a specific farmer."""
     farmer = db.query(Farmer).filter(Farmer.id == farmer_id).first()
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")
+    enforce_cooperative_scope(current_user, farmer.cooperative_id)
     return (
         db.query(Production)
         .filter(Production.farmer_id == farmer_id)
@@ -91,11 +107,16 @@ def get_farmer_productions(farmer_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/farmer/{farmer_id}/summary", response_model=ProductionSummary)
-def get_farmer_production_summary(farmer_id: int, db: Session = Depends(get_db)):
+def get_farmer_production_summary(
+    farmer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+):
     """Yield summary for a farmer: total productions, kg harvested, completion rate."""
     farmer = db.query(Farmer).filter(Farmer.id == farmer_id).first()
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")
+    enforce_cooperative_scope(current_user, farmer.cooperative_id)
 
     productions = db.query(Production).filter(Production.farmer_id == farmer_id).all()
     total = len(productions)
@@ -112,9 +133,13 @@ def get_farmer_production_summary(farmer_id: int, db: Session = Depends(get_db))
 
 
 @router.get("/{production_id}", response_model=ProductionResponse)
-def get_production(production_id: int, db: Session = Depends(get_db)):
+def get_production(
+    production_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+):
     """Get a single production record."""
-    return _get_production_or_404(production_id, db)
+    return _get_production_or_404(production_id, db, current_user)
 
 
 @router.put("/{production_id}", response_model=ProductionResponse)
@@ -122,9 +147,10 @@ def update_production(
     production_id: int,
     updates: ProductionUpdate,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
 ):
     """Update a production record (e.g. log harvest data)."""
-    record = _get_production_or_404(production_id, db)
+    record = _get_production_or_404(production_id, db, current_user)
 
     for field, value in updates.model_dump(exclude_none=True).items():
         setattr(record, field, value)
@@ -135,8 +161,12 @@ def update_production(
 
 
 @router.delete("/{production_id}", status_code=204)
-def delete_production(production_id: int, db: Session = Depends(get_db)):
+def delete_production(
+    production_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+):
     """Delete a production record."""
-    record = _get_production_or_404(production_id, db)
+    record = _get_production_or_404(production_id, db, current_user)
     db.delete(record)
     db.commit()

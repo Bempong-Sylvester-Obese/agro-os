@@ -21,18 +21,22 @@ areas are in scope for security review:
 
 ## Authentication Model
 
-The backend ships with JWT-based admin login (`POST /auth/login`) and an
-optional auth middleware controlled by `AUTH_ENABLED` (default: `false`).
+The backend uses JWT authentication and cooperative-scoped roles. Production
+deployments must set `AUTH_ENABLED=true`.
 
 | Setting | Default | Behaviour |
 |---|---|---|
-| `AUTH_ENABLED=false` | Demo / local dev | GET routes are open; mutating routes are not blocked by JWT |
-| `AUTH_ENABLED=true` | Staging / production | Mutating API routes require `Authorization: Bearer <token>` |
+| `AUTH_ENABLED=false` | Local tests/development only | Routes retain local-development compatibility |
+| `AUTH_ENABLED=true` | Staging / production | Every non-public route requires `Authorization: Bearer <token>` |
 
-Routes always excluded from JWT middleware: `/auth/login` and `/webhooks/*`.
+Public routes are limited to signup/login, root and health probes, and the exact
+Moolre/USSDK callback paths configured in `backend/main.py`.
 
-**RBAC and cooperative scoping are not yet enforced.** Any authenticated
-admin can access all cooperatives until role-based access is implemented.
+JWTs include `cooperative_id` and `role`. `admin` can manage cooperative
+profiles, members, production, finance, loans, and communications.
+`finance_officer` is limited to finance, loan, and communication operations.
+Authenticated reads and writes are constrained to the user's cooperative;
+request body and query-string cooperative IDs cannot override that scope.
 
 ## Webhook Security
 
@@ -40,16 +44,20 @@ admin can access all cooperatives until role-based access is implemented.
 |---|---|
 | `POST /webhooks/moolre/payment` | HMAC-SHA256 via `X-Moolre-Signature` when `MOOLRE_WEBHOOK_SECRET` is set |
 | `POST /webhooks/moolre/ussd` | No signature verification today (see open issues) |
-| `POST /webhooks/moolre/payment/simulate` | Disabled when `APP_ENV=production` |
 
 When `MOOLRE_WEBHOOK_SECRET` is unset, payment webhook signature checks are
 skipped (development/sandbox only). Production deployments must set the secret.
 
+## Rate Limits
+
+Abuse-sensitive POST routes use per-client, one-minute limits: login 10,
+Moolre/USSDK callbacks 120, SMS sends 5, and dues collection 10. A rejected
+request returns HTTP 429 with `Retry-After`. Limits can be adjusted with the
+`RATE_LIMIT_*` environment variables; health probes are always exempt.
+
 ## Known Limitations (Hackathon Phase)
 
-- Cooperative-scoped RBAC is not enforced on API routes
 - USSD webhook callbacks are not authenticated
-- No rate limiting is currently applied to API endpoints
 - Supabase row-level security policies are not yet deployed
 
 For production hardening work in progress, see the open GitHub issues labeled

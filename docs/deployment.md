@@ -48,6 +48,11 @@ Copy from `backend/.env.example` before running locally or deploying.
 | `DEFAULT_SMS_SENDER_ID` | Approved SMS sender ID | `AgroOS` |
 | `SENTRY_DSN` | Optional Sentry DSN for backend error tracking | `https://...@sentry.io/...` |
 | `AGRO_AI_REQUIRE_ARTIFACT` | Fail health check when synthetic model is used | `true` / `false` |
+| `RATE_LIMIT_ENABLED` | Enable route-specific abuse protection | `true` |
+| `RATE_LIMIT_LOGIN_PER_MINUTE` | Per-client login attempts | `10` |
+| `RATE_LIMIT_WEBHOOK_PER_MINUTE` | Per-client Moolre/USSDK callbacks | `120` |
+| `RATE_LIMIT_SMS_PER_MINUTE` | Per-client SMS send requests | `5` |
+| `RATE_LIMIT_DUES_PER_MINUTE` | Per-client dues collection requests | `10` |
 
 > ⚠️ Never commit `.env` to the repository. It is in `.gitignore`.
 > Use Render's environment variable dashboard for production secrets.
@@ -259,7 +264,25 @@ secret from the portal.
 
 Run these checks after every production or staging deployment.
 
-### 9.1 Health check
+### 9.1 Health checks
+
+Use the lightweight liveness endpoint to confirm that the API process is up:
+```bash
+curl https://agro-os-api.onrender.com/health/live
+```
+
+Use readiness for database and model availability:
+```bash
+curl https://agro-os-api.onrender.com/health/ready
+```
+
+`/health/ready` returns HTTP 503 with `database: "fail"` when PostgreSQL is
+unreachable. In production it also returns 503 when the required Agro-AI
+artifact is unavailable. Keep Render's health-check path on `/health` until the
+production model artifact is deployed; then switch it to `/health/ready`.
+
+The existing aggregate endpoint remains available for frontend cold-start
+warming and operational diagnostics:
 ```bash
 curl https://agro-os-api.onrender.com/health
 ```
@@ -267,6 +290,7 @@ Expected response:
 ```json
 {
   "status": "healthy",
+  "model_ready": true,
   "model_version": "agro-ai-rf-v1",
   "feature_schema_version": "agro-ai-features-v1",
   "artifact_source": "..."

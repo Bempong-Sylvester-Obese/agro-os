@@ -144,7 +144,8 @@ export function clearAuthToken() {
 
 export function storeAuthUser(user) {
   if (!user) return
-  const { password, ...safe } = user
+  const safe = { ...user }
+  delete safe.password
   localStorage.setItem(USER_KEY, JSON.stringify(safe))
 }
 

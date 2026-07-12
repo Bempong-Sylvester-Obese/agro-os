@@ -137,13 +137,14 @@ export default function DashboardPage({ user, onLogout }) {
           </div>
         </div>
 
-        <div className="admin-nav">
+        <nav className="admin-nav" aria-label="Dashboard sections">
           <div className="admin-nav-lbl">Main</div>
           {NAV_ITEMS.map(({ key, icon, label }) => (
             <button
               key={key}
               className={`admin-nav-item${section === key ? ' on' : ''}`}
               onClick={() => goToSection(key)}
+              aria-current={section === key ? 'page' : undefined}
             >
               {icon} {label}
             </button>
@@ -153,16 +154,17 @@ export default function DashboardPage({ user, onLogout }) {
           <button
             className={`admin-nav-item${section === 'settings' ? ' on' : ''}`}
             onClick={() => goToSection('settings')}
+            aria-current={section === 'settings' ? 'page' : undefined}
           >
             <Settings size={18} style={{ marginRight: 8 }} /> Settings
           </button>
-        </div>
+        </nav>
       </div>
 
       {/* ── Main panel ── */}
       <div className="admin-main">
         <div className="admin-topbar">
-          <div className="admin-page-title serif">{TITLES[section]}</div>
+          <h1 className="admin-page-title serif">{TITLES[section]}</h1>
           <DashboardUserMenu user={user} onLogout={onLogout} />
         </div>
 

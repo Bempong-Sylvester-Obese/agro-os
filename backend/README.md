@@ -186,6 +186,8 @@ Frontend–backend contract and response shapes: [`docs/api-contract.md`](../doc
 |---|---|---|
 | GET | `/` | API root — version and environment info |
 | GET | `/health` | Health check for deployment monitors |
+| GET | `/health/live` | Lightweight process liveness probe |
+| GET | `/health/ready` | Database and required-model readiness probe |
 
 ### Cooperatives
 | Method | Path | Description |

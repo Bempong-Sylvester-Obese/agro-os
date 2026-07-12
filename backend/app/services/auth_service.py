@@ -47,6 +47,16 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     return encoded_jwt
 
 
+def decode_access_token(token: str) -> dict:
+    try:
+        return jwt.decode(token, _secret_key(), algorithms=[ALGORITHM])
+    except jwt.PyJWTError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        ) from exc
+
+
 def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     settings = get_settings()
     if not settings.auth_enabled:
@@ -59,11 +69,11 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if not token:
         raise credentials_exception
     try:
-        payload = jwt.decode(token, _secret_key(), algorithms=[ALGORITHM])
+        payload = decode_access_token(token)
         email: str = payload.get("sub")
         if email is None:
             raise credentials_exception
-    except jwt.PyJWTError:
+    except HTTPException:
         raise credentials_exception
     user = db.query(User).filter(User.email == email).first()
     if user is None:
@@ -97,3 +107,25 @@ def require_authenticated_user(
     if not settings.auth_enabled or current_user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     return current_user
+
+
+def require_roles(*allowed_roles: str):
+    """Require an authenticated user with one of the supplied roles."""
+    normalized = {role.lower() for role in allowed_roles}
+
+    def dependency(current_user: User | None = Depends(get_current_user)) -> User | None:
+        if not get_settings().auth_enabled:
+            return None
+        if current_user is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        if (current_user.role or "").lower() not in normalized:
+            raise HTTPException(status_code=403, detail="Insufficient permissions")
+        return current_user
+
+    return dependency
+
+
+def enforce_cooperative_scope(current_user: User | None, cooperative_id: int) -> None:
+    """Reject authenticated cross-cooperative access without leaking tenant data."""
+    if current_user is not None and current_user.cooperative_id != cooperative_id:
+        raise HTTPException(status_code=404, detail="Resource not found")

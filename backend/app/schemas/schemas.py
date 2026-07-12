@@ -363,14 +363,6 @@ class TransferInitiateResponse(BaseModel):
     raw: Optional[dict] = None
 
 
-# ===========================================================================
-# Webhooks
-# ===========================================================================
-
-class SimulateWebhookRequest(BaseModel):
-    transaction_id: Optional[int] = None
-    moolre_reference: Optional[str] = None
-
 class UssdSessionResponse(BaseModel):
     id: int
     session_id: Optional[str] = None

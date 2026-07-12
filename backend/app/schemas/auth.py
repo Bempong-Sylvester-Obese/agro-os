@@ -1,10 +1,10 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Literal, Optional
 
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
-    cooperative_id: int | None = None
+    role: Literal["admin", "finance_officer"] = "finance_officer"
 
 class UserLogin(BaseModel):
     email: EmailStr

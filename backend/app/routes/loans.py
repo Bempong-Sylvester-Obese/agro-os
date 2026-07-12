@@ -11,7 +11,7 @@ from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.dependencies.cooperative_scope import resolve_cooperative_scope
 from app.models.models import Cooperative, Farmer, Loan, LoanStatus, Transaction, TransactionStatus, TransactionType, User
-from app.services.auth_service import get_current_user
+from app.services.auth_service import enforce_cooperative_scope, get_current_user, require_roles
 from app.schemas.schemas import LoanApprove, LoanCreate, LoanRepayVerifyRequest, LoanResponse
 from app.services.moolre_service import MoolreService
 from app.services.trust_score_service import TrustScoreService
@@ -44,10 +44,16 @@ def _provider_amount_matches(expected: float, provider_amount) -> bool:
         return False
 
 
-def _get_loan_or_404(loan_id: int, db: Session) -> Loan:
+def _get_loan_or_404(
+    loan_id: int, db: Session, current_user: User | None = None
+) -> Loan:
     loan = db.query(Loan).filter(Loan.id == loan_id).first()
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
+    farmer = db.query(Farmer).filter(Farmer.id == loan.farmer_id).first()
+    if not farmer:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    enforce_cooperative_scope(current_user, farmer.cooperative_id)
     return loan
 
 
@@ -172,11 +178,16 @@ async def _finalize_repayment(
 
 
 @router.post("/", response_model=LoanResponse, status_code=201)
-def create_loan(loan_in: LoanCreate, db: Session = Depends(get_db)):
+def create_loan(
+    loan_in: LoanCreate,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+):
     """Farmer requests an input / cash loan."""
     farmer = db.query(Farmer).filter(Farmer.id == loan_in.farmer_id).first()
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")
+    enforce_cooperative_scope(current_user, farmer.cooperative_id)
 
     loan = Loan(**loan_in.model_dump())
     db.add(loan)
@@ -213,15 +224,24 @@ def list_loans(
 
 
 @router.get("/{loan_id}", response_model=LoanResponse)
-def get_loan(loan_id: int, db: Session = Depends(get_db)):
+def get_loan(
+    loan_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+):
     """Get loan details."""
-    return _get_loan_or_404(loan_id, db)
+    return _get_loan_or_404(loan_id, db, current_user)
 
 
 @router.post("/{loan_id}/approve", response_model=LoanResponse)
-def approve_loan(loan_id: int, approval: LoanApprove, db: Session = Depends(get_db)):
+def approve_loan(
+    loan_id: int,
+    approval: LoanApprove,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+):
     """Approve a requested loan."""
-    loan = _get_loan_or_404(loan_id, db)
+    loan = _get_loan_or_404(loan_id, db, current_user)
     if loan.status != LoanStatus.requested:
         raise HTTPException(
             status_code=409,
@@ -236,9 +256,13 @@ def approve_loan(loan_id: int, approval: LoanApprove, db: Session = Depends(get_
 
 
 @router.post("/{loan_id}/reject", response_model=LoanResponse)
-def reject_loan(loan_id: int, db: Session = Depends(get_db)):
+def reject_loan(
+    loan_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+):
     """Reject a requested loan."""
-    loan = _get_loan_or_404(loan_id, db)
+    loan = _get_loan_or_404(loan_id, db, current_user)
     if loan.status != LoanStatus.requested:
         raise HTTPException(
             status_code=409,
@@ -251,12 +275,16 @@ def reject_loan(loan_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{loan_id}/disburse", response_model=LoanResponse)
-async def disburse_loan(loan_id: int, db: Session = Depends(get_db)):
+async def disburse_loan(
+    loan_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+):
     """
     Disburse an approved loan by triggering a Moolre transfer to the farmer's phone.
     Marks loan as 'disbursed' and creates a payout Transaction record.
     """
-    loan = _get_loan_or_404(loan_id, db)
+    loan = _get_loan_or_404(loan_id, db, current_user)
     if loan.status == LoanStatus.disbursed:
         return loan
     if loan.status != LoanStatus.approved:
@@ -348,12 +376,16 @@ async def disburse_loan(loan_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{loan_id}/repay", response_model=LoanResponse)
-async def repay_loan(loan_id: int, db: Session = Depends(get_db)):
+async def repay_loan(
+    loan_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+):
     """
     Initiate Moolre collection for loan repayment.
     Marks the loan repaid only after payment_status confirms the collection.
     """
-    loan = _get_loan_or_404(loan_id, db)
+    loan = _get_loan_or_404(loan_id, db, current_user)
     if loan.status == LoanStatus.repaid:
         return loan
     if loan.status != LoanStatus.disbursed:
@@ -442,9 +474,10 @@ async def verify_loan_repay(
     loan_id: int,
     body: LoanRepayVerifyRequest,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
 ):
     """Submit OTP to complete a pending loan repayment collection."""
-    loan = _get_loan_or_404(loan_id, db)
+    loan = _get_loan_or_404(loan_id, db, current_user)
     if loan.status != LoanStatus.disbursed:
         raise HTTPException(status_code=409, detail="Loan is not awaiting repayment")
 

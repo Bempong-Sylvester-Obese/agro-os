@@ -7,7 +7,7 @@ from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.models.models import CooperativeAttendance, Cooperative, Farmer, MembershipStatus, User
-from app.services.auth_service import get_current_user
+from app.services.auth_service import enforce_cooperative_scope, get_current_user, require_roles
 from app.schemas.schemas import (
     AttendanceCreate,
     AttendanceResponse,
@@ -21,10 +21,13 @@ from app.services.trust_score_service import TrustScoreService
 router = APIRouter(prefix="/farmers", tags=["farmers"])
 
 
-def _get_farmer_or_404(farmer_id: int, db: Session) -> Farmer:
+def _get_farmer_or_404(
+    farmer_id: int, db: Session, current_user: User | None = None
+) -> Farmer:
     farmer = db.query(Farmer).filter(Farmer.id == farmer_id).first()
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")
+    enforce_cooperative_scope(current_user, farmer.cooperative_id)
     return farmer
 
 
@@ -34,10 +37,17 @@ def _get_farmer_or_404(farmer_id: int, db: Session) -> Farmer:
 
 
 @router.post("/", response_model=FarmerResponse, status_code=201)
-def create_farmer(farmer_in: FarmerCreate, db: Session = Depends(get_db)):
+def create_farmer(
+    farmer_in: FarmerCreate,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+):
     """Register a new farmer / cooperative member."""
     # Ensure cooperative exists
-    coop = db.query(Cooperative).filter(Cooperative.id == farmer_in.cooperative_id).first()
+    cooperative_id = (
+        current_user.cooperative_id if current_user is not None else farmer_in.cooperative_id
+    )
+    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
 
@@ -46,7 +56,9 @@ def create_farmer(farmer_in: FarmerCreate, db: Session = Depends(get_db)):
     if existing:
         raise HTTPException(status_code=409, detail="A farmer with this phone number already exists")
 
-    farmer = Farmer(**farmer_in.model_dump())
+    farmer_data = farmer_in.model_dump()
+    farmer_data["cooperative_id"] = cooperative_id
+    farmer = Farmer(**farmer_data)
     db.add(farmer)
     db.commit()
     db.refresh(farmer)
@@ -79,9 +91,13 @@ def list_farmers(
 
 
 @router.get("/{farmer_id}", response_model=FarmerResponse)
-def get_farmer(farmer_id: int, db: Session = Depends(get_db)):
+def get_farmer(
+    farmer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+):
     """Get farmer profile."""
-    return _get_farmer_or_404(farmer_id, db)
+    return _get_farmer_or_404(farmer_id, db, current_user)
 
 
 @router.put("/{farmer_id}", response_model=FarmerResponse)
@@ -89,9 +105,10 @@ def update_farmer(
     farmer_id: int,
     updates: FarmerUpdate,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
 ):
     """Partial-update farmer profile."""
-    farmer = _get_farmer_or_404(farmer_id, db)
+    farmer = _get_farmer_or_404(farmer_id, db, current_user)
 
     # Phone uniqueness check (only if changing phone)
     if updates.phone and updates.phone != farmer.phone:
@@ -108,9 +125,13 @@ def update_farmer(
 
 
 @router.delete("/{farmer_id}", status_code=204)
-def deactivate_farmer(farmer_id: int, db: Session = Depends(get_db)):
+def deactivate_farmer(
+    farmer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+):
     """Soft-deactivate a farmer (sets membership_status → inactive)."""
-    farmer = _get_farmer_or_404(farmer_id, db)
+    farmer = _get_farmer_or_404(farmer_id, db, current_user)
     farmer.membership_status = MembershipStatus.inactive
     db.commit()
 
@@ -121,9 +142,13 @@ def deactivate_farmer(farmer_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{farmer_id}/trust-score", response_model=TrustScoreResponse)
-def get_trust_score(farmer_id: int, db: Session = Depends(get_db)):
+def get_trust_score(
+    farmer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+):
     """Return the most recent trust score breakdown for a farmer."""
-    _get_farmer_or_404(farmer_id, db)
+    _get_farmer_or_404(farmer_id, db, current_user)
     from app.models.models import TrustScore
 
     snapshot = (
@@ -145,16 +170,21 @@ def get_trust_score_history(
     farmer_id: int,
     limit: int = Query(default=10, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
 ):
     """Return the last N trust score snapshots for trend display."""
-    _get_farmer_or_404(farmer_id, db)
+    _get_farmer_or_404(farmer_id, db, current_user)
     return TrustScoreService.get_score_history(farmer_id, db, limit=limit)
 
 
 @router.post("/{farmer_id}/recalculate-trust-score", response_model=TrustScoreResponse)
-def recalculate_trust_score(farmer_id: int, db: Session = Depends(get_db)):
+def recalculate_trust_score(
+    farmer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+):
     """Trigger a manual trust score recalculation."""
-    _get_farmer_or_404(farmer_id, db)
+    _get_farmer_or_404(farmer_id, db, current_user)
     try:
         return TrustScoreService.calculate_trust_score(farmer_id, db)
     except ValueError as exc:
@@ -171,9 +201,10 @@ def record_attendance(
     farmer_id: int,
     attendance_in: AttendanceCreate,
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
 ):
     """Record whether a farmer attended a cooperative event."""
-    _get_farmer_or_404(farmer_id, db)
+    _get_farmer_or_404(farmer_id, db, current_user)
     attendance_in.farmer_id = farmer_id  # ensure path param takes precedence
     record = CooperativeAttendance(**attendance_in.model_dump())
     db.add(record)
@@ -183,9 +214,13 @@ def record_attendance(
 
 
 @router.get("/{farmer_id}/attendance", response_model=list[AttendanceResponse])
-def list_attendance(farmer_id: int, db: Session = Depends(get_db)):
+def list_attendance(
+    farmer_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+):
     """List all attendance records for a farmer."""
-    _get_farmer_or_404(farmer_id, db)
+    _get_farmer_or_404(farmer_id, db, current_user)
     return (
         db.query(CooperativeAttendance)
         .filter(CooperativeAttendance.farmer_id == farmer_id)
