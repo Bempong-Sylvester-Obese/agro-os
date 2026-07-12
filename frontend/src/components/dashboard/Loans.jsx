@@ -188,9 +188,8 @@ export default function Loans({ farmers = [], loans = [], loading, onRefresh }) 
             No loans recorded yet. Click "Log Loan Request" to log a new application.
           </div>
         ) : (
-          <>
-            {/* Using a custom grid similar to pay-head but accommodating actions */}
-            <div className="pay-head" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 100px 140px' }}>
+          <div className="table-scroll loans-table">
+            <div className="pay-head">
               <span className="pt-lbl">Member</span>
               <span className="pt-lbl">Amount</span>
               <span className="pt-lbl">Purpose</span>
@@ -208,7 +207,7 @@ export default function Loans({ farmers = [], loans = [], loading, onRefresh }) 
               if (loan.status === 'rejected') cls = 'bdg-red'
 
               return (
-                <div key={loan.id} className="pay-row" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 100px 140px', alignItems: 'center' }}>
+                <div key={loan.id} className="pay-row" style={{ alignItems: 'center' }}>
                   <div><div className="pt-name">{name}</div><div className="pt-id">#{loan.id}</div></div>
                   <span className="pt-v">{fmtGHS(loan.amount)}</span>
                   <span className="pt-m" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{loan.purpose}</span>
@@ -246,7 +245,7 @@ export default function Loans({ farmers = [], loans = [], loading, onRefresh }) 
                 </div>
               )
             })}
-          </>
+          </div>
         )}
       </div>
     </>
