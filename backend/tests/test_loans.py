@@ -3,6 +3,7 @@
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, patch
 
+from app.models.models import Transaction, TransactionStatus, TransactionType
 from app.services.moolre_service import MoolreService
 
 
@@ -281,9 +282,67 @@ def test_disburse_loan_keeps_approved_when_transfer_pending(client, farmer):
     ):
         resp = client.post(f"/loans/{loan_id}/disburse")
 
-    assert resp.status_code == 502
+    assert resp.status_code == 200
     loan_resp = client.get(f"/loans/{loan_id}")
     assert loan_resp.json()["status"] == "approved"
+
+
+def test_disburse_retry_updates_pending_transaction_without_duplicate(client, farmer, db):
+    create_resp = client.post(
+        "/loans/", json={"farmer_id": farmer["id"], "amount": 250.0}
+    )
+    loan_id = create_resp.json()["id"]
+    client.post(f"/loans/{loan_id}/approve", json={"approved_by": "Admin"})
+
+    with _mock_disburse_moolre(
+        status_result={"success": False, "status": "pending", "raw": {}},
+    ):
+        first_resp = client.post(f"/loans/{loan_id}/disburse")
+    assert first_resp.status_code == 200
+
+    pending_tx = (
+        db.query(Transaction)
+        .filter(
+            Transaction.transaction_type == TransactionType.payout,
+            Transaction.description == f"Loan disbursement #{loan_id}",
+        )
+        .one()
+    )
+    assert pending_tx.status == TransactionStatus.pending
+
+    with (
+        patch(
+            "app.routes.loans.MoolreService.resolve_verified_account",
+            new_callable=AsyncMock,
+            return_value=("PLATFORM-ACC", None),
+        ),
+        patch(
+            "app.routes.loans.MoolreService.transfer_status",
+            new_callable=AsyncMock,
+            return_value={
+                "success": False,
+                "status": "failed",
+                "transaction_id": pending_tx.moolre_transfer_ref,
+                "raw": {"message": "Transaction Failed"},
+            },
+        ) as mock_status,
+        patch(
+            "app.routes.loans.MoolreService.initiate_transfer",
+            new_callable=AsyncMock,
+        ) as mock_transfer,
+    ):
+        retry_resp = client.post(f"/loans/{loan_id}/disburse")
+
+    assert retry_resp.status_code == 502
+    assert retry_resp.json()["detail"] == "Transaction Failed"
+    mock_transfer.assert_not_called()
+    assert mock_status.call_args.kwargs["id_type"] == "2"
+    assert db.query(Transaction).filter(
+        Transaction.transaction_type == TransactionType.payout,
+        Transaction.description == f"Loan disbursement #{loan_id}",
+    ).count() == 1
+    db.refresh(pending_tx)
+    assert pending_tx.status == TransactionStatus.failed
 
 
 def test_repay_loan(client, farmer):
