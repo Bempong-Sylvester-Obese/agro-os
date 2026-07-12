@@ -127,31 +127,56 @@ def test_webhook_invalid_json(client):
     assert resp.status_code == 400
 
 
+def _ussd_new(session_id: str, msisdn: str) -> dict:
+    """A fresh USSD dial, matching Moolre's real callback contract."""
+    return {
+        "sessionId": session_id,
+        "new": True,
+        "msisdn": msisdn,
+        "network": 3,
+        "message": "",
+        "extension": "109",
+        "data": "",
+    }
+
+
+def _ussd_step(session_id: str, msisdn: str, message: str) -> dict:
+    """A follow-up USSD request within an existing session."""
+    return {
+        "sessionId": session_id,
+        "new": False,
+        "msisdn": msisdn,
+        "network": 3,
+        "message": message,
+        "extension": "109",
+        "data": "",
+    }
+
+
 def test_ussd_main_menu(client):
-    resp = client.post(
-        "/webhooks/moolre/ussd",
-        json={"sessionid": "s001", "phone": "+233000000000", "input": ""},
-    )
+    resp = client.post("/webhooks/moolre/ussd", json=_ussd_new("s001", "+233000000000"))
     assert resp.status_code == 200
-    assert "AgroOS" in resp.json()["response"]
+    body = resp.json()
+    assert body["reply"] is True
+    assert "AgroOS" in body["message"]
 
 
 def test_ussd_option_1_unknown_phone(client):
-    resp = client.post(
-        "/webhooks/moolre/ussd",
-        json={"sessionid": "s002", "phone": "+233000000000", "input": "1"},
-    )
+    client.post("/webhooks/moolre/ussd", json=_ussd_new("s002", "+233000000000"))
+    resp = client.post("/webhooks/moolre/ussd", json=_ussd_step("s002", "+233000000000", "1"))
     assert resp.status_code == 200
-    assert "not registered" in resp.json()["response"].lower()
+    body = resp.json()
+    assert body["reply"] is False
+    assert "not registered" in body["message"].lower()
 
 
 def test_ussd_option_1_known_farmer(client, farmer):
-    resp = client.post(
-        "/webhooks/moolre/ussd",
-        json={"sessionid": "s003", "phone": farmer["phone"], "input": "1"},
-    )
+    client.post("/webhooks/moolre/ussd", json=_ussd_new("s003", farmer["phone"]))
+    resp = client.post("/webhooks/moolre/ussd", json=_ussd_step("s003", farmer["phone"], "1"))
     assert resp.status_code == 200
-    assert farmer["name"] in resp.json()["response"]
+    body = resp.json()
+    assert body["reply"] is False
+    assert farmer["name"] in body["message"]
 
 
 def test_direct_ussd_selects_cooperative_for_multi_membership(client, farmer):
@@ -168,67 +193,48 @@ def test_direct_ussd_selects_cooperative_for_multi_membership(client, farmer):
         },
     )
 
-    selection = client.post(
-        "/webhooks/moolre/ussd",
-        json={"sessionid": "multi-1", "phone": farmer["phone"], "input": ""},
-    )
+    selection = client.post("/webhooks/moolre/ussd", json=_ussd_new("multi-1", farmer["phone"]))
     assert selection.status_code == 200
-    assert "Choose a cooperative" in selection.json()["response"]
-    assert second_coop["name"] in selection.json()["response"]
+    sel_body = selection.json()
+    assert sel_body["reply"] is True
+    assert "Choose your cooperative" in sel_body["message"]
+    assert second_coop["name"] in sel_body["message"]
 
-    main_menu = client.post(
-        "/webhooks/moolre/ussd",
-        json={"sessionid": "multi-1", "phone": farmer["phone"], "input": "2"},
-    )
-    assert "Check Loan Balance" in main_menu.json()["response"]
+    main_menu = client.post("/webhooks/moolre/ussd", json=_ussd_step("multi-1", farmer["phone"], "2"))
+    assert main_menu.json()["reply"] is True
+    assert "Check Loan Balance" in main_menu.json()["message"]
 
-    farm_status = client.post(
-        "/webhooks/moolre/ussd",
-        json={"sessionid": "multi-1", "phone": farmer["phone"], "input": "2*5"},
-    )
-    assert farmer["name"] in farm_status.json()["response"]
+    loan_balance = client.post("/webhooks/moolre/ussd", json=_ussd_step("multi-1", farmer["phone"], "1"))
+    assert loan_balance.json()["reply"] is False
+    assert farmer["name"] in loan_balance.json()["message"]
 
 
-def test_ussd_option_2_payment_instructions(client):
-    resp = client.post(
-        "/webhooks/moolre/ussd",
-        json={"sessionid": "s004", "phone": "+233551111111", "input": "2"},
-    )
+def test_ussd_option_2_pay_dues_prompts_for_amount(client, farmer):
+    client.post("/webhooks/moolre/ussd", json=_ussd_new("s004", farmer["phone"]))
+    resp = client.post("/webhooks/moolre/ussd", json=_ussd_step("s004", farmer["phone"], "2"))
     assert resp.status_code == 200
-    assert "*203*" in resp.json()["response"]
+    body = resp.json()
+    assert body["reply"] is True
+    assert "amount" in body["message"].lower()
 
 
 def test_ussd_invalid_option(client):
-    resp = client.post(
-        "/webhooks/moolre/ussd",
-        json={"sessionid": "s005", "phone": "+233551111111", "input": "9"},
-    )
+    client.post("/webhooks/moolre/ussd", json=_ussd_new("s005", "+233551111111"))
+    resp = client.post("/webhooks/moolre/ussd", json=_ussd_step("s005", "+233551111111", "9"))
     assert resp.status_code == 200
-    assert "invalid" in resp.json()["response"].lower()
+    body = resp.json()
+    assert body["reply"] is True
+    assert "invalid" in body["message"].lower()
 
 
-def test_ussd_rejects_invalid_signature_when_secret_configured(client, monkeypatch):
-    import hashlib
-    import hmac
-
+def test_ussd_ignores_payment_webhook_signature_secret(client, monkeypatch):
+    """Moolre's USSD callback is unsigned (see SECURITY.md / Issue #30), unlike
+    the HMAC-signed /moolre/payment webhook, so no signature header is required
+    even when MOOLRE_WEBHOOK_SECRET is configured for payments."""
     from app.routes import webhooks as webhooks_module
 
     monkeypatch.setattr(webhooks_module.settings, "moolre_webhook_secret", "test-webhook-secret")
 
-    payload = {"sessionid": "s006", "phone": "+233551111111", "input": ""}
-    body = json.dumps(payload).encode()
-
-    resp = client.post(
-        "/webhooks/moolre/ussd",
-        content=body,
-        headers={"Content-Type": "application/json", "X-Moolre-Signature": "bad-signature"},
-    )
-    assert resp.status_code == 401
-
-    expected = hmac.new(b"test-webhook-secret", body, hashlib.sha256).hexdigest()
-    ok = client.post(
-        "/webhooks/moolre/ussd",
-        content=body,
-        headers={"Content-Type": "application/json", "X-Moolre-Signature": expected},
-    )
-    assert ok.status_code == 200
+    resp = client.post("/webhooks/moolre/ussd", json=_ussd_new("s006", "+233551111111"))
+    assert resp.status_code == 200
+    assert resp.json()["reply"] is True

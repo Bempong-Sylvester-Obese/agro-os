@@ -16,9 +16,13 @@ def test_ussd_session_logged(client, farmer):
     resp = client.post(
         "/webhooks/moolre/ussd",
         json={
-            "sessionid": "test-session-1",
-            "phone": farmer["phone"],
-            "input": "5",
+            "sessionId": "test-session-1",
+            "new": True,
+            "msisdn": farmer["phone"],
+            "network": 3,
+            "message": "",
+            "extension": "109",
+            "data": "",
         },
     )
     assert resp.status_code == 200, resp.text
