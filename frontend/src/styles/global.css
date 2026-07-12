@@ -363,6 +363,11 @@ body {
 .auth-input:focus, .auth-select:focus { border-color: var(--g); }
 .auth-error { padding: 10px 12px; border-radius: 8px; font-size: 13px; color: #991B1B; background: #FEF2F2; border: 1px solid #FECACA; }
 
+/* ── Book Demo ── */
+.book-demo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+.book-demo-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.book-demo-dates { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }
+
 /* ── Modals (Get Started, etc.) ── */
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 200;
@@ -535,6 +540,8 @@ body {
     min-width: 600px; /* Force minimum width to trigger scroll on mobile */
   }
   .modal-row { grid-template-columns: 1fr; }
+  .book-demo-grid, .book-demo-fields { grid-template-columns: 1fr; }
+  .book-demo-dates { grid-template-columns: repeat(2, 1fr); }
   
   /* Footer */
   .footer {
