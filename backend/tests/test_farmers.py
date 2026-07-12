@@ -31,6 +31,52 @@ def test_create_farmer_duplicate_phone(client, farmer):
     assert resp.status_code == 409
 
 
+def test_same_farmer_can_join_two_cooperatives(client, farmer):
+    second_coop = client.post(
+        "/cooperatives/",
+        json={"name": "Second Cooperative", "currency": "GHS"},
+    ).json()
+
+    resp = client.post(
+        "/farmers/",
+        json={
+            "name": "Name supplied by second cooperative",
+            "phone": farmer["phone"],
+            "cooperative_id": second_coop["id"],
+            "crop_type": "Maize",
+        },
+    )
+
+    assert resp.status_code == 201
+    membership = resp.json()
+    assert membership["id"] != farmer["id"]
+    assert membership["farmer_id"] == farmer["farmer_id"]
+    assert membership["cooperative_id"] == second_coop["id"]
+    assert membership["existing_farmer"] is True
+    assert membership["name"] == farmer["name"]
+
+
+def test_equivalent_phone_format_is_same_identity(client, farmer):
+    second_coop = client.post(
+        "/cooperatives/",
+        json={"name": "Phone Normalization Cooperative", "currency": "GHS"},
+    ).json()
+    local_phone = farmer["phone"]
+    international_phone = f"+233{local_phone[1:]}"
+
+    resp = client.post(
+        "/farmers/",
+        json={
+            "name": farmer["name"],
+            "phone": international_phone,
+            "cooperative_id": second_coop["id"],
+        },
+    )
+
+    assert resp.status_code == 201
+    assert resp.json()["farmer_id"] == farmer["farmer_id"]
+
+
 def test_create_farmer_bad_cooperative(client):
     resp = client.post(
         "/farmers/",

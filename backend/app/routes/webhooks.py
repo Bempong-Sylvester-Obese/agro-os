@@ -17,10 +17,18 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
-from app.models.models import Farmer, PaymentWebhookEvent, Transaction, TransactionStatus, User, UssdSession
+from app.models.models import (
+    CooperativeMembership as Farmer,
+    PaymentWebhookEvent,
+    Transaction,
+    TransactionStatus,
+    User,
+    UssdSession,
+)
 from app.schemas.schemas import UssdSessionResponse
 from app.services.auth_service import get_current_user
 from app.services.communications_service import CommunicationsService
+from app.services.membership_service import memberships_for_phone
 from app.services.trust_score_service import TrustScoreService
 
 logger = logging.getLogger(__name__)
@@ -326,7 +334,49 @@ async def handle_ussd_session(
     phone: str = payload.get("phone", "")
     input_text: str = str(payload.get("input", "")).strip()
 
-    farmer = db.query(Farmer).filter(Farmer.phone == phone).first()
+    memberships = memberships_for_phone(phone, db)
+    farmer = memberships[0] if len(memberships) == 1 else None
+
+    if len(memberships) > 1:
+        parts = input_text.split("*") if input_text else []
+        if not parts:
+            menu = "Choose a cooperative\n" + "\n".join(
+                f"{index}. {membership.cooperative.name}"
+                for index, membership in enumerate(memberships, start=1)
+            )
+            _log_ussd_session(
+                db,
+                session_id=session_id,
+                phone=phone,
+                input_path="cooperative-menu",
+                response_text=menu,
+                farmer=None,
+            )
+            return {"response": menu, "action": "input"}
+        try:
+            selected_index = int(parts[0]) - 1
+            farmer = memberships[selected_index]
+        except (ValueError, IndexError):
+            msg = "Invalid cooperative selection. Please try again."
+            _log_ussd_session(
+                db,
+                session_id=session_id,
+                phone=phone,
+                input_path=input_text,
+                response_text=msg,
+                farmer=None,
+            )
+            return {"response": msg, "action": "end"}
+        if len(parts) == 1:
+            _log_ussd_session(
+                db,
+                session_id=session_id,
+                phone=phone,
+                input_path=input_text,
+                response_text=USSD_MENU_MAIN,
+                farmer=farmer,
+            )
+            return {"response": USSD_MENU_MAIN, "action": "input"}
 
     # ---- Main menu (no input yet)
     if not input_text or input_text == "0":
@@ -342,7 +392,7 @@ async def handle_ussd_session(
         return response
 
     parts = input_text.split("*")
-    level_1 = parts[0] if parts else ""
+    level_1 = parts[1] if len(memberships) > 1 else (parts[0] if parts else "")
 
     # ---- Option 1: Check Loan Balance
     if level_1 == "1":

@@ -27,8 +27,12 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database.db import get_db
-from app.models.models import Cooperative, Farmer, Loan, LoanStatus
+from app.models.models import Cooperative, Loan, LoanStatus
 from app.routes.transactions import _run_dues_collect
+from app.services.membership_service import (
+    cooperative_selection_payload,
+    resolve_phone_membership,
+)
 from app.services.moolre_service import MoolreService
 
 logger = logging.getLogger(__name__)
@@ -76,9 +80,14 @@ async def loan_balance(
     """Hook for the 'Check Loan Balance' USSD step."""
     payload = await _parsed_and_verified(request, x_ussdk_signature)
     msisdn = payload.get("props", {}).get("session", {}).get("msisdn", "")
+    values = payload.get("props", {}).get("values", {})
 
-    farmer = db.query(Farmer).filter(Farmer.phone == msisdn).first()
+    farmer, memberships = resolve_phone_membership(
+        msisdn, db, membership_id=values.get("membership_id")
+    )
     if not farmer:
+        if len(memberships) > 1:
+            return cooperative_selection_payload(memberships)
         return {"registered": False, "balance": None, "name": None}
 
     active_loans = (
@@ -122,8 +131,12 @@ async def pay_dues(
     except (TypeError, ValueError):
         return {"action": "retry", "message": "Enter a valid amount."}
 
-    farmer = db.query(Farmer).filter(Farmer.phone == msisdn).first()
+    farmer, memberships = resolve_phone_membership(
+        msisdn, db, membership_id=values.get("membership_id")
+    )
     if not farmer:
+        if len(memberships) > 1:
+            return cooperative_selection_payload(memberships)
         return {
             "action": "end",
             "message": "Phone not registered with AgroOS. Contact your cooperative.",
@@ -172,9 +185,14 @@ async def wallet_balance(
     """
     payload = await _parsed_and_verified(request, x_ussdk_signature)
     msisdn = payload.get("props", {}).get("session", {}).get("msisdn", "")
+    values = payload.get("props", {}).get("values", {})
 
-    farmer = db.query(Farmer).filter(Farmer.phone == msisdn).first()
+    farmer, memberships = resolve_phone_membership(
+        msisdn, db, membership_id=values.get("membership_id")
+    )
     if not farmer:
+        if len(memberships) > 1:
+            return cooperative_selection_payload(memberships)
         return {
             "action": "end",
             "message": "Phone not registered with AgroOS. Contact your cooperative.",
@@ -215,10 +233,15 @@ async def announcements(
     """
     payload = await _parsed_and_verified(request, x_ussdk_signature)
     msisdn = payload.get("props", {}).get("session", {}).get("msisdn", "")
+    values = payload.get("props", {}).get("values", {})
 
-    farmer = db.query(Farmer).filter(Farmer.phone == msisdn).first()
+    farmer, memberships = resolve_phone_membership(
+        msisdn, db, membership_id=values.get("membership_id")
+    )
     announcement_text = "No new announcements. Check with your cooperative leader."
 
+    if not farmer and len(memberships) > 1:
+        return cooperative_selection_payload(memberships)
     if farmer:
         moolre = MoolreService()
         sms_result = await moolre.send_single_sms(

@@ -1,6 +1,5 @@
-import uuid
 from app.database.db import SessionLocal, engine, Base
-from app.models.models import Cooperative, Farmer
+from app.models.models import Cooperative, CooperativeMembership, Farmer
 
 def seed_db():
     Base.metadata.create_all(bind=engine)
@@ -21,17 +20,23 @@ def seed_db():
         print("Created Cooperative ID:", coop.id)
         
     # Check if farmers exist
-    farmers = db.query(Farmer).filter_by(cooperative_id=1).all()
-    if not farmers:
+    memberships = db.query(CooperativeMembership).filter_by(cooperative_id=coop.id).all()
+    if not memberships:
         f1 = Farmer(
-            cooperative_id=1,
             name="Kwame Asante",
             phone="0551234567",
-            region="Ashanti",
-            crop="Cocoa",
-            acreage=5.0
+            location="Ashanti",
         )
         db.add(f1)
+        db.flush()
+        db.add(
+            CooperativeMembership(
+                farmer_id=f1.id,
+                cooperative_id=coop.id,
+                crop_type="Cocoa",
+                acreage=5.0,
+            )
+        )
         db.commit()
         print("Created Farmer:", f1.name)
         

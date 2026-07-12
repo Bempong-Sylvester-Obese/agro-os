@@ -37,7 +37,7 @@ function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
     }
     setLoading(true)
     try {
-      await createFarmer({
+      const created = await createFarmer({
         name:         form.name.trim(),
         phone:        form.phone.trim(),
         cooperative_id: cooperativeId,
@@ -46,7 +46,7 @@ function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
         crop_type:    form.crop_type.trim() || null,
         acreage:      form.acreage ? parseFloat(form.acreage) : null,
       })
-      onSuccess()
+      onSuccess(created)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -180,6 +180,7 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
   const [search, setSearch]       = useState('')
   const [statusFilter, setStatus] = useState('all')
   const [showModal, setShowModal] = useState(false)
+  const [success, setSuccess] = useState(null)
 
   const filtered = farmers.filter(f => {
     const q = search.toLowerCase()
@@ -188,8 +189,13 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
     return matchSearch && matchStatus
   })
 
-  const handleSuccess = () => {
+  const handleSuccess = (membership) => {
     setShowModal(false)
+    setSuccess(
+      membership.existing_farmer
+        ? `${membership.name} was linked to this cooperative.`
+        : `${membership.name} was added to this cooperative.`,
+    )
     onMemberAdded()
   }
 
@@ -206,6 +212,17 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
       )}
 
       {/* ── Toolbar ── */}
+      {success && (
+        <div
+          role="status"
+          style={{
+            padding: '10px 14px', background: '#ECFDF5', color: '#166534',
+            borderRadius: 8, marginBottom: 16, fontSize: 13, borderLeft: '3px solid #22C55E',
+          }}
+        >
+          {success}
+        </div>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, minWidth: 0 }}>
           <div className="search-bar" style={{ flex: 1, maxWidth: 380 }}>

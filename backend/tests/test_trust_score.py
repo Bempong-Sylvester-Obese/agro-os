@@ -9,6 +9,7 @@ from app.database.db import Base
 from app.models.models import (
     Cooperative,
     CooperativeAttendance,
+    CooperativeMembership,
     Farmer,
     Loan,
     LoanStatus,
@@ -43,10 +44,16 @@ def seeded(session):
     session.add(coop)
     session.flush()
 
-    farmer = Farmer(name="Test Farmer", phone="+233999000001", cooperative_id=coop.id)
-    session.add(farmer)
+    profile = Farmer(name="Test Farmer", phone="+233999000001")
+    session.add(profile)
     session.flush()
-    return farmer
+    membership = CooperativeMembership(
+        farmer_id=profile.id,
+        cooperative_id=coop.id,
+    )
+    session.add(membership)
+    session.flush()
+    return membership
 
 
 # ---------------------------------------------------------------------------
