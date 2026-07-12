@@ -37,3 +37,20 @@ export async function collectDues(farmerId, amount, channel, description, otpCod
   }
   return res.json()
 }
+
+export async function verifyDuesCollect(transactionId, otpCode) {
+  const res = await apiFetch(`${API_URL}/transactions/dues/collect/verify`, {
+    method: 'POST',
+    headers: authHeaders(true),
+    body: JSON.stringify({
+      transaction_id: parseInt(transactionId, 10),
+      otp_code: otpCode,
+    }),
+  })
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}))
+    throw new Error(errorData.detail || 'Failed to verify OTP')
+  }
+  return res.json()
+}

@@ -26,16 +26,21 @@ def test_create_production_bad_farmer(client):
     assert resp.status_code == 404
 
 
-def test_list_productions(client, farmer):
+def test_list_productions(client, farmer, cooperative):
     client.post("/production/", json={"farmer_id": farmer["id"], "crop_type": "Cassava"})
-    resp = client.get("/production/")
+    resp = client.get(f"/production/?cooperative_id={cooperative['id']}")
     assert resp.status_code == 200
     assert len(resp.json()) >= 1
 
 
-def test_list_productions_filter_by_crop(client, farmer):
+def test_list_productions_requires_cooperative_scope(client):
+    resp = client.get("/production/")
+    assert resp.status_code == 400
+
+
+def test_list_productions_filter_by_crop(client, farmer, cooperative):
     client.post("/production/", json={"farmer_id": farmer["id"], "crop_type": "Yam"})
-    resp = client.get("/production/?crop_type=yam")
+    resp = client.get(f"/production/?cooperative_id={cooperative['id']}&crop_type=yam")
     assert resp.status_code == 200
     assert all("yam" in p["crop_type"].lower() for p in resp.json())
 

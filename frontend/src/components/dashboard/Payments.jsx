@@ -1,7 +1,7 @@
 // src/components/dashboard/Payments.jsx
 import { useState } from 'react'
 import { Plus, X, Loader2 } from 'lucide-react'
-import { collectDues } from '../../api/transactions'
+import { collectDues, verifyDuesCollect } from '../../api/transactions'
 import { TableSectionSkeleton } from './DashboardSkeleton'
 
 function fmtGHS(amount) {
@@ -17,6 +17,7 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
   const [otpRequired, setOtpRequired] = useState(false)
   const [otpCode, setOtpCode] = useState('')
   const [externalRef, setExternalRef] = useState(null)
+  const [transactionId, setTransactionId] = useState(null)
 
   const activeFarmers = farmers.filter(f => f.membership_status === 'active')
 
@@ -37,6 +38,7 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
         if (res.verification_required) {
           setOtpRequired(true)
           setExternalRef(res.moolre_reference)
+          setTransactionId(res.transaction_id)
           setMsg('Moolre sent an SMS with an OTP to the member. Please enter it below.')
         } else if (res.status === 'pending') {
           setMsg('Payment initiated. Waiting for member to approve on their phone.')
@@ -50,7 +52,12 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
           setLoading(false)
           return
         }
-        const res = await collectDues(form.farmerId, form.amount, form.channel, 'Cooperative dues', otpCode, externalRef)
+        if (!transactionId) {
+          setError('Missing payment session. Please start the payment again.')
+          setLoading(false)
+          return
+        }
+        const res = await verifyDuesCollect(transactionId, otpCode)
         if (res.status === 'pending') {
           setMsg('OTP verified! Waiting for member to approve on their phone.')
           setTimeout(() => onSuccess(), 3000)
