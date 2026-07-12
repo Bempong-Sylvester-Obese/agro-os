@@ -412,6 +412,13 @@ body {
 .nav-tab:hover { background: var(--sage); color: var(--text); }
 .nav-tab.active{ background: var(--g); color: #fff; }
 .nav-right     { display: flex; gap: 12px; align-items: center; }
+.nav-menu-toggle { display: none; background: none; border: none; padding: 8px; cursor: pointer; color: var(--g); border-radius: 6px; align-items: center; justify-content: center; }
+.nav-menu-toggle:hover { background: var(--sage); }
+.nav-mobile-panel { display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 99; background: rgba(247,244,239,.98); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); padding: 12px 20px 16px; flex-direction: column; gap: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.06); }
+.nav-mobile-panel.open { display: flex; }
+.nav-mobile-link { padding: 12px 16px; border-radius: 6px; font-size: 15px; font-weight: 500; color: var(--muted); text-decoration: none; font-family: 'DM Sans', sans-serif; transition: all .15s; }
+.nav-mobile-link:hover { background: var(--sage); color: var(--text); }
+.nav-mobile-link.active { background: var(--g); color: #fff; }
 .btn-ghost     { background: none; border: none; padding: 8px 16px; font-family: 'DM Sans', sans-serif; font-size: 14px; font-weight: 500; color: var(--muted); cursor: pointer; border-radius: 6px; text-decoration: none; transition: all .15s; }
 .btn-ghost:hover { background: var(--sage); color: var(--text); }
 
@@ -450,7 +457,10 @@ body {
     padding: 0 20px;
   }
   .nav-tabs {
-    display: none; /* Hide standard tabs on very small screens, keep the right side actions */
+    display: none;
+  }
+  .nav-menu-toggle {
+    display: inline-flex;
   }
 
   /* Landing Page Grids */
