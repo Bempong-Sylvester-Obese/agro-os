@@ -1,4 +1,4 @@
-import { API_URL, apiFetch, authHeaders } from './config'
+import { API_URL, apiFetch, authHeaders, createFetchSignal, formatTransportError, MUTATION_TIMEOUT_MS } from './config'
 
 export async function fetchLoans(cooperativeId = null) {
   const qs = cooperativeId ? `?cooperative_id=${cooperativeId}` : ''
@@ -60,13 +60,22 @@ export async function rejectLoan(loanId) {
 }
 
 export async function disburseLoan(loanId) {
-  const res = await apiFetch(`${API_URL}/loans/${loanId}/disburse`, {
-    method: 'POST',
-    headers: authHeaders()
-  })
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.detail || 'Failed to disburse loan')
+  const { signal, clear } = createFetchSignal(MUTATION_TIMEOUT_MS)
+  try {
+    const res = await apiFetch(`${API_URL}/loans/${loanId}/disburse`, {
+      method: 'POST',
+      headers: authHeaders(),
+      signal,
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      const detail = typeof data.detail === 'string' ? data.detail : null
+      throw new Error(detail || 'Failed to disburse loan')
+    }
+    return res.json()
+  } catch (err) {
+    throw new Error(formatTransportError(err))
+  } finally {
+    clear()
   }
-  return res.json()
 }

@@ -279,8 +279,8 @@ async def disburse_loan(loan_id: int, db: Session = Depends(get_db)):
 
     ext_ref = _disburse_external_ref(loan.id)
     moolre = MoolreService()
-    coop_account = _cooperative_account(farmer, db)
-    account_number, wallet_error = await moolre.resolve_verified_account(coop_account)
+    # Always disburse from the platform merchant wallet (MoMo-enabled), not an alternate coop wallet.
+    account_number, wallet_error = await moolre.resolve_verified_account(None)
     if wallet_error:
         raise HTTPException(status_code=502, detail=wallet_error)
 

@@ -142,7 +142,7 @@ export default function Loans({ farmers = [], loans = [], loading, onRefresh }) 
       if (action === 'disburse') await disburseLoan(loanId)
       if (onRefresh) onRefresh()
     } catch (err) {
-      setActionError(err.message)
+      setActionError(err.message || 'Action failed')
     } finally {
       setProcessing(null)
     }
