@@ -17,8 +17,9 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
-from app.models.models import Farmer, PaymentWebhookEvent, Transaction, TransactionStatus, UssdSession
+from app.models.models import Farmer, PaymentWebhookEvent, Transaction, TransactionStatus, User, UssdSession
 from app.schemas.schemas import UssdSessionResponse
+from app.services.auth_service import get_current_user
 from app.services.communications_service import CommunicationsService
 from app.services.trust_score_service import TrustScoreService
 
@@ -286,10 +287,16 @@ def _log_ussd_session(
 def list_ussd_logs(
     limit: int = Query(default=50, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
 ):
     """Recent USSD interactions for dashboard visibility."""
+    query = db.query(UssdSession)
+    if current_user is not None:
+        query = query.join(Farmer, UssdSession.farmer_id == Farmer.id).filter(
+            Farmer.cooperative_id == current_user.cooperative_id
+        )
     return (
-        db.query(UssdSession)
+        query
         .order_by(UssdSession.created_at.desc())
         .limit(limit)
         .all()

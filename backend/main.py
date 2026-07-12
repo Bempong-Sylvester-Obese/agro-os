@@ -12,7 +12,7 @@ from sqlalchemy import text
 from app.config import get_settings
 from app.database.db import create_session, engine, _init_db
 from app.database.seed import seed_golden_path
-from app.dependencies.auth import decode_access_token
+from app.services.auth_service import decode_access_token
 from app.routes import (
     agro_ai,
     auth,
@@ -31,10 +31,23 @@ logging.basicConfig(level=logging.INFO)
 
 settings = get_settings()
 
-# Moolre callback POSTs must stay unauthenticated; other /webhooks routes do not.
-_MOOLRE_CALLBACK_PATHS = frozenset({
+# Only these routes are public when authentication is enabled.
+_PUBLIC_PATHS = frozenset({
+    "/",
+    "/health",
+    "/health/live",
+    "/health/ready",
+    "/auth/login",
+    "/auth/signup",
     "/webhooks/moolre/payment",
     "/webhooks/moolre/ussd",
+    "/ussdk/loan-balance",
+    "/ussdk/pay-dues",
+    "/ussdk/wallet-balance",
+    "/ussdk/announcements",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
 })
 
 if settings.sentry_dsn:
@@ -107,12 +120,13 @@ app.add_middleware(
 
 @app.middleware("http")
 async def optional_admin_auth(request: Request, call_next):
-    """Protect mutating API routes when AUTH_ENABLED=true."""
-    if not settings.auth_enabled or request.method in {"GET", "HEAD", "OPTIONS"}:
+    """Fail closed for every non-public API route when authentication is enabled."""
+    current_settings = get_settings()
+    if not current_settings.auth_enabled or request.method == "OPTIONS":
         return await call_next(request)
 
     path = request.url.path
-    if path.startswith("/auth/login") or path in _MOOLRE_CALLBACK_PATHS:
+    if path in _PUBLIC_PATHS:
         return await call_next(request)
 
     auth_header = request.headers.get("Authorization", "")
