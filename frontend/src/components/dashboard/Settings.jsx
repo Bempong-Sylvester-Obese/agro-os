@@ -96,7 +96,7 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
             {/* General Profile */}
             <div>
               <h3 className="serif" style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>General Profile</h3>
-              <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+              <div className="settings-form-row" style={{ marginBottom: 16 }}>
                 <div style={{ flex: 2 }}>
                   <label style={labelStyle}>Cooperative Name</label>
                   <input style={inputStyle} type="text" value={form.name} onChange={e => setForm({...form, name: e.target.value})} required disabled={saving}/>
@@ -124,7 +124,7 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
               <h3 className="serif" style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Financial Configuration</h3>
               <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>This Moolre account number will be used as the funding source for loan disbursements to your members.</p>
               
-              <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+              <div className="settings-form-row" style={{ marginBottom: 16 }}>
                 <div style={{ flex: 1 }}>
                   <label style={labelStyle}>Default Currency</label>
                   <select style={inputStyle} value={form.default_currency} onChange={e => setForm({...form, default_currency: e.target.value})} disabled={saving}>

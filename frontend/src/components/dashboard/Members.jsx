@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Search, UserPlus, X, Loader2 } from 'lucide-react'
 import { createFarmer } from '../../api/farmers'
 import { MembersSkeleton } from './DashboardSkeleton'
+import { useModal } from '../../hooks/useModal'
 
 const STATUS_CLS = {
   active:    'bdg-green',
@@ -18,6 +19,7 @@ const scoreTier = (score) => {
 
 // ── Add Member Modal ──────────────────────────────────────────────────────────
 function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
+  const { onBackdropClick, dialogProps } = useModal(onClose)
   const [form, setForm] = useState({
     name: '', phone: '', email: '', location: '', crop_type: '', acreage: '',
   })
@@ -60,12 +62,16 @@ function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
   const lbl = { display: 'block', marginBottom: 6, fontSize: 13, fontWeight: 600 }
 
   return (
-    <div style={{
+    <div
+      onClick={onBackdropClick}
+      style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)',
       backdropFilter: 'blur(4px)', zIndex: 1000,
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
     }}>
-      <div style={{
+      <div
+        {...dialogProps}
+        style={{
         background: '#fff', borderRadius: 16, width: '100%', maxWidth: 500,
         maxHeight: '92vh', overflow: 'auto',
         boxShadow: '0 32px 80px rgba(0,0,0,0.22)',
@@ -113,7 +119,7 @@ function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 16px' }}>
+          <div className="modal-row">
             <div>
               <label style={lbl}>Full name *</label>
               <input style={input} value={form.name} onChange={set('name')} placeholder="e.g. Kofi Asante" required />
@@ -227,8 +233,13 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
         </div>
         <button
           className="btn-nav"
-          onClick={() => setShowModal(true)}
-          style={{ fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}
+          onClick={() => cooperativeId && setShowModal(true)}
+          disabled={!cooperativeId}
+          title={!cooperativeId ? 'Link a cooperative before adding members' : undefined}
+          style={{
+            fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+            opacity: cooperativeId ? 1 : 0.5, cursor: cooperativeId ? 'pointer' : 'not-allowed',
+          }}
         >
           <UserPlus size={15} /> Add member
         </button>
@@ -249,7 +260,13 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
           <div style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 28, maxWidth: 320, margin: '0 auto 28px' }}>
             Register your first farmer to start tracking dues, production, and trust scores.
           </div>
-          <button className="btn-lg" onClick={() => setShowModal(true)}>
+          <button
+            className="btn-lg"
+            onClick={() => cooperativeId && setShowModal(true)}
+            disabled={!cooperativeId}
+            title={!cooperativeId ? 'Link a cooperative before adding members' : undefined}
+            style={{ opacity: cooperativeId ? 1 : 0.5, cursor: cooperativeId ? 'pointer' : 'not-allowed' }}
+          >
             Add first member →
           </button>
         </div>

@@ -384,6 +384,7 @@ body {
 .modal-close:hover { color: var(--text); }
 .modal-form { display: flex; flex-direction: column; gap: 4px; }
 .modal-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.settings-form-row { display: flex; gap: 16px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
 
 /* ── Pricing ── */
@@ -557,6 +558,7 @@ body {
     min-width: 600px; /* Force minimum width to trigger scroll on mobile */
   }
   .modal-row { grid-template-columns: 1fr; }
+  .settings-form-row { flex-direction: column; }
   .book-demo-grid, .book-demo-fields { grid-template-columns: 1fr; }
   .book-demo-dates { grid-template-columns: repeat(2, 1fr); }
   

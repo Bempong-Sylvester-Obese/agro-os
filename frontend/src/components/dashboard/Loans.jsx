@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Plus, X, Loader2, Check, XCircle, Send } from 'lucide-react'
 import { createLoan, approveLoan, rejectLoan, disburseLoan } from '../../api/loans'
 import { TableSectionSkeleton } from './DashboardSkeleton'
+import { useModal } from '../../hooks/useModal'
 
 function fmtGHS(amount) {
   return `GHS ${Number(amount).toLocaleString('en-GH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
@@ -10,6 +11,7 @@ function fmtGHS(amount) {
 
 // ── Log Loan Request Modal ──────────────────────────────────────────────────────
 function RequestLoanModal({ farmers, onClose, onSuccess }) {
+  const { onBackdropClick, dialogProps } = useModal(onClose)
   const [form, setForm] = useState({ farmerId: '', amount: '', purpose: '', repaymentDate: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -42,12 +44,16 @@ function RequestLoanModal({ farmers, onClose, onSuccess }) {
   }
 
   return (
-    <div style={{
+    <div
+      onClick={onBackdropClick}
+      style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)',
       backdropFilter: 'blur(4px)', zIndex: 1000,
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
     }}>
-      <div style={{
+      <div
+        {...dialogProps}
+        style={{
         background: '#fff', borderRadius: 16, width: '100%', maxWidth: 400,
         boxShadow: '0 32px 80px rgba(0,0,0,0.22)',
       }}>
