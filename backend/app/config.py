@@ -77,6 +77,8 @@ class Settings(BaseSettings):
             raise ValueError("APP_ENV=production requires DATABASE_URL")
         if self.database_url == _DEFAULT_DATABASE_URL:
             raise ValueError("APP_ENV=production requires a non-default DATABASE_URL")
+        if self.seed_demo_data:
+            raise ValueError("APP_ENV=production cannot run with SEED_DEMO_DATA=true")
         return self
 
     class Config:

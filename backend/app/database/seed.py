@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+from app.database.demo_constants import DEMO_COOPERATIVE_NAME
 from app.models.models import (
     Cooperative,
     CooperativeAttendance,
@@ -23,11 +24,19 @@ from app.models.models import (
 
 logger = logging.getLogger(__name__)
 
-COOP_NAME = "Kuapa Kokoo Demo Cooperative"
+COOP_NAME = DEMO_COOPERATIVE_NAME
 
 
 def seed_golden_path(db: Session) -> dict:
     """Insert demo records when the database is empty."""
+    from app.config import get_settings
+
+    settings = get_settings()
+    if settings.app_env.lower() in ("production", "prod"):
+        logger.warning("Refusing to seed demo data in production")
+        return {"seeded": False, "reason": "production environment"}
+    if not settings.seed_demo_data:
+        return {"seeded": False, "reason": "SEED_DEMO_DATA is not enabled"}
 
     existing = db.query(Cooperative).filter(Cooperative.name == COOP_NAME).first()
     if existing:
