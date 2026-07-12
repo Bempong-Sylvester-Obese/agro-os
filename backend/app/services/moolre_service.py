@@ -187,6 +187,72 @@ class MoolreService:
             return f"0{phone[3:]}"
         return phone
 
+    def _transfer_receiver(self, phone: str) -> str:
+        """Format payout receiver as 233XXXXXXXXX — matches successful inbound MoMo IDs on Moolre."""
+        local = self._normalize_phone(phone)
+        if local.startswith("0") and len(local) == 10:
+            return f"233{local[1:]}"
+        return local
+
+    @staticmethod
+    def _format_transfer_amount(amount: float) -> str:
+        return f"{float(amount):.2f}"
+
+    async def validate_transfer_recipient(
+        self,
+        receiver_phone: str,
+        account_number: str | None = None,
+        channel: str | None = None,
+    ) -> dict[str, Any]:
+        """Confirm MoMo recipient via Moolre validate-name before payout."""
+        receiver = self._transfer_receiver(receiver_phone)
+        ch = channel or self.detect_transfer_channel(receiver_phone)
+        acc = self.resolve_account_number(account_number)
+        payload = {
+            "type": 1,
+            "receiver": receiver,
+            "channel": ch,
+            "currency": "GHS",
+            "accountnumber": acc,
+        }
+        raw = await self._post("/open/transact/validate", payload, headers=self._private_key_headers())
+        code = raw.get("code")
+        success = raw.get("status") in (1, "1") or code == "AVD01"
+        return {
+            "success": success,
+            "channel": ch,
+            "receiver": receiver,
+            "receiver_name": raw.get("data"),
+            "message": raw.get("message") or raw.get("error", ""),
+            "code": code,
+            "raw": raw,
+        }
+
+    async def resolve_momo_transfer_channel(
+        self,
+        receiver_phone: str,
+        account_number: str | None = None,
+    ) -> tuple[str, str, str | None]:
+        """Return (channel, receiver, error) after validating the MoMo wallet."""
+        candidates = []
+        detected = self.detect_transfer_channel(receiver_phone)
+        for ch in (detected, "1", "6", "7"):
+            if ch not in candidates:
+                candidates.append(ch)
+
+        last_message = "Could not validate the member mobile money wallet."
+        for ch in candidates:
+            result = await self.validate_transfer_recipient(
+                receiver_phone,
+                account_number=account_number,
+                channel=ch,
+            )
+            if result["success"]:
+                return result["channel"], result["receiver"], None
+            last_message = str(result.get("message") or last_message)
+
+        return detected, self._transfer_receiver(receiver_phone), last_message
+
     def resolve_account_number(self, cooperative_account: str | None = None) -> str:
         """Use cooperative wallet when set; otherwise fall back to global settings."""
         if cooperative_account and cooperative_account.strip():
@@ -478,15 +544,28 @@ class MoolreService:
                 "message": config_error,
                 "raw": {},
             }
-        normalized_phone = self._normalize_phone(receiver_phone)
-        transfer_channel = channel or self.detect_transfer_channel(normalized_phone)
+        transfer_channel = channel
+        transfer_receiver = self._transfer_receiver(receiver_phone)
+        if channel is None:
+            transfer_channel, transfer_receiver, validate_error = await self.resolve_momo_transfer_channel(
+                receiver_phone,
+                account_number=account_number,
+            )
+            if validate_error:
+                return {
+                    "success": False,
+                    "moolre_transfer_ref": ext_ref,
+                    "external_ref": ext_ref,
+                    "message": validate_error,
+                    "raw": {},
+                }
 
         payload = {
             "type": 1,
             "channel": transfer_channel,
             "currency": currency,
-            "amount": str(amount),
-            "receiver": normalized_phone,
+            "amount": self._format_transfer_amount(amount),
+            "receiver": transfer_receiver,
             "externalref": ext_ref,
             "reference": reference,
             "accountnumber": acc,

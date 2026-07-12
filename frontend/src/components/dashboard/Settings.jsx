@@ -122,7 +122,7 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
             {/* Financial Configuration */}
             <div>
               <h3 className="serif" style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Financial Configuration</h3>
-              <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>This Moolre account number will be used as the funding source for loan disbursements to your members.</p>
+              <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>Use your primary AgroOS Moolre merchant wallet (e.g. ending in …2809) for loan disbursements. This must match MOOLRE_ACCOUNT_NUMBER on the server.</p>
               
               <div className="settings-form-row" style={{ marginBottom: 16 }}>
                 <div style={{ flex: 1 }}>

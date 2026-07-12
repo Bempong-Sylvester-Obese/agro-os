@@ -64,27 +64,39 @@ export default function DashboardPage({ user, onLogout }) {
     setFetchError(null)
     const idHint = resolveCooperativeId(user)
 
-    Promise.all([
+    Promise.allSettled([
       fetchFarmers(idHint),
       fetchTransactions(idHint),
       fetchLoans(idHint),
       fetchProductions(idHint),
-    ]).then(async ([farmersData, txData, loansData, prodsData]) => {
+    ]).then(async (results) => {
+      const [farmersR, txR, loansR, prodsR] = results
+      const rejected = results.filter((r) => r.status === 'rejected')
+      if (rejected.length === results.length) {
+        setFetchError(formatTransportError(rejected[0].reason))
+      } else if (rejected.length > 0) {
+        setFetchError('Some dashboard data could not be refreshed. Showing the latest available data.')
+      }
+
+      if (farmersR.status === 'fulfilled') setFarmers(farmersR.value)
+      if (txR.status === 'fulfilled') setTransactions(txR.value)
+      if (loansR.status === 'fulfilled') setLoans(loansR.value)
+      if (prodsR.status === 'fulfilled') setProductions(prodsR.value)
+
+      const farmersData = farmersR.status === 'fulfilled' ? farmersR.value : farmers
       const resolvedId = resolveCooperativeId(user, farmersData)
       setCooperativeId(resolvedId)
       const coop = resolvedId
         ? await fetchCooperative(resolvedId).catch(() => null)
         : null
       setCooperative(coop)
-      setFarmers(farmersData)
-      setTransactions(txData)
-      setLoans(loansData)
-      setProductions(prodsData)
-      setLoading(false)
-    }).catch((err) => {
-      setFetchError(formatTransportError(err))
       setLoading(false)
     })
+  }
+
+  const refreshLoans = () => {
+    const idHint = cooperativeId ?? resolveCooperativeId(user)
+    fetchLoans(idHint).then(setLoans).catch(() => {})
   }
 
   useEffect(() => {
@@ -155,7 +167,7 @@ export default function DashboardPage({ user, onLogout }) {
         </div>
 
         <div className="admin-content">
-          {fetchError && section !== 'sms' && section !== 'ussd' && section !== 'settings' && (
+          {fetchError && section !== 'sms' && section !== 'ussd' && section !== 'settings' && section !== 'loans' && (
             <div
               className="info-banner"
               style={{
@@ -210,12 +222,12 @@ export default function DashboardPage({ user, onLogout }) {
               memberCount={farmers.length}
             />
           )}
-          {!fetchError && section === 'loans' && (
+          {section === 'loans' && (
             <Loans
               farmers={farmers}
               loans={loans}
               loading={loading}
-              onRefresh={loadAll}
+              onRefresh={refreshLoans}
             />
           )}
           {!fetchError && section === 'production' && (
