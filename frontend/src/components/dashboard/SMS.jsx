@@ -32,7 +32,7 @@ export default function SMS({ cooperativeId, memberCount = 0 }) {
       await sendBroadcast(cooperativeId, msg)
       setMsg('')
       setSendSuccess(true)
-      const newLogs = await fetchSMSLogs()
+      const newLogs = await fetchSMSLogs(cooperativeId)
       setLogs(newLogs)
       setTimeout(() => setSendSuccess(false), 3000)
     } catch {

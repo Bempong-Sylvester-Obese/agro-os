@@ -253,3 +253,29 @@ export function USSDLogsSkeleton() {
 export function SidebarCoopSkeleton() {
   return <Skeleton width={120} height={10} radius={4} style={{ marginTop: 4 }} />
 }
+
+export function DashboardGateSkeleton() {
+  return (
+    <div className="admin-shell">
+      <div className="admin-side">
+        <div className="admin-side-head">
+          <Skeleton width={80} height={14} radius={6} />
+          <SidebarCoopSkeleton />
+        </div>
+        <div className="admin-nav" style={{ padding: '8px 12px' }}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} width="88%" height={34} radius={8} style={{ margin: '6px 0' }} />
+          ))}
+        </div>
+      </div>
+      <div className="admin-main">
+        <div className="admin-topbar">
+          <Skeleton width={160} height={22} radius={6} />
+        </div>
+        <div className="admin-content">
+          <OverviewSkeleton />
+        </div>
+      </div>
+    </div>
+  )
+}

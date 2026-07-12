@@ -1,6 +1,6 @@
 // src/pages/DashboardPage.jsx
 import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { resolveCooperativeId } from '../utils/auth'
 import { DASHBOARD_SECTIONS, dashboardPath } from '../constants/routes'
 import { fetchFarmers } from '../api/farmers'
@@ -19,7 +19,7 @@ import SettingsView from '../components/dashboard/Settings'
 import USSD from '../components/dashboard/USSD'
 import DashboardUserMenu from '../components/dashboard/DashboardUserMenu'
 import { SidebarCoopSkeleton } from '../components/dashboard/DashboardSkeleton'
-import { BarChart3, Users, CreditCard, Star, MessageSquare, Settings, Sprout, Banknote, Tractor } from 'lucide-react'
+import { BarChart3, Users, CreditCard, Star, MessageSquare, Settings, Sprout, Banknote, Tractor, Phone } from 'lucide-react'
 
 const NAV_ITEMS = [
   { key: 'overview', icon: <BarChart3 size={18} />, label: 'Overview' },
@@ -29,6 +29,7 @@ const NAV_ITEMS = [
   { key: 'production', icon: <Tractor size={18} />, label: 'Production' },
   { key: 'scores',   icon: <Star size={18} />,      label: 'Agro-AI scores' },
   { key: 'sms',      icon: <MessageSquare size={18} />, label: 'SMS broadcasts' },
+  { key: 'ussd',     icon: <Phone size={18} />,       label: 'USSD activity' },
 ]
 
 const TITLES = {
@@ -55,16 +56,18 @@ export default function DashboardPage({ user, onLogout }) {
   const [cooperative, setCooperative]   = useState(null)
   const [cooperativeId, setCooperativeId] = useState(null)
   const [loading, setLoading]           = useState(true)
+  const [fetchError, setFetchError]     = useState(null)
 
   const loadAll = () => {
     setLoading(true)
+    setFetchError(null)
     const idHint = resolveCooperativeId(user)
 
     Promise.all([
-      fetchFarmers(idHint).catch(() => []),
-      fetchTransactions(idHint).catch(() => []),
-      fetchLoans(idHint).catch(() => []),
-      fetchProductions(idHint).catch(() => []),
+      fetchFarmers(idHint),
+      fetchTransactions(idHint),
+      fetchLoans(idHint),
+      fetchProductions(idHint),
     ]).then(async ([farmersData, txData, loansData, prodsData]) => {
       const resolvedId = resolveCooperativeId(user, farmersData)
       setCooperativeId(resolvedId)
@@ -76,6 +79,9 @@ export default function DashboardPage({ user, onLogout }) {
       setTransactions(txData)
       setLoans(loansData)
       setProductions(prodsData)
+      setLoading(false)
+    }).catch(() => {
+      setFetchError('Could not load dashboard data. Check your connection and try again.')
       setLoading(false)
     })
   }
@@ -94,6 +100,10 @@ export default function DashboardPage({ user, onLogout }) {
   // Called after a member is added — refreshes only the farmers list
   const handleMemberAdded = () => {
     fetchFarmers(cooperativeId).then(setFarmers).catch(() => {})
+  }
+
+  if (urlSection && !DASHBOARD_SECTIONS.includes(urlSection)) {
+    return <Navigate to={dashboardPath('overview')} replace />
   }
 
   return (
@@ -140,6 +150,29 @@ export default function DashboardPage({ user, onLogout }) {
         </div>
 
         <div className="admin-content">
+          {fetchError && (
+            <div
+              className="info-banner"
+              style={{
+                background: '#FEF2F2',
+                borderColor: '#FECACA',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 16,
+              }}
+            >
+              <span>{fetchError}</span>
+              <button
+                type="button"
+                className="btn-lg"
+                style={{ padding: '8px 16px', fontSize: 13, flexShrink: 0 }}
+                onClick={loadAll}
+              >
+                Retry
+              </button>
+            </div>
+          )}
           {section === 'overview' && (
             <Overview
               farmers={farmers}
