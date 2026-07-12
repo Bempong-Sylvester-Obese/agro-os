@@ -8,7 +8,15 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database.db import get_db
 from app.dependencies.cooperative_scope import resolve_cooperative_scope
-from app.models.models import Cooperative, Farmer, PaymentWebhookEvent, Transaction, TransactionStatus, TransactionType, User
+from app.models.models import (
+    Cooperative,
+    CooperativeMembership as Farmer,
+    PaymentWebhookEvent,
+    Transaction,
+    TransactionStatus,
+    TransactionType,
+    User,
+)
 from app.services.auth_service import enforce_cooperative_scope, get_current_user, require_roles
 from app.schemas.schemas import (
     DuesCollectRequest,

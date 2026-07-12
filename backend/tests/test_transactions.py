@@ -56,6 +56,44 @@ def test_list_transactions_filter_by_type(client, transaction, cooperative):
     assert all(t["transaction_type"] == "dues" for t in resp.json())
 
 
+def test_same_farmer_transactions_are_isolated_by_membership(client, farmer, cooperative):
+    first_tx = client.post(
+        "/transactions/",
+        json={"farmer_id": farmer["id"], "transaction_type": "dues", "amount": 10},
+    ).json()
+    second_coop = client.post(
+        "/cooperatives/",
+        json={"name": "Isolated Finance Cooperative", "currency": "GHS"},
+    ).json()
+    second_membership = client.post(
+        "/farmers/",
+        json={
+            "name": farmer["name"],
+            "phone": farmer["phone"],
+            "cooperative_id": second_coop["id"],
+        },
+    ).json()
+    second_tx = client.post(
+        "/transactions/",
+        json={
+            "farmer_id": second_membership["id"],
+            "transaction_type": "dues",
+            "amount": 20,
+        },
+    ).json()
+
+    first_list = client.get(
+        f"/transactions/?cooperative_id={cooperative['id']}"
+    ).json()
+    second_list = client.get(
+        f"/transactions/?cooperative_id={second_coop['id']}"
+    ).json()
+    assert first_tx["id"] in {row["id"] for row in first_list}
+    assert second_tx["id"] not in {row["id"] for row in first_list}
+    assert second_tx["id"] in {row["id"] for row in second_list}
+    assert first_tx["id"] not in {row["id"] for row in second_list}
+
+
 def test_update_transaction_status(client, transaction):
     resp = client.patch(
         f"/transactions/{transaction['id']}/status",

@@ -3,7 +3,7 @@
 import pytest
 
 from app.config import get_settings
-from app.models.models import Cooperative, Farmer, User
+from app.models.models import Cooperative, CooperativeMembership, Farmer, User
 from app.services.auth_service import create_access_token, get_password_hash
 
 
@@ -30,12 +30,17 @@ def _tenant(db, suffix: str, role: str = "admin"):
     farmer = Farmer(
         name=f"Farmer {suffix}",
         phone=f"02400000{suffix.zfill(2)}",
-        cooperative_id=cooperative.id,
     )
     db.add_all([user, farmer])
+    db.flush()
+    membership = CooperativeMembership(
+        farmer_id=farmer.id,
+        cooperative_id=cooperative.id,
+    )
+    db.add(membership)
     db.commit()
     db.refresh(user)
-    db.refresh(farmer)
+    db.refresh(membership)
     token = create_access_token(
         {
             "sub": user.email,
@@ -44,7 +49,7 @@ def _tenant(db, suffix: str, role: str = "admin"):
             "role": role,
         }
     )
-    return cooperative, user, farmer, {"Authorization": f"Bearer {token}"}
+    return cooperative, user, membership, {"Authorization": f"Bearer {token}"}
 
 
 def test_sensitive_get_fails_closed_without_token(client, auth_enabled):

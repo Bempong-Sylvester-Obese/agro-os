@@ -13,7 +13,8 @@ export async function fetchFarmers(cooperativeId = null) {
 }
 
 /**
- * Register a new farmer / cooperative member.
+ * Create a farmer identity or attach an existing identity to a cooperative.
+ * The returned `id` is the cooperative membership ID; `farmer_id` is global.
  * @param {object} data - { name, phone, cooperative_id, email?, location?, crop_type?, acreage? }
  */
 export async function createFarmer(data) {

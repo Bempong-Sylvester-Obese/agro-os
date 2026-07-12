@@ -12,6 +12,7 @@ from app.database.demo_constants import DEMO_COOPERATIVE_NAME
 from app.models.models import (
     Cooperative,
     CooperativeAttendance,
+    CooperativeMembership,
     Farmer,
     Loan,
     LoanStatus,
@@ -88,15 +89,25 @@ def seed_golden_path(db: Session) -> dict:
         },
     ]
 
-    farmers: list[Farmer] = []
+    farmers: list[CooperativeMembership] = []
     for row in farmers_data:
-        farmer = Farmer(
+        profile = Farmer(
+            name=row["name"],
+            phone=row["phone"],
+            location=row["location"],
+        )
+        db.add(profile)
+        db.flush()
+        membership = CooperativeMembership(
+            farmer_id=profile.id,
             cooperative_id=coop.id,
             membership_status=MembershipStatus.active,
-            **row,
+            crop_type=row["crop_type"],
+            acreage=row["acreage"],
+            trust_score=row["trust_score"],
         )
-        db.add(farmer)
-        farmers.append(farmer)
+        db.add(membership)
+        farmers.append(membership)
     db.flush()
 
     abena = farmers[0]

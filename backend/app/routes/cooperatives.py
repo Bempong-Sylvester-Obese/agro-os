@@ -88,7 +88,7 @@ def delete_cooperative(
     coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
-    if coop.farmers:
+    if coop.memberships:
         raise HTTPException(
             status_code=409,
             detail="Cannot delete a cooperative with active farmers. Remove members first.",

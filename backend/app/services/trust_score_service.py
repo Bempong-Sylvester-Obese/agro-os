@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.models.models import (
     CooperativeAttendance,
-    Farmer,
+    CooperativeMembership as Farmer,
     Loan,
     LoanStatus,
     Production,

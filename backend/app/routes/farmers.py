@@ -1,12 +1,20 @@
 """Farmer Management Routes"""
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, joinedload
 
 from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
-from app.models.models import CooperativeAttendance, Cooperative, Farmer, MembershipStatus, User
+from app.models.models import (
+    CooperativeAttendance,
+    Cooperative,
+    CooperativeMembership,
+    Farmer,
+    MembershipStatus,
+    User,
+)
 from app.services.auth_service import enforce_cooperative_scope, get_current_user, require_roles
 from app.schemas.schemas import (
     AttendanceCreate,
@@ -17,18 +25,24 @@ from app.schemas.schemas import (
     TrustScoreResponse,
 )
 from app.services.trust_score_service import TrustScoreService
+from app.utils.phone import normalize_ghana_phone
 
 router = APIRouter(prefix="/farmers", tags=["farmers"])
 
 
 def _get_farmer_or_404(
     farmer_id: int, db: Session, current_user: User | None = None
-) -> Farmer:
-    farmer = db.query(Farmer).filter(Farmer.id == farmer_id).first()
-    if not farmer:
+) -> CooperativeMembership:
+    membership = (
+        db.query(CooperativeMembership)
+        .options(joinedload(CooperativeMembership.farmer))
+        .filter(CooperativeMembership.id == farmer_id)
+        .first()
+    )
+    if not membership:
         raise HTTPException(status_code=404, detail="Farmer not found")
-    enforce_cooperative_scope(current_user, farmer.cooperative_id)
-    return farmer
+    enforce_cooperative_scope(current_user, membership.cooperative_id)
+    return membership
 
 
 # ---------------------------------------------------------------------------
@@ -51,18 +65,53 @@ def create_farmer(
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
 
-    # Duplicate phone check
-    existing = db.query(Farmer).filter(Farmer.phone == farmer_in.phone).first()
-    if existing:
-        raise HTTPException(status_code=409, detail="A farmer with this phone number already exists")
+    normalized_phone = normalize_ghana_phone(farmer_in.phone)
+    farmer = db.query(Farmer).filter(Farmer.phone == normalized_phone).first()
+    existing_farmer = farmer is not None
+    if farmer is None:
+        farmer = Farmer(
+            name=farmer_in.name,
+            phone=normalized_phone,
+            email=farmer_in.email,
+            location=farmer_in.location,
+        )
+        db.add(farmer)
+        db.flush()
 
-    farmer_data = farmer_in.model_dump()
-    farmer_data["cooperative_id"] = cooperative_id
-    farmer = Farmer(**farmer_data)
-    db.add(farmer)
-    db.commit()
-    db.refresh(farmer)
-    return farmer
+    duplicate = (
+        db.query(CooperativeMembership)
+        .filter(
+            CooperativeMembership.farmer_id == farmer.id,
+            CooperativeMembership.cooperative_id == cooperative_id,
+        )
+        .first()
+    )
+    if duplicate:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="This farmer is already a member of your cooperative",
+        )
+
+    membership = CooperativeMembership(
+        farmer_id=farmer.id,
+        cooperative_id=cooperative_id,
+        crop_type=farmer_in.crop_type,
+        acreage=farmer_in.acreage,
+    )
+    db.add(membership)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="This farmer is already a member of your cooperative",
+        )
+    db.refresh(membership)
+    response = FarmerResponse.model_validate(membership).model_dump()
+    response["existing_farmer"] = existing_farmer
+    return response
 
 
 @router.get("/", response_model=list[FarmerResponse])
@@ -75,19 +124,31 @@ def list_farmers(
     current_user: User | None = Depends(get_current_user),
 ):
     """List farmers with optional cooperative and status filters."""
-    query = db.query(Farmer)
+    query = db.query(CooperativeMembership).options(
+        joinedload(CooperativeMembership.farmer)
+    )
     if current_user and current_user.cooperative_id:
-        query = query.filter(Farmer.cooperative_id == current_user.cooperative_id)
+        query = query.filter(
+            CooperativeMembership.cooperative_id == current_user.cooperative_id
+        )
     elif cooperative_id is not None:
-        query = query.filter(Farmer.cooperative_id == cooperative_id)
+        query = query.filter(CooperativeMembership.cooperative_id == cooperative_id)
     else:
         settings = get_settings()
         if settings.auth_enabled:
             raise HTTPException(status_code=401, detail="Authentication required")
         raise HTTPException(status_code=400, detail="cooperative_id is required")
     if membership_status is not None:
-        query = query.filter(Farmer.membership_status == membership_status)
-    return query.order_by(Farmer.name).offset(skip).limit(limit).all()
+        query = query.filter(
+            CooperativeMembership.membership_status == membership_status
+        )
+    return (
+        query.join(Farmer)
+        .order_by(Farmer.name)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
 
 
 @router.get("/{farmer_id}", response_model=FarmerResponse)
@@ -108,20 +169,33 @@ def update_farmer(
     current_user: User | None = Depends(require_roles("admin")),
 ):
     """Partial-update farmer profile."""
-    farmer = _get_farmer_or_404(farmer_id, db, current_user)
+    membership = _get_farmer_or_404(farmer_id, db, current_user)
 
-    # Phone uniqueness check (only if changing phone)
-    if updates.phone and updates.phone != farmer.phone:
-        existing = db.query(Farmer).filter(Farmer.phone == updates.phone).first()
+    if updates.phone:
+        normalized_phone = normalize_ghana_phone(updates.phone)
+        existing = (
+            db.query(Farmer)
+            .filter(
+                Farmer.phone == normalized_phone,
+                Farmer.id != membership.farmer_id,
+            )
+            .first()
+        )
         if existing:
             raise HTTPException(status_code=409, detail="Phone number already registered to another farmer")
+        membership.farmer.phone = normalized_phone
 
-    for field, value in updates.model_dump(exclude_none=True).items():
-        setattr(farmer, field, value)
+    values = updates.model_dump(exclude_none=True, exclude={"phone", "cooperative_id"})
+    for field in ("name", "email", "location"):
+        if field in values:
+            setattr(membership.farmer, field, values[field])
+    for field in ("crop_type", "acreage", "membership_status"):
+        if field in values:
+            setattr(membership, field, values[field])
 
     db.commit()
-    db.refresh(farmer)
-    return farmer
+    db.refresh(membership)
+    return membership
 
 
 @router.delete("/{farmer_id}", status_code=204)

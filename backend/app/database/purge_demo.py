@@ -10,6 +10,7 @@ from app.database.demo_constants import DEMO_COOPERATIVE_NAME
 from app.models.models import (
     Cooperative,
     CooperativeAttendance,
+    CooperativeMembership,
     Farmer,
     Loan,
     PaymentWebhookEvent,
@@ -30,8 +31,13 @@ def purge_demo_cooperative(db: Session, *, dry_run: bool = False) -> dict:
     if not coop:
         return {"deleted": False, "reason": "demo cooperative not found"}
 
-    farmers = db.query(Farmer).filter(Farmer.cooperative_id == coop.id).all()
+    farmers = (
+        db.query(CooperativeMembership)
+        .filter(CooperativeMembership.cooperative_id == coop.id)
+        .all()
+    )
     farmer_ids = [f.id for f in farmers]
+    profile_ids = [f.farmer_id for f in farmers]
 
     tx_ids: list[int] = []
     if farmer_ids:
@@ -81,7 +87,19 @@ def purge_demo_cooperative(db: Session, *, dry_run: bool = False) -> dict:
         db.query(Transaction).filter(Transaction.farmer_id.in_(farmer_ids)).delete(synchronize_session=False)
         db.query(Loan).filter(Loan.farmer_id.in_(farmer_ids)).delete(synchronize_session=False)
         db.query(Production).filter(Production.farmer_id.in_(farmer_ids)).delete(synchronize_session=False)
-        db.query(Farmer).filter(Farmer.cooperative_id == coop.id).delete(synchronize_session=False)
+        db.query(CooperativeMembership).filter(
+            CooperativeMembership.cooperative_id == coop.id
+        ).delete(synchronize_session=False)
+        for profile_id in profile_ids:
+            has_other_membership = (
+                db.query(CooperativeMembership)
+                .filter(CooperativeMembership.farmer_id == profile_id)
+                .first()
+            )
+            if not has_other_membership:
+                db.query(Farmer).filter(Farmer.id == profile_id).delete(
+                    synchronize_session=False
+                )
 
     db.delete(coop)
     db.commit()

@@ -154,6 +154,41 @@ def test_ussd_option_1_known_farmer(client, farmer):
     assert farmer["name"] in resp.json()["response"]
 
 
+def test_direct_ussd_selects_cooperative_for_multi_membership(client, farmer):
+    second_coop = client.post(
+        "/cooperatives/",
+        json={"name": "Direct USSD Cooperative", "currency": "GHS"},
+    ).json()
+    client.post(
+        "/farmers/",
+        json={
+            "name": farmer["name"],
+            "phone": farmer["phone"],
+            "cooperative_id": second_coop["id"],
+        },
+    )
+
+    selection = client.post(
+        "/webhooks/moolre/ussd",
+        json={"sessionid": "multi-1", "phone": farmer["phone"], "input": ""},
+    )
+    assert selection.status_code == 200
+    assert "Choose a cooperative" in selection.json()["response"]
+    assert second_coop["name"] in selection.json()["response"]
+
+    main_menu = client.post(
+        "/webhooks/moolre/ussd",
+        json={"sessionid": "multi-1", "phone": farmer["phone"], "input": "2"},
+    )
+    assert "Check Loan Balance" in main_menu.json()["response"]
+
+    farm_status = client.post(
+        "/webhooks/moolre/ussd",
+        json={"sessionid": "multi-1", "phone": farmer["phone"], "input": "2*5"},
+    )
+    assert farmer["name"] in farm_status.json()["response"]
+
+
 def test_ussd_option_2_payment_instructions(client):
     resp = client.post(
         "/webhooks/moolre/ussd",

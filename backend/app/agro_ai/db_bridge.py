@@ -9,7 +9,12 @@ from sqlalchemy.orm import Session
 from app.agro_ai.farmer_features import extract_features_from_farmer
 from app.agro_ai.model import AgroAiCreditModel
 from app.agro_ai.synthetic_data import DEMO_FARMERS
-from app.models.models import Farmer, Transaction, TransactionStatus, TransactionType
+from app.models.models import (
+    CooperativeMembership as Farmer,
+    Transaction,
+    TransactionStatus,
+    TransactionType,
+)
 
 
 def format_member_code(farmer_id: int) -> str:
@@ -49,7 +54,7 @@ def farmer_to_assessment_input(farmer: Farmer, db: Session) -> dict[str, Any]:
 
 def list_assessments_from_db(db: Session, model: AgroAiCreditModel) -> list[dict[str, Any]] | None:
     try:
-        farmers = db.query(Farmer).order_by(Farmer.name).all()
+        farmers = db.query(Farmer).order_by(Farmer.id).all()
     except Exception:
         return None
     if not farmers:

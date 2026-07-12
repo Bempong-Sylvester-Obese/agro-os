@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
@@ -100,7 +101,7 @@ class Cooperative(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    farmers = relationship("Farmer", back_populates="cooperative")
+    memberships = relationship("CooperativeMembership", back_populates="cooperative")
 
 
 # ---------------------------------------------------------------------------
@@ -109,7 +110,7 @@ class Cooperative(Base):
 
 
 class Farmer(Base):
-    """Farmer / Member Model"""
+    """Global farmer identity shared across cooperative memberships."""
 
     __tablename__ = "farmers"
 
@@ -118,23 +119,57 @@ class Farmer(Base):
     phone = Column(String, unique=True, index=True, nullable=False)
     email = Column(String, unique=True, index=True, nullable=True)
     location = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    memberships = relationship("CooperativeMembership", back_populates="farmer")
+
+
+class CooperativeMembership(Base):
+    """A farmer's cooperative-specific membership and operating profile."""
+
+    __tablename__ = "cooperative_memberships"
+    __table_args__ = (
+        UniqueConstraint("farmer_id", "cooperative_id", name="uq_farmer_cooperative"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    farmer_id = Column(Integer, ForeignKey("farmers.id"), nullable=False, index=True)
+    cooperative_id = Column(
+        Integer, ForeignKey("cooperatives.id"), nullable=False, index=True
+    )
     crop_type = Column(String, nullable=True)
     acreage = Column(Float, nullable=True)
     membership_status = Column(
         Enum(MembershipStatus), default=MembershipStatus.active
     )
-    cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=False)
     trust_score = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationships
-    cooperative = relationship("Cooperative", back_populates="farmers")
+    farmer = relationship("Farmer", back_populates="memberships")
+    cooperative = relationship("Cooperative", back_populates="memberships")
     transactions = relationship("Transaction", back_populates="farmer")
     productions = relationship("Production", back_populates="farmer")
     loans = relationship("Loan", back_populates="farmer")
     trust_scores = relationship("TrustScore", back_populates="farmer")
     attendances = relationship("CooperativeAttendance", back_populates="farmer")
+
+    @property
+    def name(self):
+        return self.farmer.name
+
+    @property
+    def phone(self):
+        return self.farmer.phone
+
+    @property
+    def email(self):
+        return self.farmer.email
+
+    @property
+    def location(self):
+        return self.farmer.location
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +183,13 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     id = Column(Integer, primary_key=True, index=True)
-    farmer_id = Column(Integer, ForeignKey("farmers.id"), nullable=False)
+    farmer_id = Column(
+        "membership_id",
+        Integer,
+        ForeignKey("cooperative_memberships.id"),
+        nullable=False,
+        index=True,
+    )
     transaction_type = Column(Enum(TransactionType), nullable=False)
     amount = Column(Float, nullable=False)
     currency = Column(String, default="GHS")
@@ -165,7 +206,7 @@ class Transaction(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    farmer = relationship("Farmer", back_populates="transactions")
+    farmer = relationship("CooperativeMembership", back_populates="transactions")
 
 
 # ---------------------------------------------------------------------------
@@ -179,7 +220,13 @@ class Loan(Base):
     __tablename__ = "loans"
 
     id = Column(Integer, primary_key=True, index=True)
-    farmer_id = Column(Integer, ForeignKey("farmers.id"), nullable=False)
+    farmer_id = Column(
+        "membership_id",
+        Integer,
+        ForeignKey("cooperative_memberships.id"),
+        nullable=False,
+        index=True,
+    )
     amount = Column(Float, nullable=False)
     currency = Column(String, default="GHS")
     purpose = Column(Text, nullable=True)
@@ -197,7 +244,7 @@ class Loan(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    farmer = relationship("Farmer", back_populates="loans")
+    farmer = relationship("CooperativeMembership", back_populates="loans")
 
 
 # ---------------------------------------------------------------------------
@@ -211,7 +258,13 @@ class Production(Base):
     __tablename__ = "productions"
 
     id = Column(Integer, primary_key=True, index=True)
-    farmer_id = Column(Integer, ForeignKey("farmers.id"), nullable=False)
+    farmer_id = Column(
+        "membership_id",
+        Integer,
+        ForeignKey("cooperative_memberships.id"),
+        nullable=False,
+        index=True,
+    )
     crop_type = Column(String, nullable=False)
     season = Column(String, nullable=True)  # e.g. "2025A"
     expected_kg = Column(Float, nullable=True)
@@ -224,7 +277,7 @@ class Production(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    farmer = relationship("Farmer", back_populates="productions")
+    farmer = relationship("CooperativeMembership", back_populates="productions")
 
 
 # ---------------------------------------------------------------------------
@@ -238,7 +291,13 @@ class TrustScore(Base):
     __tablename__ = "trust_scores"
 
     id = Column(Integer, primary_key=True, index=True)
-    farmer_id = Column(Integer, ForeignKey("farmers.id"), nullable=False)
+    farmer_id = Column(
+        "membership_id",
+        Integer,
+        ForeignKey("cooperative_memberships.id"),
+        nullable=False,
+        index=True,
+    )
     score = Column(Float, nullable=False)
     payment_compliance = Column(Float, default=0.0)
     production_history = Column(Float, default=0.0)
@@ -247,7 +306,7 @@ class TrustScore(Base):
     calculated_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
-    farmer = relationship("Farmer", back_populates="trust_scores")
+    farmer = relationship("CooperativeMembership", back_populates="trust_scores")
 
 
 # ---------------------------------------------------------------------------
@@ -261,14 +320,20 @@ class CooperativeAttendance(Base):
     __tablename__ = "cooperative_attendances"
 
     id = Column(Integer, primary_key=True, index=True)
-    farmer_id = Column(Integer, ForeignKey("farmers.id"), nullable=False)
+    farmer_id = Column(
+        "membership_id",
+        Integer,
+        ForeignKey("cooperative_memberships.id"),
+        nullable=False,
+        index=True,
+    )
     event_name = Column(String, nullable=False)
     event_date = Column(DateTime, nullable=False)
     attended = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     # Relationships
-    farmer = relationship("Farmer", back_populates="attendances")
+    farmer = relationship("CooperativeMembership", back_populates="attendances")
 
 
 # ---------------------------------------------------------------------------
@@ -328,7 +393,12 @@ class UssdSession(Base):
     phone = Column(String, nullable=False, index=True)
     input_path = Column(String, nullable=True)
     response_text = Column(Text, nullable=True)
-    farmer_id = Column(Integer, ForeignKey("farmers.id"), nullable=True)
+    farmer_id = Column(
+        "membership_id",
+        Integer,
+        ForeignKey("cooperative_memberships.id"),
+        nullable=True,
+    )
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

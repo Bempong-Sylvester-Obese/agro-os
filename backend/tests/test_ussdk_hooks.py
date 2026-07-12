@@ -114,6 +114,65 @@ def test_loan_balance_registered_farmer_no_loans(client, farmer):
     assert body["balance"] == 0
 
 
+def test_multiple_memberships_require_cooperative_selection(client, farmer):
+    second_coop = client.post(
+        "/cooperatives/",
+        json={"name": "Second USSD Cooperative", "currency": "GHS"},
+    ).json()
+    second_membership = client.post(
+        "/farmers/",
+        json={
+            "name": farmer["name"],
+            "phone": farmer["phone"],
+            "cooperative_id": second_coop["id"],
+        },
+    ).json()
+
+    choose_resp = client.post(
+        "/ussdk/loan-balance",
+        json=_hook_payload(farmer["phone"]),
+    )
+    assert choose_resp.status_code == 200
+    choose_body = choose_resp.json()
+    assert choose_body["requires_cooperative_selection"] is True
+    assert len(choose_body["cooperatives"]) == 2
+
+    selected_resp = client.post(
+        "/ussdk/loan-balance",
+        json=_hook_payload(
+            farmer["phone"],
+            {"membership_id": second_membership["id"]},
+        ),
+    )
+    assert selected_resp.status_code == 200
+    assert selected_resp.json()["registered"] is True
+
+
+def test_rejects_membership_selection_owned_by_another_phone(client, farmer):
+    other_coop = client.post(
+        "/cooperatives/",
+        json={"name": "Other Phone Cooperative", "currency": "GHS"},
+    ).json()
+    other_member = client.post(
+        "/farmers/",
+        json={
+            "name": "Different Farmer",
+            "phone": "0249999999",
+            "cooperative_id": other_coop["id"],
+        },
+    ).json()
+
+    resp = client.post(
+        "/ussdk/loan-balance",
+        json=_hook_payload(
+            farmer["phone"],
+            {"membership_id": other_member["id"]},
+        ),
+    )
+    assert resp.status_code == 200
+    assert resp.json()["registered"] is False
+
+
 def test_wallet_balance_unregistered_phone_ends_session(client):
     resp = client.post(
         "/ussdk/wallet-balance",

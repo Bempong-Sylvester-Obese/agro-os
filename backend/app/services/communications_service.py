@@ -10,7 +10,11 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.models.models import CommunicationLog, Farmer, MessageType
+from app.models.models import (
+    CommunicationLog,
+    CooperativeMembership as Farmer,
+    MessageType,
+)
 from app.services.moolre_service import MoolreService
 
 
@@ -109,7 +113,7 @@ class CommunicationsService:
         Send a bulk SMS to all (active) members of a cooperative.
         Returns total recipients, successes, and failures.
         """
-        from app.models.models import Farmer, MembershipStatus
+        from app.models.models import CooperativeMembership as Farmer, MembershipStatus
 
         query = db.query(Farmer).filter(Farmer.cooperative_id == cooperative_id)
         if active_only:
@@ -156,7 +160,7 @@ class CommunicationsService:
         Send dues reminder to ALL active members of a cooperative in one call.
         """
         from app.config import get_settings
-        from app.models.models import Farmer, MembershipStatus
+        from app.models.models import CooperativeMembership as Farmer, MembershipStatus
 
         settings = get_settings()
         merchant = settings.moolre_merchant_code or "AgroOS"
