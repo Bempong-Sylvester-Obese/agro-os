@@ -51,6 +51,11 @@ export default function Footer() {
           <a href="/login?mode=signup" className="footer-link" onClick={go('login', { loginMode: 'signup' })}>Request access</a>
           <a href="/book-demo" className="footer-link" onClick={go('bookDemo')}>Help center</a>
         </div>
+
+        <div>
+          <div className="footer-col-title">Legal</div>
+          <a href="/compliance" className="footer-link" onClick={go('compliance')}>Compliance policy</a>
+        </div>
       </div>
 
       <div className="footer-btm">

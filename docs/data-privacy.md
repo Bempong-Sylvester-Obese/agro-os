@@ -1,5 +1,9 @@
 # AgroOS Data Privacy Policy
 
+> This document covers data handling specifically. For the broader
+> regulatory picture (payments, AML, telecom, cooperative law), see
+> [`COMPLIANCE.md`](../COMPLIANCE.md) at the repo root.
+
 > **Status:** Draft — Hackathon Scope (Moolre Startup Cup, July 2026)
 > **Last updated:** 2026-06
 > **Maintainer:** AgroOS Core Team (Ramzy, Julien, Elvis, Sylvester)
