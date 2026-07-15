@@ -69,9 +69,10 @@ When the database is seeded, Agro-AI assessments are built from DB farmer record
 | Collect dues | POST | `/transactions/dues/collect` | `DuesCollectResponse` |
 
 **TransactionResponse** statuses: `pending`, `completed`, `failed`. Channel `13` = MoMo.
-Pending collections also expose `customer_action` (`otp`, `approval`, or `none`),
-`action_expires_at`, and `initiation_channel`. The dashboard initiates a collect
-once and never accepts a member OTP.
+Pending collections also expose `customer_action` (`initiating`, `otp`,
+`processing_otp`, `approval`, or `none`), `action_expires_at`, and
+`initiation_channel`. The dashboard initiates a collect once and never accepts
+a member OTP.
 
 ### Loans, Production, SMS
 

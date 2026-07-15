@@ -68,7 +68,8 @@ Select option: _
 2. The farmer dials the USSD code and pays dues through Moolre.
 3. Moolre sends a payment webhook to the FastAPI backend.
 4. The backend records the transaction and recalculates the farmer's Trust Score.
-5. The admin dashboard updates with the new payment and higher Trust Score.
+5. The dashboard shows the new payment; the recalculated Trust Score is
+   available through the backend API.
 6. The farmer submits a fertilizer/input loan request through USSD.
 7. A cooperative leader approves or rejects the request in the dashboard.
 8. An approved payout is sent back to the farmer through Moolre.

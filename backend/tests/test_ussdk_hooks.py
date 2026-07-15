@@ -3,6 +3,8 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 
 def _tp14_result(ext_ref: str) -> dict:
     return {
@@ -39,12 +41,13 @@ def _hook_payload(msisdn: str, values: dict | None = None) -> dict:
     }
 
 
-def test_ussdk_hooks_fail_closed_without_production_secret(client):
+@pytest.mark.parametrize("app_env", ["production", "Production", "prod"])
+def test_ussdk_hooks_fail_closed_without_production_secret(client, app_env):
     with patch(
         "app.routes.ussdk_hooks.get_settings",
         return_value=SimpleNamespace(
             ussdk_hook_secret="",
-            app_env="production",
+            app_env=app_env,
         ),
     ):
         response = client.post(

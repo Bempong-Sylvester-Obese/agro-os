@@ -117,7 +117,7 @@ class CommunicationsService:
         merchant = get_settings().moolre_merchant_code or "AgroOS"
         message = (
             f"AgroOS: Complete your GHS {amount:.2f} payment on your phone. "
-            f"Dial *203*{merchant}# and choose Pending Payment. "
+            f"Dial *203*{merchant}# and choose Complete Pending Payment. "
             "Never share your OTP with cooperative staff."
         )
         result = await self.moolre.send_single_sms(

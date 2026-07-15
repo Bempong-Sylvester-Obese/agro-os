@@ -38,6 +38,12 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
       if (res.customer_action === 'otp') {
         setMsg('Request sent. The member must enter their OTP through AgroOS USSD on their own phone.')
         setTimeout(() => onSuccess(), 3000)
+      } else if (res.customer_action === 'initiating') {
+        setMsg('Payment initiation is being confirmed. Do not send another request.')
+        setTimeout(() => onSuccess(), 3000)
+      } else if (res.customer_action === 'processing_otp') {
+        setMsg('The member’s OTP is already being processed.')
+        setTimeout(() => onSuccess(), 3000)
       } else if (res.status === 'pending') {
         setMsg('Payment initiated. Waiting for the member to approve on their phone.')
         setTimeout(() => onSuccess(), 3000)
@@ -280,7 +286,9 @@ export default function Payments({ farmers = [], transactions = [], cooperativeI
               const method = ussdChannels.includes(tx.channel) ? 'USSD' : (tx.channel || 'Manual')
               const date = new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
               let cls = 'bdg-amber', label = 'Pending'
+              if (tx.status === 'pending' && tx.customer_action === 'initiating') label = 'Confirming initiation'
               if (tx.status === 'pending' && tx.customer_action === 'otp') label = 'Awaiting member OTP'
+              if (tx.status === 'pending' && tx.customer_action === 'processing_otp') label = 'Processing member OTP'
               if (tx.status === 'pending' && tx.customer_action === 'approval') label = 'Awaiting phone approval'
               if (tx.status === 'completed') { cls = 'bdg-green'; label = 'Paid' }
               if (tx.status === 'failed') { cls = 'bdg-red'; label = 'Failed' }

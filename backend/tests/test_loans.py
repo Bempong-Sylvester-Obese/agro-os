@@ -1,7 +1,10 @@
 """Tests for /loans endpoints (with Moolre transfer mocked)"""
 
 from contextlib import contextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from app.models.models import Loan, Transaction, TransactionStatus, TransactionType
 from app.routes.loans import _disburse_external_ref
@@ -30,6 +33,23 @@ def _mock_disburse_moolre(*, transfer_result=None, status_result=None, wallet_ac
         ) as mock_status,
     ):
         yield mock_transfer, mock_status
+
+
+def test_legacy_loan_creation_is_available_only_in_test_mode(client, farmer):
+    with patch(
+        "app.routes.loans.get_settings",
+        return_value=SimpleNamespace(app_env="development"),
+    ):
+        response = client.post(
+            "/loans/",
+            json={
+                "farmer_id": farmer["id"],
+                "amount": 100,
+                "purpose": "Legacy fixture",
+            },
+        )
+
+    assert response.status_code == 403
 
 
 def _transfer_initiated(ext_ref: str = "some-uuid") -> dict:
@@ -501,6 +521,32 @@ def test_repay_loan_stays_disbursed_when_payment_pending(client, farmer):
 
     assert repay_resp.status_code == 200
     assert repay_resp.json()["status"] == "disbursed"
+
+
+def test_ambiguous_repayment_preserves_attempt_and_blocks_duplicate(
+    client, farmer, db
+):
+    loan_id = _approve_and_disburse(client, farmer, 150.0)
+
+    with patch(
+        "app.routes.loans.MoolreService.initiate_payment",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("provider timeout"),
+    ) as mock_pay:
+        with pytest.raises(RuntimeError, match="provider timeout"):
+            client.post(f"/loans/{loan_id}/repay")
+        repeated = client.post(f"/loans/{loan_id}/repay")
+
+    tx = db.query(Transaction).filter(
+        Transaction.loan_id == loan_id,
+        Transaction.transaction_type == TransactionType.repayment,
+    ).one()
+    assert repeated.status_code == 200
+    assert repeated.json()["status"] == "disbursed"
+    assert tx.status == TransactionStatus.pending
+    assert tx.customer_action == "initiating"
+    assert tx.action_expires_at is not None
+    mock_pay.assert_called_once()
 
 
 def test_farmer_completes_repayment_otp_from_ussdk(client, farmer, db):

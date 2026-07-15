@@ -582,6 +582,12 @@ async def handle_ussd_session(
                     ),
                     "reply": False,
                 }
+            if tx.customer_action == "processing_otp":
+                _ussd_sessions.pop(session_id, None)
+                return {
+                    "message": "Your OTP is already being processed. Check again shortly.",
+                    "reply": False,
+                }
             state["step"] = "pending_payment_otp"
             state["transaction_id"] = tx.id
             return {
@@ -606,7 +612,13 @@ async def handle_ussd_session(
             return {"message": "Enter one of the listed payment numbers:", "reply": True}
         tx = (
             db.query(Transaction)
-            .filter(Transaction.id == transaction_id, Transaction.farmer_id == farmer.id)
+            .filter(
+                Transaction.id == transaction_id,
+                Transaction.farmer_id == farmer.id,
+                Transaction.status == TransactionStatus.pending,
+                Transaction.customer_action.in_(("otp", "processing_otp", "approval")),
+                Transaction.action_expires_at > datetime.utcnow(),
+            )
             .first()
         )
         if not tx:
@@ -616,6 +628,12 @@ async def handle_ussd_session(
             _ussd_sessions.pop(session_id, None)
             return {
                 "message": f"GHS {tx.amount:.2f} is waiting for approval on your phone.",
+                "reply": False,
+            }
+        if tx.customer_action == "processing_otp":
+            _ussd_sessions.pop(session_id, None)
+            return {
+                "message": "Your OTP is already being processed. Check again shortly.",
                 "reply": False,
             }
         state["step"] = "pending_payment_otp"
@@ -662,6 +680,9 @@ async def handle_ussd_session(
                 msg = "This payment cannot be completed through USSD."
         except HTTPException as exc:
             msg = exc.detail if isinstance(exc.detail, str) else "Payment could not be completed."
+        except Exception:
+            logger.exception("Pending USSD payment failed for transaction %s", tx.id)
+            msg = "Payment could not be completed. Check again shortly."
         retry_otp = tx.customer_action == "otp" and tx.status == TransactionStatus.pending
         if not retry_otp:
             _ussd_sessions.pop(session_id, None)
@@ -743,19 +764,27 @@ async def handle_ussd_session(
             return {"message": msg, "reply": True}
 
         external_ref = str(uuid.uuid4())
-        result = await _run_dues_collect(
-            farmer=farmer,
-            amount=amount,
-            channel="13",
-            description="Cooperative dues (USSD)",
-            external_ref=external_ref,
-            otp_code=None,
-            db=db,
-            initiation_channel="moolre_ussd",
-        )
+        try:
+            result = await _run_dues_collect(
+                farmer=farmer,
+                amount=amount,
+                channel="13",
+                description="Cooperative dues (USSD)",
+                external_ref=external_ref,
+                otp_code=None,
+                db=db,
+                initiation_channel="moolre_ussd",
+            )
+        except Exception:
+            logger.exception("Could not initiate USSD dues payment for farmer %s", farmer.id)
+            _ussd_sessions.pop(session_id, None)
+            return {
+                "message": "Payment could not be started. Try again later.",
+                "reply": False,
+            }
         if result.outcome == "verification_required":
             state["step"] = "pay_otp"
-            state["external_ref"] = external_ref
+            state["external_ref"] = result.moolre_reference or external_ref
             state["amount"] = amount
             msg = "Enter the OTP sent to your phone:"
             _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
@@ -770,18 +799,34 @@ async def handle_ussd_session(
 
     # ---- Pay dues: OTP confirmation
     if state["step"] == "pay_otp":
-        result = await _run_dues_collect(
-            farmer=farmer,
-            amount=state.get("amount", 0),
-            channel="13",
-            description="Cooperative dues (USSD)",
-            external_ref=state["external_ref"],
-            otp_code=message,
-            db=db,
-            initiation_channel="moolre_ussd",
+        tx = (
+            db.query(Transaction)
+            .filter(
+                Transaction.moolre_reference == state["external_ref"],
+                Transaction.farmer_id == farmer.id,
+            )
+            .first()
         )
-        msg = result.message or "Payment could not be completed. Try again later."
-        retry_otp = result.customer_action == "otp"
+        if not tx:
+            _ussd_sessions.pop(session_id, None)
+            return {"message": "Pending payment not found.", "reply": False}
+        try:
+            result = await resume_dues_customer_action(
+                transaction=tx,
+                farmer=farmer,
+                otp_code=message,
+                db=db,
+            )
+            msg = result.message or "Payment could not be completed. Try again later."
+        except HTTPException as exc:
+            msg = exc.detail if isinstance(exc.detail, str) else "Payment could not be completed."
+        except Exception:
+            logger.exception("USSD dues OTP failed for transaction %s", tx.id)
+            msg = "Payment could not be completed. Check again shortly."
+        db.refresh(tx)
+        retry_otp = (
+            tx.status == TransactionStatus.pending and tx.customer_action == "otp"
+        )
         if not retry_otp:
             _ussd_sessions.pop(session_id, None)
         _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path="[otp-redacted]", response_text=msg, farmer=farmer)

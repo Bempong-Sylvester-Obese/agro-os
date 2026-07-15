@@ -21,6 +21,7 @@ import hashlib
 import hmac
 import logging
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -32,11 +33,13 @@ from app.models.models import (
     Loan,
     LoanStatus,
     Transaction,
+    TransactionStatus,
     TransactionType,
 )
 from app.routes.loans import resume_loan_repayment_customer_action
 from app.routes.transactions import (
     _run_dues_collect,
+    expire_customer_actions,
     pending_customer_actions,
     resume_dues_customer_action,
 )
@@ -64,7 +67,7 @@ def _verify_ussdk_signature(body: bytes, signature: str | None) -> bool:
     """
     settings = get_settings()
     if not settings.ussdk_hook_secret:
-        if settings.app_env == "production":
+        if settings.app_env.lower() in ("production", "prod"):
             logger.error("USSDK_HOOK_SECRET is required in production")
             return False
         logger.warning("USSDK_HOOK_SECRET not set — skipping signature verification")
@@ -285,9 +288,16 @@ async def pending_payment(
         selected_id = int(transaction_id)
     except (TypeError, ValueError):
         return {"action": "retry", "message": "Choose a valid pending payment."}
+    expire_customer_actions(db, farmer_id=farmer.id)
     tx = (
         db.query(Transaction)
-        .filter(Transaction.id == selected_id, Transaction.farmer_id == farmer.id)
+        .filter(
+            Transaction.id == selected_id,
+            Transaction.farmer_id == farmer.id,
+            Transaction.status == TransactionStatus.pending,
+            Transaction.customer_action.in_(("otp", "processing_otp", "approval")),
+            Transaction.action_expires_at > datetime.utcnow(),
+        )
         .first()
     )
     if not tx:
@@ -296,6 +306,11 @@ async def pending_payment(
         return {
             "action": "end",
             "message": "Approve the payment prompt on your phone to complete.",
+        }
+    if tx.customer_action == "processing_otp":
+        return {
+            "action": "end",
+            "message": "Your OTP is already being processed. Check again shortly.",
         }
 
     otp_code = str(values.get("otp_code", "")).strip()
@@ -334,6 +349,12 @@ async def pending_payment(
         return {
             "action": "end" if exc.status_code in (404, 410) else "retry",
             "message": str(exc.detail),
+        }
+    except Exception:
+        logger.exception("Pending payment completion failed for transaction %s", tx.id)
+        return {
+            "action": "end",
+            "message": "Payment could not be completed. Check again shortly.",
         }
     if retry_otp:
         return {

@@ -76,9 +76,9 @@ AgroOS recalculates Abena's Trust Score after the successful dues payment.
 
 What to show:
 
-- Previous score.
-- New score.
-- Reason for score movement: dues paid on time.
+- The completed payment in the dashboard.
+- The recalculated Trust Score response from `GET /farmers/{id}/trust-score`
+  if the API is part of the live demo.
 
 Suggested explanation:
 
@@ -87,13 +87,12 @@ Suggested explanation:
 ### 5. Admin Approves Input Loan
 
 Abena submits a fertilizer/input loan from USSD. The request appears in the
-Loans tab, where the admin reviews her improved score and approves or rejects
-it. The admin does not log the request on her behalf.
+Loans tab, where the admin reviews the request and approves or rejects it. The
+admin does not log the request on her behalf.
 
 What to show:
 
 - Farmer profile.
-- Trust Score.
 - USSD-originated loan request details.
 - Approval action.
 
@@ -147,8 +146,8 @@ Set `VITE_API_URL=http://localhost:8000` in `frontend/.env` for local wiring.
 | 1 | SMS broadcasts | Send dues reminder to cooperative | "AgroOS nudges farmers to pay through familiar SMS channels." |
 | 2 | USSD activity | Show menu log or describe *203* flow | "Farmers without smartphones reach the cooperative through USSD." |
 | 3 | USSD activity | Complete a live Moolre payment and refresh | "Moolre confirms payment and AgroOS updates records instantly." |
-| 4 | Overview / Scores | Show Trust Score movement for Abena | "Every payment builds alternative credit data for farmers." |
-| 5 | Loans | Approve Abena's input loan | "Cooperative admins decide loans with trust and ML scores side by side." |
+| 4 | Overview / Scores | Explain the API-backed Trust Score and dashboard Agro-AI score | "Every payment builds alternative credit data for farmers." |
+| 5 | Loans | Approve Abena's input loan | "Cooperative admins review farmer-originated requests before funds move." |
 | 6 | Payments | Show completed transaction + webhook audit | "Finance teams reconcile Moolre payments in one dashboard." |
 
 ### Fallback: USSD without live short code

@@ -42,6 +42,8 @@ from app.services.moolre_service import MoolreService
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 CUSTOMER_ACTION_TTL = timedelta(minutes=15)
+INITIATING_ACTION_TTL = timedelta(minutes=2)
+PROCESSING_ACTION_TTL = timedelta(minutes=2)
 logger = logging.getLogger(__name__)
 
 
@@ -61,10 +63,14 @@ def _dues_collect_response(tx: Transaction, result: dict) -> DuesCollectResponse
         else:
             outcome = "failed"
 
-    if outcome == "verification_required":
+    if tx.status == TransactionStatus.completed:
+        status = "completed"
+    elif tx.status == TransactionStatus.failed:
+        status = "failed"
+    elif outcome == "verification_required":
         status = "verification_required"
     elif (
-        outcome in ("initiating", "push_sent")
+        outcome in ("initiating", "processing_otp", "push_sent")
         or result.get("success")
         or verification_required
     ):
@@ -117,7 +123,8 @@ async def _run_dues_collect(
             channel=channel,
             description=description,
             initiation_channel=initiation_channel,
-            customer_action="none",
+            customer_action="initiating",
+            action_expires_at=datetime.utcnow() + INITIATING_ACTION_TTL,
         )
         db.add(tx)
         db.commit()
@@ -144,15 +151,33 @@ async def _run_dues_collect(
             account_number=coop_account,
         )
     except Exception:
-        tx.status = TransactionStatus.failed
-        db.commit()
+        # A timeout may happen after Moolre accepted the request. Preserve the
+        # reference for reconciliation instead of allowing a duplicate charge.
         raise
+
+    db.expire_all()
+    tx = (
+        db.query(Transaction)
+        .filter(
+            Transaction.moolre_reference == external_ref,
+            Transaction.farmer_id == farmer.id,
+        )
+        .with_for_update()
+        .one()
+    )
+    if tx.status in (TransactionStatus.completed, TransactionStatus.failed):
+        return _dues_collect_response(
+            tx,
+            {
+                "outcome": tx.status.value,
+                "message": f"Payment already {tx.status.value}.",
+            },
+        )
 
     if result.get("moolre_reference") and result["moolre_reference"] != external_ref:
         ref_val = str(result["moolre_reference"]).lower()
         if ref_val not in ("all", "phoneno", "externalref", "senderid"):
             tx.moolre_reference = result["moolre_reference"]
-            db.commit()
 
     verification_required = result.get("verification_required", False) or result.get("outcome") == "verification_required"
     if verification_required:
@@ -213,7 +238,7 @@ def pending_customer_actions(
         .filter(
             Transaction.farmer_id == farmer.id,
             Transaction.status == TransactionStatus.pending,
-            Transaction.customer_action.in_(("otp", "approval")),
+            Transaction.customer_action.in_(("otp", "processing_otp", "approval")),
             Transaction.action_expires_at > datetime.utcnow(),
         )
         .order_by(Transaction.created_at.desc())
@@ -229,17 +254,34 @@ async def resume_dues_customer_action(
     db: Session,
 ) -> DuesCollectResponse:
     """Resume an OTP-gated dues request from the payer's phone channel."""
-    if transaction.farmer_id != farmer.id:
-        raise HTTPException(status_code=404, detail="Pending payment not found")
-    if transaction.transaction_type != TransactionType.dues:
-        raise HTTPException(status_code=409, detail="Pending payment is not dues")
-    if transaction.customer_action != "otp":
-        raise HTTPException(status_code=409, detail="Payment is not awaiting OTP")
-    if not transaction.action_expires_at or transaction.action_expires_at <= datetime.utcnow():
-        transaction.status = TransactionStatus.failed
-        transaction.customer_action = "expired"
-        db.commit()
-        raise HTTPException(status_code=410, detail="Payment verification has expired")
+    now = datetime.utcnow()
+    claimed = (
+        db.query(Transaction)
+        .filter(
+            Transaction.id == transaction.id,
+            Transaction.farmer_id == farmer.id,
+            Transaction.transaction_type == TransactionType.dues,
+            Transaction.status == TransactionStatus.pending,
+            Transaction.customer_action == "otp",
+            Transaction.action_expires_at > now,
+        )
+        .update(
+            {
+                Transaction.customer_action: "processing_otp",
+                Transaction.action_expires_at: now + PROCESSING_ACTION_TTL,
+            },
+            synchronize_session=False,
+        )
+    )
+    db.commit()
+    if claimed != 1:
+        raise HTTPException(
+            status_code=409,
+            detail="Payment verification is already processing or unavailable",
+        )
+    transaction = (
+        db.query(Transaction).filter(Transaction.id == transaction.id).one()
+    )
     return await _run_dues_collect(
         farmer=farmer,
         amount=transaction.amount,
@@ -460,6 +502,9 @@ async def reconcile_transaction(
         tx.status = TransactionStatus.completed
     elif tx.status == TransactionStatus.pending and provider_status == "failed":
         tx.status = TransactionStatus.failed
+    if tx.status in (TransactionStatus.completed, TransactionStatus.failed):
+        tx.customer_action = "none"
+        tx.action_expires_at = None
     if current_user:
         db.add(
             AdminAuditLog(
@@ -552,7 +597,9 @@ async def collect_dues(
             Transaction.transaction_type == TransactionType.dues,
             Transaction.status == TransactionStatus.pending,
             Transaction.initiation_channel == "dashboard",
-            Transaction.customer_action.in_(("none", "otp", "approval")),
+            Transaction.customer_action.in_(
+                ("none", "initiating", "otp", "processing_otp", "approval")
+            ),
         )
         .order_by(Transaction.created_at.desc())
         .first()
@@ -563,22 +610,85 @@ async def collect_dues(
                 status_code=409,
                 detail="This member already has a pending dues request.",
             )
-        return _dues_collect_response(
-            existing,
-            {
-                "outcome": (
-                    "verification_required"
-                    if existing.customer_action == "otp"
-                    else (
-                        "push_sent"
-                        if existing.customer_action == "approval"
-                        else "initiating"
+        if existing.customer_action == "none":
+            # Retire transactions created by the pre-initiating-state version.
+            existing.status = TransactionStatus.failed
+            db.commit()
+            existing = None
+        elif existing.customer_action in ("initiating", "processing_otp"):
+            if (
+                existing.action_expires_at
+                and existing.action_expires_at <= datetime.utcnow()
+            ):
+                try:
+                    provider = await MoolreService().payment_status(
+                        external_ref=existing.moolre_reference,
+                        account_number=_cooperative_account(farmer, db),
                     )
-                ),
-                "verification_required": existing.customer_action == "otp",
-                "message": "The existing payment request is still awaiting the member.",
-            },
-        )
+                except Exception as exc:
+                    raise HTTPException(
+                        status_code=503,
+                        detail=(
+                            "The existing payment request could not be reconciled. "
+                            "Try again shortly."
+                        ),
+                    ) from exc
+                db.expire_all()
+                existing = (
+                    db.query(Transaction)
+                    .filter(Transaction.id == existing.id)
+                    .with_for_update()
+                    .one()
+                )
+                provider_status = provider.get("status", "pending")
+                if provider_status == "completed":
+                    existing.status = TransactionStatus.completed
+                    existing.customer_action = "none"
+                    existing.action_expires_at = None
+                elif provider_status == "failed":
+                    existing.status = TransactionStatus.failed
+                    existing.customer_action = "none"
+                    existing.action_expires_at = None
+                    existing = None
+                else:
+                    existing.action_expires_at = (
+                        datetime.utcnow() + INITIATING_ACTION_TTL
+                    )
+                db.commit()
+            if existing is not None:
+                return _dues_collect_response(
+                    existing,
+                    {
+                        "outcome": (
+                            "completed"
+                            if existing.status == TransactionStatus.completed
+                            else existing.customer_action
+                        ),
+                        "message": (
+                            "Payment completed."
+                            if existing.status == TransactionStatus.completed
+                            else "The existing payment request is still being reconciled."
+                        ),
+                    },
+                )
+        if existing is not None:
+            outcome = (
+                "verification_required"
+                if existing.customer_action == "otp"
+                else (
+                    "processing_otp"
+                    if existing.customer_action == "processing_otp"
+                    else "push_sent"
+                )
+            )
+            return _dues_collect_response(
+                existing,
+                {
+                    "outcome": outcome,
+                    "verification_required": existing.customer_action == "otp",
+                    "message": "The existing payment request is still awaiting the member.",
+                },
+            )
 
     ext_ref = str(uuid.uuid4())
     result = await _run_dues_collect(

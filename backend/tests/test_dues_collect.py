@@ -3,6 +3,8 @@
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 from app.models.models import Transaction, TransactionStatus, TransactionType
 
 
@@ -153,6 +155,36 @@ def test_dashboard_collect_is_idempotent_while_member_action_is_pending(client, 
     mock_pay.assert_called_once()
 
 
+def test_ambiguous_dues_initiation_preserves_reference_and_blocks_retry(
+    client, farmer, db
+):
+    with patch(
+        "app.routes.transactions.MoolreService.initiate_payment",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("provider timeout"),
+    ) as mock_pay:
+        with pytest.raises(RuntimeError, match="provider timeout"):
+            client.post(
+                "/transactions/dues/collect",
+                json={"farmer_id": farmer["id"], "amount": 30},
+            )
+        repeated = client.post(
+            "/transactions/dues/collect",
+            json={"farmer_id": farmer["id"], "amount": 30},
+        )
+
+    tx = db.query(Transaction).filter(
+        Transaction.farmer_id == farmer["id"],
+        Transaction.transaction_type == TransactionType.dues,
+    ).one()
+    assert repeated.status_code == 200
+    assert repeated.json()["transaction_id"] == tx.id
+    assert tx.status == TransactionStatus.pending
+    assert tx.customer_action == "initiating"
+    assert tx.action_expires_at is not None
+    mock_pay.assert_called_once()
+
+
 def test_expired_customer_action_becomes_terminal_on_dashboard_read(
     client, farmer, cooperative, db
 ):
@@ -249,6 +281,49 @@ def test_farmer_resumes_dashboard_dues_otp_from_ussdk(client, farmer, db):
     call_kwargs = mock_pay.call_args.kwargs
     assert call_kwargs["otpcode"] == "123456"
     assert call_kwargs["external_ref"] == ext_ref
+
+
+def test_otp_attempt_is_claimed_before_provider_call(client, farmer, db):
+    with patch(
+        "app.routes.transactions.MoolreService.initiate_payment",
+        new_callable=AsyncMock,
+    ) as mock_pay:
+        mock_pay.return_value = _tp14_result("claimed-otp-ref")
+        collect = client.post(
+            "/transactions/dues/collect",
+            json={"farmer_id": farmer["id"], "amount": 15},
+        )
+        tx_id = collect.json()["transaction_id"]
+
+        mock_pay.side_effect = RuntimeError("provider timeout")
+        first = client.post(
+            "/ussdk/pending-payment",
+            json={
+                "input": {},
+                "props": {
+                    "session": {"msisdn": farmer["phone"]},
+                    "values": {"transaction_id": tx_id, "otp_code": "123456"},
+                },
+            },
+        )
+        second = client.post(
+            "/ussdk/pending-payment",
+            json={
+                "input": {},
+                "props": {
+                    "session": {"msisdn": farmer["phone"]},
+                    "values": {"transaction_id": tx_id, "otp_code": "123456"},
+                },
+            },
+        )
+
+    tx = db.query(Transaction).filter(Transaction.id == tx_id).one()
+    assert first.json()["action"] == "end"
+    assert second.json()["action"] == "end"
+    assert "already being processed" in second.json()["message"]
+    assert tx.status == TransactionStatus.pending
+    assert tx.customer_action == "processing_otp"
+    assert mock_pay.call_count == 2
 
 
 def test_pending_payment_cannot_be_resumed_by_another_phone(
