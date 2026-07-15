@@ -41,7 +41,7 @@ def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
     schema = f"agro_migrations_{uuid4().hex}"
     original_database_url = os.environ.get("DATABASE_URL")
     admin_engine = create_engine(DATABASE_URL)
-    scoped_url = make_url(DATABASE_URL).update(
+    scoped_url = make_url(DATABASE_URL).set(
         query={
             **dict(make_url(DATABASE_URL).query),
             "options": f"-csearch_path={schema}",
