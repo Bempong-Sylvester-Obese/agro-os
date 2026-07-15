@@ -1,6 +1,10 @@
 """Tests for /communications endpoints"""
 
+import asyncio
 from unittest.mock import AsyncMock, patch
+
+from app.models.models import CooperativeMembership
+from app.services.communications_service import CommunicationsService
 
 
 def _mock_sms_success(*_args, **_kwargs):
@@ -49,6 +53,34 @@ def test_send_dues_reminder(mock_send, client, cooperative, farmer):
     assert data["status"] == "success"
     assert data["recipients_count"] == 1
     mock_send.assert_awaited_once()
+    message = mock_send.await_args.args[0][0]["message"]
+    assert "Dial *919*4020# and choose Pay Cooperative Dues" in message
+    assert "*203*" not in message
+
+
+def test_payment_action_sms_uses_agroos_ussd_code(db, farmer):
+    member = (
+        db.query(CooperativeMembership)
+        .filter(CooperativeMembership.id == farmer["id"])
+        .one()
+    )
+    with patch(
+        "app.services.communications_service.MoolreService.send_single_sms",
+        new_callable=AsyncMock,
+        return_value={"success": True, "message": "SMS queued", "raw": {}},
+    ) as mock_send:
+        asyncio.run(
+            CommunicationsService().send_payment_action_required(
+                farmer=member,
+                amount=3,
+                reference="payment-action-ref",
+                db=db,
+            )
+        )
+
+    message = mock_send.await_args.kwargs["message"]
+    assert "Dial *919*4020# and choose Complete Pending Payment" in message
+    assert "*203*" not in message
 
 
 def test_broadcast_cooperative_not_found(client):

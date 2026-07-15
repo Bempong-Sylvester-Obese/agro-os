@@ -144,7 +144,7 @@ Set `VITE_API_URL=http://localhost:8000` in `frontend/.env` for local wiring.
 | Step | Tab | Action | Judge one-liner |
 |------|-----|--------|-----------------|
 | 1 | SMS broadcasts | Send dues reminder to cooperative | "AgroOS nudges farmers to pay through familiar SMS channels." |
-| 2 | USSD activity | Show menu log or describe *203* flow | "Farmers without smartphones reach the cooperative through USSD." |
+| 2 | USSD activity | Show menu log or dial *919*4020# | "Farmers without smartphones reach the cooperative through USSD." |
 | 3 | USSD activity | Complete a live Moolre payment and refresh | "Moolre confirms payment and AgroOS updates records instantly." |
 | 4 | Overview / Scores | Explain the API-backed Trust Score and dashboard Agro-AI score | "Every payment builds alternative credit data for farmers." |
 | 5 | Loans | Approve Abena's input loan | "Cooperative admins review farmer-originated requests before funds move." |

@@ -157,7 +157,8 @@ If TP14, the response includes:
 
 **Step 2 — Farmer completes the pending payment on their phone:**
 
-1. The member dials the AgroOS merchant code.
+1. The member dials the configured `AGROOS_USSD_CODE` (currently
+   `*919*4020#`).
 2. They choose **Complete Pending Payment**.
 3. AgroOS resolves pending actions from the caller's registered phone.
 4. The member enters the Moolre OTP in that USSD session.
@@ -195,7 +196,10 @@ Required env vars:
 - `MOOLRE_API_VASKEY` — live SMS VAS key from the Moolre **developer portal** (regenerate if broadcasts return `AIN01` / `Authentication Error`)
 - `MOOLRE_API_USER` — same API user as payments
 - `DEFAULT_SMS_SENDER_ID` — must be approved in [app.moolre.com](https://app.moolre.com)
-- `MOOLRE_MERCHANT_CODE` (included in dues reminder dial string)
+- `AGROOS_USSD_CODE` — complete approved AgroOS menu dial string used in
+  farmer-facing payment instructions
+- `MOOLRE_MERCHANT_CODE` — bare Moolre merchant identifier only; do not include
+  `*203*` or `#`
 
 Payments/USSD continue to use `MOOLRE_API_KEY`, `MOOLRE_API_PUBKEY`, and `MOOLRE_ACCOUNT_NUMBER`.
 

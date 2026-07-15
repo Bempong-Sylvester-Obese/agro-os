@@ -38,18 +38,15 @@ class CommunicationsService:
         db: Session,
         sent_by: str | None = None,
     ) -> dict:
-        """
-        Send a dues payment reminder to a single farmer.
-        Template: "Dear {name}, your cooperative dues of GHS {amount} are due by {due_date}.
-                   Dial *203#{merchant_code}# to pay via mobile money. - AgroOS"
-        """
+        """Send a dues reminder with the configured AgroOS menu code."""
         from app.config import get_settings
+
         settings = get_settings()
-        merchant = settings.moolre_merchant_code or "AgroOS"
+        ussd_code = settings.agroos_ussd_code.strip() or "*919*4020#"
 
         message = (
             f"Dear {farmer.name}, your cooperative dues of GHS {amount:.2f} are due by {due_date}. "
-            f"Dial *203*{merchant}# to pay via mobile money. - AgroOS"
+            f"Dial {ussd_code} and choose Pay Cooperative Dues. - AgroOS"
         )
 
         result = await self.moolre.send_single_sms(
@@ -114,10 +111,10 @@ class CommunicationsService:
         """Tell the payer how to resume an OTP-gated request on their phone."""
         from app.config import get_settings
 
-        merchant = get_settings().moolre_merchant_code or "AgroOS"
+        ussd_code = get_settings().agroos_ussd_code.strip() or "*919*4020#"
         message = (
             f"AgroOS: Complete your GHS {amount:.2f} payment on your phone. "
-            f"Dial *203*{merchant}# and choose Complete Pending Payment. "
+            f"Dial {ussd_code} and choose Complete Pending Payment. "
             "Never share your OTP with cooperative staff."
         )
         result = await self.moolre.send_single_sms(
@@ -201,7 +198,7 @@ class CommunicationsService:
         from app.models.models import MembershipStatus
 
         settings = get_settings()
-        merchant = settings.moolre_merchant_code or "AgroOS"
+        ussd_code = settings.agroos_ussd_code.strip() or "*919*4020#"
 
         farmers = (
             db.query(Farmer)
@@ -219,7 +216,7 @@ class CommunicationsService:
                 "recipient": f.phone,
                 "message": (
                     f"Dear {f.name}, your cooperative dues of GHS {amount:.2f} are due by {due_date}. "
-                    f"Dial *203*{merchant}# to pay. - AgroOS"
+                    f"Dial {ussd_code} and choose Pay Cooperative Dues. - AgroOS"
                 ),
                 "ref": str(uuid.uuid4()),
             }

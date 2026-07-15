@@ -8,13 +8,13 @@ from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.dependencies.cooperative_scope import resolve_cooperative_scope
 from app.models.models import CommunicationLog, Cooperative, User
-from app.services.auth_service import get_current_user, require_roles
 from app.schemas.schemas import (
     CommunicationLogResponse,
     DuesReminderRequest,
     SMSBroadcastRequest,
     SMSResponse,
 )
+from app.services.auth_service import get_current_user, require_roles
 from app.services.communications_service import CommunicationsService
 from app.services.moolre_service import MoolreService
 
@@ -78,7 +78,7 @@ async def send_dues_reminder(
 ):
     """
     Send a dues-payment reminder SMS to all active members of a cooperative.
-    Uses the Moolre merchant USSD code from config for the payment instruction.
+    Uses the approved AgroOS USSD menu code for the payment instruction.
     """
     settings = get_settings()
     scoped_id = resolve_cooperative_scope(

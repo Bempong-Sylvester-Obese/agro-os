@@ -45,6 +45,7 @@ Copy from `backend/.env.example` before running locally or deploying.
 | `MOOLRE_API_KEY` | Moolre API key | `mk_live_...` |
 | `MOOLRE_API_PUBKEY` | Moolre live public key (required for live API calls) | `mpk_live_...` |
 | `MOOLRE_WEBHOOK_SECRET` | Secret for verifying webhook signatures | `whsec_...` |
+| `AGROOS_USSD_CODE` | Complete approved AgroOS menu dial string | `*919*4020#` |
 | `USSDK_HOOK_SECRET` | HMAC secret shared with USSDK hooks | `ussdk_...` |
 | `DEFAULT_SMS_SENDER_ID` | Approved SMS sender ID | `AgroOS` |
 | `SENTRY_DSN` | Optional Sentry DSN for backend error tracking | `https://...@sentry.io/...` |
