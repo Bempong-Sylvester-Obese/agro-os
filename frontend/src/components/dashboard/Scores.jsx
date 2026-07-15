@@ -185,35 +185,37 @@ export default function Scores({ farmers = [], loading }) {
             <span className="admin-card-title serif">Credit decision queue</span>
             <span className="admin-card-action">Real data</span>
           </div>
-          <div className="sc-head">
-            {['Member', 'Crop', 'Status', 'Score'].map(h => (
-              <span key={h} className="pt-lbl">{h}</span>
-            ))}
+          <div className="table-scroll">
+            <div className="sc-head">
+              {['Member', 'Crop', 'Status', 'Score'].map(h => (
+                <span key={h} className="pt-lbl">{h}</span>
+              ))}
+            </div>
+            {sorted.map(farmer => {
+              const score = farmer.trust_score ? Math.round(farmer.trust_score) : 0
+              const eligible = score >= 68
+              const isSelected = farmer.id === (selectedFarmer?.id)
+              return (
+                <button
+                  key={farmer.id}
+                  className={`sc-row sc-row-btn${isSelected ? ' on' : ''}`}
+                  onClick={() => setSelectedId(farmer.id)}
+                >
+                  <div>
+                    <div className="pt-name">{farmer.name}</div>
+                    <div className="pt-id">{farmer.location || '—'}</div>
+                  </div>
+                  <span className="pt-m" style={{ fontSize: 11 }}>{farmer.crop_type || '—'}</span>
+                  <span className={`bdg ${eligible ? 'bdg-green' : 'bdg-amber'}`}>
+                    {eligible ? 'Eligible' : 'Review'}
+                  </span>
+                  <span className={`score-bdg ${scoreTier(score)}`}>
+                    {score || '—'}
+                  </span>
+                </button>
+              )
+            })}
           </div>
-          {sorted.map(farmer => {
-            const score = farmer.trust_score ? Math.round(farmer.trust_score) : 0
-            const eligible = score >= 68
-            const isSelected = farmer.id === (selectedFarmer?.id)
-            return (
-              <button
-                key={farmer.id}
-                className={`sc-row sc-row-btn${isSelected ? ' on' : ''}`}
-                onClick={() => setSelectedId(farmer.id)}
-              >
-                <div>
-                  <div className="pt-name">{farmer.name}</div>
-                  <div className="pt-id">{farmer.location || '—'}</div>
-                </div>
-                <span className="pt-m" style={{ fontSize: 11 }}>{farmer.crop_type || '—'}</span>
-                <span className={`bdg ${eligible ? 'bdg-green' : 'bdg-amber'}`}>
-                  {eligible ? 'Eligible' : 'Review'}
-                </span>
-                <span className={`score-bdg ${scoreTier(score)}`}>
-                  {score || '—'}
-                </span>
-              </button>
-            )
-          })}
         </div>
 
         {/* ── Right: detail panel ── */}

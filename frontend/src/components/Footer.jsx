@@ -1,4 +1,5 @@
 // src/components/Footer.jsx
+import React from 'react'
 import { useAppNavigate } from '../hooks/useAppNavigate'
 
 export default function Footer() {
@@ -27,29 +28,28 @@ export default function Footer() {
           <a href="/features" className="footer-link" onClick={go('features')}>Features</a>
           <a href="/pricing" className="footer-link" onClick={go('pricing')}>Pricing</a>
           <a href="/solutions#ussd-section" className="footer-link" onClick={go('solutions', { scrollTo: 'ussd-section' })}>USSD integration</a>
-          <a href="/book-demo" className="footer-link" onClick={go('bookDemo')}>API docs</a>
+          <a href="/book-demo" className="footer-link" onClick={go('bookDemo')}>Book a demo</a>
         </div>
 
         <div>
           <div className="footer-col-title">Solutions</div>
           <a href="/solutions" className="footer-link" onClick={go('solutions')}>Cooperatives</a>
           <a href="/solutions#ussd-section" className="footer-link" onClick={go('solutions', { scrollTo: 'ussd-section' })}>Smallholders</a>
-          <a href="/dashboard/production" className="footer-link" onClick={go('dashboard', { dashboardSection: 'production' })}>Field agents</a>
-          <a href="/dashboard/scores" className="footer-link" onClick={go('dashboard', { dashboardSection: 'scores' })}>Lenders</a>
+          <a href="/solutions" className="footer-link" onClick={go('solutions')}>Field operations</a>
+          <a href="/solutions" className="footer-link" onClick={go('solutions')}>Lenders & programmes</a>
         </div>
 
         <div>
           <div className="footer-col-title">Moolre</div>
           <a href="/#moolre-integration" className="footer-link" onClick={go('home', { scrollTo: 'moolre-integration' })}>Integration overview</a>
-          <a href="/dashboard/payments" className="footer-link" onClick={go('dashboard', { dashboardSection: 'payments' })}>Collections</a>
-          <a href="/dashboard/ussd" className="footer-link" onClick={go('dashboard', { dashboardSection: 'ussd' })}>USSD activity</a>
+          <a href="/#moolre-integration" className="footer-link" onClick={go('home', { scrollTo: 'moolre-integration' })}>Collections & disbursements</a>
+          <a href="/solutions#ussd-section" className="footer-link" onClick={go('solutions', { scrollTo: 'ussd-section' })}>Merchant-code USSD</a>
         </div>
 
         <div>
           <div className="footer-col-title">Company</div>
-          <a href="/" className="footer-link" onClick={go('home')}>About</a>
-          <a href="/login?mode=signup" className="footer-link" onClick={go('login', { loginMode: 'signup' })}>Request access</a>
-          <a href="/book-demo" className="footer-link" onClick={go('bookDemo')}>Help center</a>
+          <a href="/subscribe/starter" className="footer-link" onClick={go('subscription', { plan: 'starter' })}>Create free workspace</a>
+          <a href="/book-demo?enterprise=true" className="footer-link" onClick={go('bookDemo', { enterprise: true, topic: 'Enterprise enquiry' })}>Contact enterprise sales</a>
         </div>
 
         <div>

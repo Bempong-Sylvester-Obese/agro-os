@@ -111,19 +111,26 @@ def test_update_transaction_status_completed_forbidden(client, transaction):
     assert resp.status_code == 403
 
 
-def test_update_transaction_status_hidden_in_production(client, transaction, monkeypatch):
+def test_update_transaction_status_hidden_in_production(client, transaction, demo_admin, monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
-    monkeypatch.setenv("SECRET_KEY", "strong-secret-key")
+    monkeypatch.setenv("AUTH_ENABLED", "true")
+    monkeypatch.setenv("SECRET_KEY", "strong-production-test-secret-key")
+    monkeypatch.setenv("ADMIN_PASSWORD", "strong-production-test-password")
     from app.config import get_settings
+    from app.services.auth_service import create_access_token
+
     get_settings.cache_clear()
     try:
+        token = create_access_token({"sub": demo_admin.email})
         resp = client.patch(
             f"/transactions/{transaction['id']}/status",
             json={"status": "failed"},
+            headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 404
     finally:
         monkeypatch.setenv("APP_ENV", "test")
+        monkeypatch.setenv("AUTH_ENABLED", "false")
         get_settings.cache_clear()
 
 

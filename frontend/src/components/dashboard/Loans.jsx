@@ -4,6 +4,7 @@ import { Plus, X, Loader2, Check, XCircle, Send } from 'lucide-react'
 import { createLoan, approveLoan, rejectLoan, disburseLoan } from '../../api/loans'
 import { TableSectionSkeleton } from './DashboardSkeleton'
 import { useModal } from '../../hooks/useModal'
+import { ModalPresence } from '../Motion'
 
 function fmtGHS(amount) {
   return `GHS ${Number(amount).toLocaleString('en-GH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
@@ -53,6 +54,7 @@ function RequestLoanModal({ farmers, onClose, onSuccess }) {
 
   return (
     <div
+      className="dashboard-modal-overlay"
       onClick={onBackdropClick}
       style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)',
@@ -60,6 +62,7 @@ function RequestLoanModal({ farmers, onClose, onSuccess }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
     }}>
       <div
+        className="dashboard-modal"
         {...dialogProps}
         style={{
         background: '#fff', borderRadius: 16, width: '100%', maxWidth: 400,
@@ -157,13 +160,13 @@ export default function Loans({ farmers = [], loans = [], loading, onRefresh }) 
 
   return (
     <>
-      {showModal && (
+      <ModalPresence show={showModal}>
         <RequestLoanModal 
           farmers={farmers} 
           onClose={() => setShowModal(false)} 
           onSuccess={() => { setShowModal(false); if (onRefresh) onRefresh(); }} 
         />
-      )}
+      </ModalPresence>
 
       {/* ── Toolbar ── */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>

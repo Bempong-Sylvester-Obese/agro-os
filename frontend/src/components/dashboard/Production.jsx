@@ -4,6 +4,7 @@ import { Plus, X, Loader2 } from 'lucide-react'
 import { logProduction } from '../../api/production'
 import { TableSectionSkeleton } from './DashboardSkeleton'
 import { useModal } from '../../hooks/useModal'
+import { ModalPresence } from '../Motion'
 
 function quantityKg(prod) {
   const value = prod.quantity_kg ?? prod.yield_amount
@@ -62,6 +63,7 @@ function LogProductionModal({ farmers, onClose, onSuccess }) {
 
   return (
     <div
+      className="dashboard-modal-overlay"
       onClick={onBackdropClick}
       style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)',
@@ -69,6 +71,7 @@ function LogProductionModal({ farmers, onClose, onSuccess }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
     }}>
       <div
+        className="dashboard-modal"
         {...dialogProps}
         style={{
         background: '#fff', borderRadius: 16, width: '100%', maxWidth: 400,
@@ -93,23 +96,23 @@ function LogProductionModal({ farmers, onClose, onSuccess }) {
             </select>
           </div>
 
-          <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
-            <div style={{ flex: 1 }}>
+          <div className="modal-row" style={{ marginBottom: 16 }}>
+            <div>
               <label htmlFor="production-crop" style={{ fontSize: 13, fontWeight: 600 }}>Crop Type</label>
               <input id="production-crop" style={input} type="text" value={form.cropType} onChange={e => setForm({...form, cropType: e.target.value})} placeholder="e.g. Maize" required disabled={loading}/>
             </div>
-            <div style={{ flex: 1 }}>
+            <div>
               <label htmlFor="production-expected" style={{ fontSize: 13, fontWeight: 600 }}>Expected yield (kg)</label>
               <input id="production-expected" style={input} type="number" min="0.1" step="0.1" value={form.expectedKg} onChange={e => setForm({...form, expectedKg: e.target.value})} placeholder="e.g. 600" required disabled={loading}/>
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
-            <div style={{ flex: 1 }}>
+          <div className="modal-row" style={{ marginBottom: 24 }}>
+            <div>
               <label htmlFor="production-quantity" style={{ fontSize: 13, fontWeight: 600 }}>Harvest quantity (kg)</label>
               <input id="production-quantity" style={input} type="number" min="1" step="1" value={form.quantityKg} onChange={e => setForm({...form, quantityKg: e.target.value})} placeholder="e.g. 500" required disabled={loading}/>
             </div>
-            <div style={{ flex: 1 }}>
+            <div>
               <label htmlFor="production-date" style={{ fontSize: 13, fontWeight: 600 }}>Harvest Date</label>
               <input id="production-date" style={input} type="date" value={form.harvestDate} onChange={e => setForm({...form, harvestDate: e.target.value})} required disabled={loading}/>
             </div>
@@ -159,13 +162,13 @@ export default function Production({ farmers = [], productions = [], loading, on
 
   return (
     <>
-      {showModal && (
+      <ModalPresence show={showModal}>
         <LogProductionModal 
           farmers={farmers} 
           onClose={() => setShowModal(false)} 
           onSuccess={() => { setShowModal(false); if (onRefresh) onRefresh(); }} 
         />
-      )}
+      </ModalPresence>
 
       {/* ── Toolbar ── */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
@@ -199,7 +202,7 @@ export default function Production({ farmers = [], productions = [], loading, on
             No production records found. Click "Log Production" to record a harvest.
           </div>
         ) : (
-          <>
+          <div className="table-scroll">
             <div className="pay-head" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}>
               <span className="pt-lbl">Member</span>
               <span className="pt-lbl">Crop Type</span>
@@ -223,7 +226,7 @@ export default function Production({ farmers = [], productions = [], loading, on
                 </div>
               )
             })}
-          </>
+          </div>
         )}
       </div>
     </>

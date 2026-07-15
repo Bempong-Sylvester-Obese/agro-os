@@ -28,6 +28,7 @@ export function pageKeyFromPath(pathname) {
   if (pathname === '/' || pathname === '') return 'home'
   if (pathname.startsWith('/dashboard')) return 'dashboard'
   if (pathname.startsWith('/login')) return 'login'
+  if (pathname.startsWith('/subscribe')) return 'subscription'
   const segment = pathname.replace(/^\//, '').split('/')[0]
   if (segment in MARKETING_PATHS) return segment
   return 'home'

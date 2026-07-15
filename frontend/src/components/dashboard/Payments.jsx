@@ -4,6 +4,7 @@ import { Plus, X, Loader2 } from 'lucide-react'
 import { collectDues, verifyDuesCollect } from '../../api/transactions'
 import { TableSectionSkeleton } from './DashboardSkeleton'
 import { useModal } from '../../hooks/useModal'
+import { ModalPresence } from '../Motion'
 
 function fmtGHS(amount) {
   return `GHS ${Number(amount).toLocaleString('en-GH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
@@ -81,6 +82,7 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
 
   return (
     <div
+      className="dashboard-modal-overlay"
       onClick={onBackdropClick}
       style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)',
@@ -88,6 +90,7 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
     }}>
       <div
+        className="dashboard-modal"
         {...dialogProps}
         style={{
         background: '#fff', borderRadius: 16, width: '100%', maxWidth: 400,
@@ -187,13 +190,13 @@ export default function Payments({ farmers = [], transactions = [], loading, onR
 
   return (
     <>
-      {showModal && (
+      <ModalPresence show={showModal}>
         <CollectDuesModal 
           farmers={farmers} 
           onClose={() => setShowModal(false)} 
           onSuccess={() => { setShowModal(false); if (onRefresh) onRefresh(); }} 
         />
-      )}
+      </ModalPresence>
 
       {/* ── Toolbar ── */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
@@ -227,7 +230,7 @@ export default function Payments({ farmers = [], transactions = [], loading, onR
             No transactions recorded yet. Click "Collect Dues" to initiate a MoMo push to a member.
           </div>
         ) : (
-          <>
+          <div className="table-scroll">
             <div className="pay-head">
               {['Member', 'Amount', 'Method', 'Date', 'Status'].map(h => <span key={h} className="pt-lbl">{h}</span>)}
             </div>
@@ -249,7 +252,7 @@ export default function Payments({ farmers = [], transactions = [], loading, onR
                 </div>
               )
             })}
-          </>
+          </div>
         )}
       </div>
     </>

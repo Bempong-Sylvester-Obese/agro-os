@@ -91,7 +91,7 @@ export default function Overview({ farmers = [], transactions = [], loading }) {
               No transactions yet. Start collecting dues to see payment history here.
             </div>
           ) : (
-            <>
+            <div className="table-scroll">
               <div className="pt-head">
                 {['Member', 'Amount', 'Method', 'Date', 'Status'].map(h => (
                   <span key={h} className="pt-lbl">{h}</span>
@@ -109,7 +109,7 @@ export default function Overview({ farmers = [], transactions = [], loading }) {
                   <span className={`bdg ${cls}`}>{label}</span>
                 </div>
               ))}
-            </>
+            </div>
           )}
         </div>
 

@@ -1,136 +1,165 @@
 // src/pages/SolutionsPage.jsx
+import React from 'react'
+import { ArrowRight, BarChart3, CheckCircle2, CreditCard, Megaphone, ShieldCheck, Smartphone, Users } from 'lucide-react'
 import Footer from '../components/Footer'
 import CTASection from '../components/CTASection'
+import { Reveal } from '../components/Motion'
 import { useAppNavigate } from '../hooks/useAppNavigate'
+
+const OUTCOMES = [
+  [Users, 'Cooperative administrators', 'Keep member, payment, production, and communication records connected instead of split across ledgers and spreadsheets.'],
+  [Smartphone, 'Farmers and field teams', 'Reach essential services through web, SMS, and a Moolre USSD session when mobile data is unavailable.'],
+  [BarChart3, 'Finance and programme teams', 'Review auditable activity and data-led credit signals before making operational or lending decisions.'],
+]
 
 export default function SolutionsPage({ user }) {
   const setPage = useAppNavigate()
 
-  function exploreDashboard(section) {
+  function openWorkspace(section) {
     if (user) {
       setPage('dashboard', section ? { dashboardSection: section } : undefined)
       return
     }
-    const next = section ? `/dashboard/${section}` : '/dashboard'
-    setPage('login', { next })
+    setPage('subscription', { plan: 'starter' })
   }
+
   return (
     <>
-      {/* ── Hero ── */}
-      <div className="sol-hero">
-        <h1 className="sol-hero-h1 serif">One platform,<br />every role in the cooperative</h1>
-        <p className="sol-hero-sub">
-          AgroOS is designed for the full cooperative stack — from the farmer in the field to the administrator in the office.
-        </p>
-      </div>
-
-      {/* ── Cooperative leaders ── */}
-      <div className="sol-sec">
-        <div className="sol-inner">
-          <div>
-            <div className="sol-tag">Cooperatives</div>
-            <h2 className="sol-h2 serif">Replace the ledger. Run everything from one dashboard.</h2>
-            <p className="sol-desc">
-              Manage hundreds of members, track dues, run disbursements, and broadcast messages — all from a single
-              admin dashboard. Replace the Excel sheets and WhatsApp groups.
+      <main className="solutions-page">
+        <section className="sol-hero">
+          <Reveal className="sol-hero-inner">
+            <div className="sol-tag">Connected agricultural operations</div>
+            <h1 className="sol-hero-h1 serif">One operating system.<br />Clear outcomes for every role.</h1>
+            <p className="sol-hero-sub">
+              AgroOS connects cooperative administration, farmer access, payments, communications,
+              and data-led credit workflows without assuming every member owns a smartphone.
             </p>
-            <button className="btn-sol" onClick={() => exploreDashboard()}>Explore cooperative tools →</button>
-          </div>
-          <div>
-            <div className="sol-visual">
-              <div className="sol-visual-title">Cooperative overview</div>
+            <div className="sol-hero-actions">
+              <button className="btn-lg" type="button" onClick={() => setPage('subscription', { plan: 'starter' })}>
+                Create free workspace
+              </button>
+              <button className="btn-out-lg" type="button" onClick={() => setPage('bookDemo', { enterprise: true, topic: 'Solutions consultation' })}>
+                Discuss enterprise rollout
+              </button>
+            </div>
+          </Reveal>
+        </section>
+
+        <section className="sol-sec">
+          <Reveal className="sol-inner">
+            <div>
+              <div className="sol-tag">Cooperative operations</div>
+              <h2 className="sol-h2 serif">Replace fragmented administration with one accountable workspace.</h2>
+              <p className="sol-desc">
+                Keep member profiles, dues, production records, disbursements, and announcements in one operating view.
+                Teams can see what happened, who initiated it, and what needs attention next.
+              </p>
+              <button className="btn-sol" type="button" onClick={() => openWorkspace()}>
+                {user ? 'Open cooperative workspace' : 'Start with the free workspace'} <ArrowRight size={15} />
+              </button>
+            </div>
+            <div className="sol-visual sol-operations-card">
+              <div className="sol-visual-title">One operational record</div>
               {[
-                ['Ashanti Farmers Co-op',  '248 members', 'GHS 29,760'],
-                ['Northern Grain Alliance', '183 members', 'GHS 21,960'],
-                ['Volta Rice Collective',   '96 members',  'GHS 11,520'],
-              ].map(([name, meta, val]) => (
-                <div key={name} className="sol-row">
-                  <div>
-                    <div className="sol-row-name">{name}</div>
-                    <div className="sol-row-meta">{meta}</div>
-                  </div>
-                  <span className="bdg bdg-green">{val}</span>
+                [Users, 'Member administration', 'Profiles, roles and dues status'],
+                [CreditCard, 'Financial operations', 'Collections, disbursements and receipts'],
+                [Megaphone, 'Member communication', 'Announcements across dashboard, SMS and USSD'],
+                [ShieldCheck, 'Decision support', 'Production history and credit signals'],
+              ].map(([Icon, name, detail]) => (
+                <div key={name} className="sol-capability-row">
+                  <span><Icon size={17} /></span>
+                  <div><strong>{name}</strong><small>{detail}</small></div>
+                  <CheckCircle2 size={16} />
                 </div>
               ))}
             </div>
-          </div>
-        </div>
-      </div>
+          </Reveal>
+        </section>
 
-      {/* ── Farmers / USSD ── */}
-      <div className="sol-sec" id="ussd-section">
-        <div className="sol-inner rev">
-          <div>
-            <div className="sol-tag">Farmers</div>
-            <h2 className="sol-h2 serif">No smartphone? No problem.</h2>
-            <p className="sol-desc">
-              Farmers interact with AgroOS through a native Moolre USSD menu — check balances, pay dues, and receive
-              alerts directly from their basic phones. Designed for Ghana's rural reality.
-            </p>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <div className="ussd-phone">
-              <div className="ussd-screen">
-                <div className="ussd-t">AgroOS *920#</div>
-                <div className="ussd-line">Welcome, Kwame</div>
-                <div className="ussd-line">Balance: GHS 0.00</div>
-                <div className="ussd-line">&nbsp;</div>
-                <div className="ussd-line">1. Pay dues</div>
-                <div className="ussd-line">2. Check balance</div>
-                <div className="ussd-line">3. Production log</div>
-                <div className="ussd-line">4. Contact manager</div>
-                <div className="ussd-line">&nbsp;</div>
-                <div className="ussd-dim">Reply 1–4</div>
+        <section className="sol-sec sol-ussd-section" id="ussd-section">
+          <Reveal className="sol-inner rev">
+            <div>
+              <div className="sol-tag">Farmer access through Moolre</div>
+              <h2 className="sol-h2 serif">Essential services without a smartphone or mobile data.</h2>
+              <p className="sol-desc">
+                Registered farmers can check active loan balances, pay cooperative dues through MoMo,
+                and view announcements from a Moolre merchant-code session. Announcements may also be sent by SMS.
+              </p>
+              <div className="ussd-flow-notes">
+                <div><strong>Loan balance</strong><span>Returns the farmer's active disbursed-loan total, or confirms that no active loan exists.</span></div>
+                <div><strong>Dues payment</strong><span>Requests a GHS amount, then starts the MoMo collection and asks for an OTP when verification is required.</span></div>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Lenders ── */}
-      <div className="sol-sec">
-        <div className="sol-inner">
-          <div>
-            <div className="sol-tag">Lenders & financiers</div>
-            <h2 className="sol-h2 serif">Lend with confidence using AI-powered scores.</h2>
-            <p className="sol-desc">
-              Access AgroCredit Trust Scores for individual farmers — built from payment history, production output,
-              and cooperative tenure. Make lending decisions backed by real behavioral data.
-            </p>
-            <button className="btn-sol" onClick={() => exploreDashboard('scores')}>Explore AgroCredit →</button>
-          </div>
-          <div>
-            <div className="sol-visual">
-              <div className="sol-visual-title">AgroCredit score — Kofi Darko</div>
-              <div style={{ textAlign: 'center', marginBottom: 18 }}>
-                <div style={{ fontFamily: "'Fraunces',serif", fontSize: 52, fontWeight: 900, color: 'var(--g)' }}>92</div>
-                <div style={{ fontSize: 11, color: 'var(--muted)' }}>out of 100 · Excellent</div>
-              </div>
-              {[
-                ['Payment history',   95],
-                ['Production output', 88],
-                ['Cooperative tenure',90],
-                ['Dues consistency',  92],
-              ].map(([lbl, val]) => (
-                <div key={lbl} className="score-row">
-                  <span className="score-lbl">{lbl}</span>
-                  <div className="score-bg"><div className="score-fill" style={{ width: `${val}%` }} /></div>
-                  <span className="score-val">{val}</span>
+            <div className="ussd-device-wrap">
+              <div className="ussd-session-label"><span /> Moolre merchant-code session</div>
+              <div className="ussd-phone" aria-label="AgroOS USSD main menu preview">
+                <div className="ussd-speaker" />
+                <div className="ussd-screen">
+                  <div className="ussd-t">Welcome to AgroOS</div>
+                  <div className="ussd-line">1. Check Loan Balance</div>
+                  <div className="ussd-line">2. Pay Dues</div>
+                  <div className="ussd-line">3. Announcements</div>
+                  <div className="ussd-dim">Reply 1–3</div>
                 </div>
+                <div className="ussd-keypad" aria-hidden="true">
+                  {['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].map((key) => <i key={key}>{key}</i>)}
+                </div>
+              </div>
+            </div>
+          </Reveal>
+        </section>
+
+        <section className="solution-outcomes">
+          <Reveal className="solution-outcomes-inner">
+            <div className="section-header">
+              <div className="section-kicker">Role-based outcomes</div>
+              <h2 className="sec-title serif">Shared infrastructure, appropriate access.</h2>
+            </div>
+            <div className="solution-outcome-grid">
+              {OUTCOMES.map(([Icon, title, text]) => (
+                <article key={title} className="solution-outcome-card">
+                  <Icon size={22} />
+                  <h3 className="serif">{title}</h3>
+                  <p>{text}</p>
+                </article>
               ))}
             </div>
-          </div>
-        </div>
-      </div>
+          </Reveal>
+        </section>
 
-      <CTASection
-        heading="Find the right plan<br />for your cooperative"
-        subtext="Simple, transparent pricing. Start free and scale as your cooperative grows."
-        primaryLabel="See pricing"
-        secondaryLabel="Talk to us"
-        onPrimary={() => setPage('pricing')}
-        onSecondary={() => setPage('bookDemo')}
-      />
+        <section className="sol-sec">
+          <Reveal className="sol-inner">
+            <div>
+              <div className="sol-tag">Lenders & programme teams</div>
+              <h2 className="sol-h2 serif">Use operating history to support better credit decisions.</h2>
+              <p className="sol-desc">
+                AgroCredit Trust Scores combine available payment, production, repayment, attendance, and tenure data.
+                They support review workflows; they do not replace responsible underwriting.
+              </p>
+              <button className="btn-sol" type="button" onClick={() => openWorkspace('scores')}>
+                {user ? 'Review AgroCredit workspace' : 'Explore plans'} <ArrowRight size={15} />
+              </button>
+            </div>
+            <div className="sol-visual sol-credit-card">
+              <div className="sol-visual-title">Decision-support profile</div>
+              <div className="sol-credit-score"><strong>Data-led</strong><span>multi-factor assessment</span></div>
+              {['Payment and repayment history', 'Production records', 'Attendance and cooperative tenure'].map((item) => (
+                <div key={item} className="sol-credit-factor"><CheckCircle2 size={16} /> {item}</div>
+              ))}
+              <p>Scores provide context for human review and lending policy.</p>
+            </div>
+          </Reveal>
+        </section>
+
+        <CTASection
+          heading="Choose the right operating path"
+          subtext="Start with a no-card Starter workspace or plan an enterprise rollout with our team."
+          primaryLabel="See pricing"
+          secondaryLabel="Talk to enterprise sales"
+          onPrimary={() => setPage('pricing')}
+          onSecondary={() => setPage('bookDemo', { enterprise: true, topic: 'Enterprise solutions' })}
+        />
+      </main>
 
       <Footer />
     </>

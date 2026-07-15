@@ -9,7 +9,7 @@ export function useAppNavigate() {
   const navigate = useNavigate()
 
   return useCallback((target, options = {}) => {
-    const { loginMode, dashboardSection, scrollTo, next } = options
+    const { loginMode, dashboardSection, scrollTo, next, plan, enterprise, topic } = options
 
     if (target === 'dashboard') {
       navigate(scrollTo ? `${dashboardPath(dashboardSection)}#${scrollTo}` : dashboardPath(dashboardSection))
@@ -23,6 +23,22 @@ export function useAppNavigate() {
       if (next && next.startsWith('/') && !next.startsWith('//')) params.set('next', next)
       const search = params.toString() ? `?${params.toString()}` : ''
       navigate(`/login${search}`)
+      window.scrollTo({ top: 0, behavior: 'instant' })
+      return
+    }
+
+    if (target === 'subscription') {
+      const selectedPlan = plan === 'growth' ? 'growth' : 'starter'
+      navigate(`/subscribe/${selectedPlan}`)
+      window.scrollTo({ top: 0, behavior: 'instant' })
+      return
+    }
+
+    if (target === 'bookDemo' && (enterprise || topic)) {
+      const params = new URLSearchParams()
+      if (enterprise) params.set('enterprise', 'true')
+      if (topic) params.set('topic', topic)
+      navigate(`/book-demo?${params.toString()}`)
       window.scrollTo({ top: 0, behavior: 'instant' })
       return
     }
