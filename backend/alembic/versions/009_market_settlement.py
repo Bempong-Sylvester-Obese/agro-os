@@ -3,6 +3,7 @@
 from typing import Sequence, Union
 
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
@@ -11,20 +12,38 @@ down_revision: Union[str, None] = "008_loan_rejection_reasons"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-intake_status = sa.Enum(
+intake_status = postgresql.ENUM(
     "received",
     "accepted",
     "rejected",
     "batched",
     "cancelled",
     name="intakestatus",
+    create_type=False,
 )
-batch_status = sa.Enum("open", "closed", "sold", name="aggregationbatchstatus")
-sale_status = sa.Enum(
-    "draft", "confirmed", "funded", "settled", name="producesalestatus"
+batch_status = postgresql.ENUM(
+    "open",
+    "closed",
+    "sold",
+    name="aggregationbatchstatus",
+    create_type=False,
 )
-receipt_status = sa.Enum("pending", "verified", "rejected", name="receiptstatus")
-settlement_status = sa.Enum(
+sale_status = postgresql.ENUM(
+    "draft",
+    "confirmed",
+    "funded",
+    "settled",
+    name="producesalestatus",
+    create_type=False,
+)
+receipt_status = postgresql.ENUM(
+    "pending",
+    "verified",
+    "rejected",
+    name="receiptstatus",
+    create_type=False,
+)
+settlement_status = postgresql.ENUM(
     "draft",
     "pending_approval",
     "approved",
@@ -32,31 +51,82 @@ settlement_status = sa.Enum(
     "partially_paid",
     "completed",
     name="settlementstatus",
+    create_type=False,
 )
-line_status = sa.Enum(
-    "pending", "processing", "paid", "failed", name="settlementlinestatus"
+line_status = postgresql.ENUM(
+    "pending",
+    "processing",
+    "paid",
+    "failed",
+    name="settlementlinestatus",
+    create_type=False,
 )
-deduction_type = sa.Enum(
+deduction_type = postgresql.ENUM(
     "cooperative_fee",
     "transport",
     "quality",
     "manual",
     "loan",
     name="settlementdeductiontype",
+    create_type=False,
 )
-disbursement_status = sa.Enum(
+disbursement_status = postgresql.ENUM(
     "pending",
     "processing",
     "partially_failed",
     "completed",
     name="disbursementbatchstatus",
+    create_type=False,
 )
 
 
 def upgrade() -> None:
-    if op.get_bind().dialect.name == "postgresql":
+    bind = op.get_bind()
+    commerce_tables = {
+        "aggregation_batches",
+        "buyers",
+        "produce_intakes",
+        "produce_sales",
+        "buyer_payment_receipts",
+        "settlement_runs",
+        "settlement_lines",
+        "settlement_deductions",
+        "disbursement_batches",
+    }
+    existing_tables = set(sa.inspect(bind).get_table_names())
+    adopted_tables = commerce_tables & existing_tables
+    if adopted_tables == commerce_tables:
+        # Base.metadata.create_all() is used when adopting an existing AgroOS
+        # database. In that case the complete target schema already exists.
+        return
+    if adopted_tables:
+        raise RuntimeError(
+            "Partial commerce schema detected; restore the pre-migration "
+            "database state before retrying revision 009"
+        )
+    if bind.dialect.name == "postgresql":
+        for enum_type in (
+            intake_status,
+            batch_status,
+            sale_status,
+            receipt_status,
+            settlement_status,
+            line_status,
+            deduction_type,
+            disbursement_status,
+        ):
+            enum_type.create(bind, checkfirst=True)
         op.execute(
-            "ALTER TYPE transactiontype ADD VALUE IF NOT EXISTS 'settlement_payout'"
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM pg_type WHERE typname = 'transactiontype') THEN
+                    ALTER TYPE transactiontype
+                    ADD VALUE IF NOT EXISTS 'settlement_payout';
+                END IF;
+            END
+            $$;
+            """
         )
     op.create_table(
         "aggregation_batches",
