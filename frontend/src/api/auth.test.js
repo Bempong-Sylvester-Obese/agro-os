@@ -42,4 +42,18 @@ describe('auth api', () => {
       onboarding_role: 'Finance or operations lead',
     })
   })
+
+  it('does not retry a signup after a transport failure', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockRejectedValue(
+      new TypeError('connection lost'),
+    )
+
+    await expect(signup({
+      email: 'admin@example.com',
+      password: 'secret123',
+      cooperativeName: 'Test Cooperative',
+    })).rejects.toThrow('Could not reach the AgroOS API')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
 })

@@ -74,7 +74,7 @@ export async function signupAdmin({
     member_count: member_count ?? null,
     subscription_plan: subscription_plan || 'starter',
     onboarding_role: onboarding_role || null,
-  })
+  }, { retries: 0 })
 }
 
 export async function loginAdmin(email, password) {

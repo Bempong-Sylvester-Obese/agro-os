@@ -66,6 +66,8 @@ describe('AuthPage subscription signup', () => {
       subscriptionPlan: 'growth',
       onboardingRole: 'Finance or operations lead',
     })))
-    expect(window.sessionStorage.getItem('agroos-subscription-intent')).toBeNull()
+    await waitFor(() => {
+      expect(window.sessionStorage.getItem('agroos-subscription-intent')).toBeNull()
+    })
   })
 })

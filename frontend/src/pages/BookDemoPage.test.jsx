@@ -5,7 +5,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import BookDemoPage from './BookDemoPage'
 
 describe('BookDemoPage', () => {
+  let originalIntersectionObserver
+  let originalScrollTo
+  let originalCreateObjectURL
+  let originalRevokeObjectURL
+
   beforeEach(() => {
+    originalIntersectionObserver = globalThis.IntersectionObserver
+    originalScrollTo = window.scrollTo
+    originalCreateObjectURL = window.URL.createObjectURL
+    originalRevokeObjectURL = window.URL.revokeObjectURL
     globalThis.IntersectionObserver = class {
       observe() { return undefined }
       unobserve() { return undefined }
@@ -17,6 +26,14 @@ describe('BookDemoPage', () => {
   afterEach(() => {
     cleanup()
     vi.restoreAllMocks()
+    if (originalIntersectionObserver === undefined) delete globalThis.IntersectionObserver
+    else globalThis.IntersectionObserver = originalIntersectionObserver
+    if (originalScrollTo === undefined) delete window.scrollTo
+    else window.scrollTo = originalScrollTo
+    if (originalCreateObjectURL === undefined) delete window.URL.createObjectURL
+    else window.URL.createObjectURL = originalCreateObjectURL
+    if (originalRevokeObjectURL === undefined) delete window.URL.revokeObjectURL
+    else window.URL.revokeObjectURL = originalRevokeObjectURL
   })
 
   function completeForm() {
