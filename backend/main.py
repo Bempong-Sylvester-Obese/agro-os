@@ -113,9 +113,13 @@ _dev_origins = [
 ]
 _prod_origins = [
     "https://agro-os-amber.vercel.app",
+    "https://agro-os-sylvester-bempong.vercel.app",
     "https://agroos.company",
     "https://www.agroos.company",
 ]
+_vercel_preview_origin_regex = (
+    r"^https://agro(?:-os)?-[a-z0-9-]+-sylvester-bempong\.vercel\.app$"
+)
 if settings.app_env.lower() in ("development", "dev"):
     _origins = ["*"]
     _allow_credentials = False
@@ -128,6 +132,7 @@ else:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
+    allow_origin_regex=_vercel_preview_origin_regex,
     allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
