@@ -8,10 +8,6 @@ vi.mock('../../api/transactions', () => ({
   reconcileTransaction: vi.fn(),
 }))
 
-vi.mock('../Motion', () => ({
-  ModalPresence: ({ show, children }) => show ? children : null,
-}))
-
 const farmers = [{
   id: 4,
   name: 'Ama Mensah',
@@ -26,10 +22,13 @@ describe('Payments operations', () => {
     vi.clearAllMocks()
   })
 
-  it('keeps payment initiation on farmer USSD', () => {
+  it('exposes no staff dues payment initiation controls', () => {
     render(<Payments farmers={farmers} transactions={[]} loading={false} />)
 
-    expect(screen.queryByRole('button', { name: 'Collect Dues' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /collect dues/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /send payment prompt/i })).toBeNull()
+    expect(screen.queryByRole('dialog', { name: /collect dues/i })).toBeNull()
+    expect(screen.getByText(/cooperatives create dues obligations and send reminders/i)).toBeTruthy()
     expect(screen.getByText(/members initiate dues and loan repayments through AgroOS USSD/i)).toBeTruthy()
     expect(screen.queryByLabelText(/OTP/i)).toBeNull()
   })

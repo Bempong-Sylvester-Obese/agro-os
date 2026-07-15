@@ -6,7 +6,13 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.models.models import Loan, Transaction, TransactionStatus, TransactionType
+from app.models.models import (
+    CommunicationLog,
+    Loan,
+    Transaction,
+    TransactionStatus,
+    TransactionType,
+)
 from app.routes.loans import _disburse_external_ref
 from app.services.moolre_service import MoolreService
 
@@ -218,14 +224,68 @@ def test_approve_already_approved_loan_fails(client, farmer):
     assert resp.status_code == 409
 
 
-def test_reject_loan(client, farmer):
+def test_reject_loan_records_reason_and_sends_sms(client, farmer, db):
     create_resp = client.post(
         "/loans/", json={"farmer_id": farmer["id"], "amount": 100.0}
     )
     loan_id = create_resp.json()["id"]
-    resp = client.post(f"/loans/{loan_id}/reject")
+    with patch(
+        "app.services.communications_service.MoolreService.send_single_sms",
+        new_callable=AsyncMock,
+        return_value={
+            "success": True,
+            "message": "SMS queued",
+            "raw": {"data": "sms-ref-123"},
+        },
+    ) as mock_send:
+        resp = client.post(
+            f"/loans/{loan_id}/reject",
+            json={"reason": "Insufficient repayment history"},
+        )
+
     assert resp.status_code == 200
     assert resp.json()["status"] == "rejected"
+    assert resp.json()["rejection_reason"] == "Insufficient repayment history"
+    assert resp.json()["rejected_at"] is not None
+    assert resp.json()["notification_status"] == "sent"
+    mock_send.assert_awaited_once()
+    assert mock_send.await_args.kwargs["phone"] == farmer["phone"]
+    assert (
+        "Reason: Insufficient repayment history"
+        in mock_send.await_args.kwargs["message"]
+    )
+    log = db.query(CommunicationLog).order_by(CommunicationLog.id.desc()).first()
+    assert log.status == "sent"
+    assert log.moolre_ref == "sms-ref-123"
+
+
+def test_reject_loan_requires_reason(client, farmer):
+    loan_id = client.post(
+        "/loans/", json={"farmer_id": farmer["id"], "amount": 100.0}
+    ).json()["id"]
+
+    resp = client.post(f"/loans/{loan_id}/reject", json={})
+
+    assert resp.status_code == 422
+
+
+def test_reject_loan_reports_failed_sms_delivery(client, farmer):
+    loan_id = client.post(
+        "/loans/", json={"farmer_id": farmer["id"], "amount": 100.0}
+    ).json()["id"]
+    with patch(
+        "app.services.communications_service.MoolreService.send_single_sms",
+        new_callable=AsyncMock,
+        return_value={"success": False, "message": "Provider unavailable", "raw": {}},
+    ):
+        resp = client.post(
+            f"/loans/{loan_id}/reject",
+            json={"reason": "Incomplete application"},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "rejected"
+    assert resp.json()["notification_status"] == "failed"
 
 
 def test_cancel_requested_loan_records_reason(client, farmer):

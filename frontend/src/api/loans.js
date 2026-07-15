@@ -20,10 +20,11 @@ export async function approveLoan(loanId, expectedRepaymentDate) {
   return res.json()
 }
 
-export async function rejectLoan(loanId) {
+export async function rejectLoan(loanId, reason) {
   const res = await apiFetch(`${API_URL}/loans/${loanId}/reject`, {
     method: 'POST',
-    headers: authHeaders()
+    headers: authHeaders(true),
+    body: JSON.stringify({ reason }),
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))

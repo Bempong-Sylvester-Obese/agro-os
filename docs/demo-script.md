@@ -24,7 +24,7 @@ Show how AgroOS helps a farmer cooperative collect dues, reconcile payments, imp
 
 ### 1. Admin Sends Reminder
 
-The admin sends an SMS dues reminder to Abena and other farmers.
+The cooperative has created the dues obligation; the admin only sends Abena and other farmers an SMS reminder. Each farmer initiates their own payment.
 
 What to show:
 
@@ -112,6 +112,24 @@ What to show:
 AgroOS sends due-date reminders without creating a debit. Abena dials the
 AgroOS code, chooses **Repay Loan**, and authorizes the Moolre payment on her
 own phone. Staff monitor and reconcile the result from the dashboard.
+
+### 8. Cooperative Sells Produce and Pays Farmers
+
+Record deliveries from two farmers, including accepted weight and grade, then
+place them in one aggregation batch. Record the buyer sale and buyer-payment
+reference. A second authorized officer verifies that funds were received.
+
+Preview the settlement before approval:
+
+- accepted kilograms and gross entitlement for each farmer;
+- cooperative fee, transport or quality adjustments, and any optional loan
+  recovery;
+- each farmer's final net payable;
+- control totals proving sale proceeds reconcile to deductions and payouts.
+
+Approve the settlement and execute the Moolre payout batch. Show that a failed
+farmer transfer can be retried while successful transfers remain protected
+from duplicate payment.
 
 ## Closing Message
 

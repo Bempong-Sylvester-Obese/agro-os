@@ -15,12 +15,20 @@ from app.database.db import get_db
 from app.dependencies.cooperative_scope import resolve_cooperative_scope
 from app.models.models import (
     AdminAuditLog,
+    AggregationBatch,
+    Buyer,
     CooperativeMembership,
     Farmer,
     Loan,
     LoanStatus,
     MembershipStatus,
+    ProduceIntake,
+    ProduceSale,
     Production,
+    ReceiptStatus,
+    SettlementLine,
+    SettlementLineStatus,
+    SettlementRun,
     Transaction,
     TransactionStatus,
     TrustScore,
@@ -343,4 +351,285 @@ def export_scores(
         current_user=current_user,
         db=db,
         filters=_audit_filters(q, status, start_date, end_date),
+    )
+
+
+@router.get("/intake.csv")
+def export_intake(
+    cooperative_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+):
+    scope = _scope(current_user, cooperative_id)
+    records = (
+        db.query(ProduceIntake)
+        .options(joinedload(ProduceIntake.membership).joinedload(CooperativeMembership.farmer))
+        .filter(ProduceIntake.cooperative_id == scope)
+        .order_by(ProduceIntake.received_at.desc())
+        .all()
+    )
+    return _csv_response(
+        report="intake",
+        headers=[
+            "Intake ID",
+            "Member",
+            "Crop",
+            "Gross kg",
+            "Net kg",
+            "Grade",
+            "Collection Point",
+            "Status",
+            "Received",
+        ],
+        rows=[
+            [
+                record.id,
+                record.membership.name,
+                record.crop_type,
+                record.quantity_kg,
+                record.net_quantity_kg,
+                record.quality_grade,
+                record.collection_point,
+                record.status.value,
+                record.received_at,
+            ]
+            for record in records
+        ],
+        cooperative_id=scope,
+        current_user=current_user,
+        db=db,
+        filters={},
+    )
+
+
+@router.get("/aggregation.csv")
+def export_aggregation(
+    cooperative_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+):
+    scope = _scope(current_user, cooperative_id)
+    records = (
+        db.query(AggregationBatch)
+        .filter(AggregationBatch.cooperative_id == scope)
+        .order_by(AggregationBatch.created_at.desc())
+        .all()
+    )
+    return _csv_response(
+        report="aggregation",
+        headers=["Batch ID", "Code", "Crop", "Quantity kg", "Status", "Closed"],
+        rows=[
+            [
+                record.id,
+                record.code,
+                record.crop_type,
+                record.total_quantity_kg,
+                record.status.value,
+                record.closed_at,
+            ]
+            for record in records
+        ],
+        cooperative_id=scope,
+        current_user=current_user,
+        db=db,
+        filters={},
+    )
+
+
+@router.get("/sales.csv")
+def export_sales(
+    cooperative_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+):
+    scope = _scope(current_user, cooperative_id)
+    records = (
+        db.query(ProduceSale)
+        .options(
+            joinedload(ProduceSale.buyer),
+            joinedload(ProduceSale.aggregation_batch),
+            joinedload(ProduceSale.receipts),
+        )
+        .filter(ProduceSale.cooperative_id == scope)
+        .order_by(ProduceSale.created_at.desc())
+        .all()
+    )
+    return _csv_response(
+        report="sales",
+        headers=[
+            "Sale ID",
+            "Buyer",
+            "Batch",
+            "Quantity kg",
+            "Unit Price",
+            "Gross",
+            "Verified Funds",
+            "Outstanding",
+            "Status",
+            "Sold",
+        ],
+        rows=[
+            [
+                record.id,
+                record.buyer.name,
+                record.aggregation_batch.code,
+                record.quantity_kg,
+                record.unit_price,
+                record.gross_amount,
+                sum(
+                    (
+                        receipt.amount
+                        for receipt in record.receipts
+                        if receipt.status == ReceiptStatus.verified
+                    ),
+                    0,
+                ),
+                record.gross_amount
+                - sum(
+                    (
+                        receipt.amount
+                        for receipt in record.receipts
+                        if receipt.status == ReceiptStatus.verified
+                    ),
+                    0,
+                ),
+                record.status.value,
+                record.sold_at,
+            ]
+            for record in records
+        ],
+        cooperative_id=scope,
+        current_user=current_user,
+        db=db,
+        filters={},
+    )
+
+
+@router.get("/buyers.csv")
+def export_buyers(
+    cooperative_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+):
+    scope = _scope(current_user, cooperative_id)
+    records = (
+        db.query(Buyer)
+        .filter(Buyer.cooperative_id == scope)
+        .order_by(Buyer.name)
+        .all()
+    )
+    return _csv_response(
+        report="buyers",
+        headers=["Buyer ID", "Name", "Phone", "Email", "Address", "Active"],
+        rows=[
+            [
+                record.id,
+                record.name,
+                record.phone,
+                record.email,
+                record.address,
+                record.is_active,
+            ]
+            for record in records
+        ],
+        cooperative_id=scope,
+        current_user=current_user,
+        db=db,
+        filters={},
+    )
+
+
+@router.get("/settlements.csv")
+def export_settlements(
+    cooperative_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+):
+    scope = _scope(current_user, cooperative_id)
+    records = (
+        db.query(SettlementRun)
+        .filter(SettlementRun.cooperative_id == scope)
+        .order_by(SettlementRun.created_at.desc())
+        .all()
+    )
+    return _csv_response(
+        report="settlements",
+        headers=[
+            "Settlement ID",
+            "Sale ID",
+            "Gross",
+            "Deductions",
+            "Net",
+            "Status",
+            "Approved",
+            "Completed",
+        ],
+        rows=[
+            [
+                record.id,
+                record.sale_id,
+                record.gross_total,
+                record.deductions_total,
+                record.net_total,
+                record.status.value,
+                record.approved_at,
+                record.completed_at,
+            ]
+            for record in records
+        ],
+        cooperative_id=scope,
+        current_user=current_user,
+        db=db,
+        filters={},
+    )
+
+
+@router.get("/payout-exceptions.csv")
+def export_payout_exceptions(
+    cooperative_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+):
+    scope = _scope(current_user, cooperative_id)
+    records = (
+        db.query(SettlementLine)
+        .options(
+            joinedload(SettlementLine.membership).joinedload(
+                CooperativeMembership.farmer
+            ),
+            joinedload(SettlementLine.settlement_run),
+        )
+        .join(SettlementRun)
+        .filter(
+            SettlementRun.cooperative_id == scope,
+            SettlementLine.status == SettlementLineStatus.failed,
+        )
+        .order_by(SettlementLine.updated_at.desc())
+        .all()
+    )
+    return _csv_response(
+        report="payout-exceptions",
+        headers=[
+            "Settlement ID",
+            "Line ID",
+            "Member",
+            "Net Amount",
+            "Reference",
+            "Error",
+        ],
+        rows=[
+            [
+                record.settlement_run_id,
+                record.id,
+                record.membership.name,
+                record.net_amount,
+                record.payout_reference,
+                record.last_error,
+            ]
+            for record in records
+        ],
+        cooperative_id=scope,
+        current_user=current_user,
+        db=db,
+        filters={},
     )

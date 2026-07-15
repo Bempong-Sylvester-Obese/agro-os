@@ -15,6 +15,8 @@ from app.models.models import (
     Loan,
     LoanReminder,
     MessageType,
+    SettlementLine,
+    SettlementRun,
 )
 from app.models.models import (
     CooperativeMembership as Farmer,
@@ -101,6 +103,41 @@ class CommunicationsService:
             status="sent" if result["success"] else "failed",
         )
         return {"success": result["success"], "log_id": log.id}
+
+    async def send_loan_rejection(
+        self,
+        *,
+        loan: Loan,
+        farmer: Farmer,
+        reason: str,
+        db: Session,
+        sent_by: str | None = None,
+    ) -> dict:
+        """Tell a farmer why a loan request was rejected."""
+        message = (
+            f"AgroOS: Your loan request #{loan.id} for GHS {loan.amount:.2f} "
+            f"was not approved. Reason: {reason}"
+        )
+        result = await self.moolre.send_single_sms(
+            phone=farmer.phone,
+            message=message[:160],
+            ref=f"loan-rejected-{loan.id}",
+        )
+        log = self._log(
+            db=db,
+            message_type=MessageType.sms,
+            cooperative_id=farmer.cooperative_id,
+            recipients_count=1,
+            body=message[:160],
+            moolre_ref=result.get("raw", {}).get("data"),
+            sent_by=sent_by,
+            status="sent" if result["success"] else "failed",
+        )
+        return {
+            "success": result["success"],
+            "message": result.get("message", ""),
+            "log_id": log.id,
+        }
 
     async def send_loan_repayment_reminder(
         self,
@@ -207,6 +244,43 @@ class CommunicationsService:
             status="sent" if result["success"] else "failed",
         )
         return {"success": result["success"], "log_id": log.id}
+
+    async def send_settlement_statement(
+        self,
+        *,
+        settlement: SettlementRun,
+        line: SettlementLine,
+        db: Session,
+        sent_by: str | None = None,
+    ) -> dict:
+        """Send the immutable gross/deduction/net statement after payout."""
+        farmer = line.membership
+        message = (
+            f"AgroOS settlement #{settlement.id}: Gross GHS "
+            f"{line.gross_amount:.2f}, deductions GHS "
+            f"{line.deductions_total:.2f}, paid GHS {line.net_amount:.2f}. "
+            f"Ref: {line.payout_reference}"
+        )[:160]
+        result = await self.moolre.send_single_sms(
+            phone=farmer.phone,
+            message=message,
+            ref=f"settlement-statement-{line.id}",
+        )
+        log = self._log(
+            db=db,
+            message_type=MessageType.sms,
+            cooperative_id=settlement.cooperative_id,
+            recipients_count=1,
+            body=message,
+            moolre_ref=result.get("moolre_ref"),
+            sent_by=sent_by,
+            status="sent" if result["success"] else "failed",
+        )
+        return {
+            "success": result["success"],
+            "message": result.get("message", ""),
+            "log_id": log.id,
+        }
 
     async def broadcast_to_cooperative(
         self,

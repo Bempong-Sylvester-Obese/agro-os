@@ -112,6 +112,39 @@ an interrupted farmer session, not a staff-started collection flow.
 
 Optional env: `VITE_COOPERATIVE_ID`.
 
+### Cooperative commerce
+
+Commerce records are cooperative-scoped and follow explicit state transitions:
+
+- Produce intake: record, accept or reject, then assign accepted weight to one
+  open aggregation batch.
+- Aggregation: close a batch before recording its buyer sale.
+- Buyer sale: confirm the commercial terms, record buyer-payment evidence, and
+  require a different authorized user to verify receipt of funds.
+- Settlement: calculate a snapshot of farmer gross amounts and deductions,
+  review it, approve it under maker-checker controls, then execute Moolre
+  farmer payouts.
+
+Settlement APIs expose every farmer line with accepted quantity, unit price,
+gross amount, itemized deductions, and net payable. Payout retries operate only
+on failed lines and preserve the original idempotent references. Loan payouts,
+settlement payouts, dues payments, and loan repayments remain separate
+transaction purposes.
+
+Core endpoints:
+
+- `POST/GET /intakes/`, then `POST /intakes/{id}/accept|reject|cancel`
+- `POST/GET /aggregation-batches/`, `POST /aggregation-batches/{id}/intakes`,
+  and `POST /aggregation-batches/{id}/close`
+- `POST/GET/PATCH /buyers/`
+- `POST/GET /sales/`, `POST /sales/{id}/confirm`, and buyer receipt
+  submission plus independent `verify|reject` decisions
+- `POST /settlements/sales/{sale_id}/calculate`, `GET /settlements/`,
+  and settlement `submit|approve|disburse|retry-failed|reconcile` actions
+- CSV exports under `/reports/intake.csv`, `/reports/aggregation.csv`,
+  `/reports/buyers.csv`, `/reports/sales.csv`, `/reports/settlements.csv`, and
+  `/reports/payout-exceptions.csv`
+
 ### Authentication and cooperative roles
 
 | UI | Method | Path |

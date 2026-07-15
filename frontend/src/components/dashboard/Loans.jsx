@@ -29,7 +29,7 @@ function fmtRepaymentDate(raw) {
 
 const ACTION_COPY = {
   approve: ['Approve loan?', 'This loan will become eligible for disbursement.', 'Approve loan'],
-  reject: ['Reject loan?', 'This action closes the request and cannot be undone.', 'Reject loan'],
+  reject: ['Reject loan?', 'Give the farmer a clear reason. AgroOS will send it by SMS.', 'Reject and notify'],
   cancel: ['Cancel loan?', 'Provide a reason for cancelling this loan.', 'Cancel loan'],
   disburse: ['Disburse loan?', 'This starts a payout to the member. Confirm the amount and member before continuing.', 'Start disbursement'],
   retry: ['Retry payout?', 'This retries the failed payout using the existing loan details.', 'Retry payout'],
@@ -62,8 +62,12 @@ function ConfirmationModal({ action, processing, error, onClose, onConfirm }) {
       setValidationError('Choose a future repayment due date.')
       return
     }
-    if (action.type === 'cancel' && !reason.trim()) {
-      setValidationError('Enter a cancellation reason.')
+    if (['cancel', 'reject'].includes(action.type) && !reason.trim()) {
+      setValidationError(
+        action.type === 'reject'
+          ? 'Enter a rejection reason for the farmer.'
+          : 'Enter a cancellation reason.',
+      )
       return
     }
     onConfirm({ reason, repaymentDate })
@@ -90,11 +94,13 @@ function ConfirmationModal({ action, processing, error, onClose, onConfirm }) {
         <div style={{ background: 'var(--sage)', borderRadius: 10, padding: 12, marginTop: 18, fontSize: 13 }}>
           <strong>Loan #{action.loan.id}</strong> · {fmtGHS(action.loan.amount)}
         </div>
-        {action.type === 'cancel' && (
+        {['cancel', 'reject'].includes(action.type) && (
           <div style={{ marginTop: 16 }}>
-            <label htmlFor="loan-cancel-reason" style={{ fontSize: 13, fontWeight: 700 }}>Cancellation reason</label>
+            <label htmlFor="loan-decision-reason" style={{ fontSize: 13, fontWeight: 700 }}>
+              {action.type === 'reject' ? 'Reason sent to farmer' : 'Cancellation reason'}
+            </label>
             <textarea
-              id="loan-cancel-reason"
+              id="loan-decision-reason"
               value={reason}
               onChange={(event) => { setReason(event.target.value); setValidationError('') }}
               disabled={processing}
@@ -232,7 +238,14 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
     setActionMessage(null)
     try {
       if (type === 'approve') await approveLoan(loan.id, repaymentDate)
-      if (type === 'reject') await rejectLoan(loan.id)
+      if (type === 'reject') {
+        const result = await rejectLoan(loan.id, reason)
+        setActionMessage(
+          result.notification_status === 'sent'
+            ? `Loan #${loan.id} rejected and the farmer was notified by SMS.`
+            : `Loan #${loan.id} rejected, but the SMS could not be delivered.`,
+        )
+      }
       if (type === 'cancel') await cancelLoan(loan.id, reason)
       if (type === 'disburse' || type === 'retry') {
         const result = await disburseLoan(loan.id)

@@ -11,7 +11,7 @@ By bridging the gap between unconnected rural farmers and formal financial ecosy
 ## Core Features
 
 * **Member Management (CRM):** Centralized dashboard replacing physical ledgers to track farmer locations, crop types, acreage, and cooperative standing.
-* **Moolre Finance Hub:** Automated dues collection and bulk loan disbursements powered by Moolre's payment infrastructure.
+* **Moolre Finance Hub:** Cooperative-defined dues obligations and reminders, farmer-initiated dues payments, and bulk loan disbursements powered by Moolre.
 * **Cooperative Communications:** SMS broadcasts for dues reminders, meeting notices, and payment confirmations.
 * **AgroCredit AI:** A machine learning engine (Scikit-learn) that synthesizes cooperative data, payment consistency, and historical crop yields to generate a dynamic **Farmer Trust Score**.
 * **Native USSD Access:** Offline-first interaction allowing farmers to dial a native Moolre Merchant Code to pay dues and check balances without needing internet access or a smartphone.
@@ -54,7 +54,7 @@ agroos/
 
 AgroOS is designed around the Moolre products that best fit farmer cooperatives:
 
-* **Payment Collection:** Collect cooperative dues and other member payments through mobile money, USSD merchant codes, or hosted payment links.
+* **Payment Collection:** Cooperatives define dues and send reminders; farmers initiate their own payments through mobile money or USSD.
 * **USSD Service:** Give feature-phone farmers an offline-first menu for dues payment, loan checks, announcements, and farm status.
 * **Bulk Disbursement / Transfers:** Send approved input loans, supplier payments, or cooperative payouts to many recipients.
 * **SMS:** Send dues reminders, meeting notices, weather alerts, and payment confirmations.

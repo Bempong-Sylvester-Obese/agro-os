@@ -64,6 +64,26 @@ describe('Loans operations', () => {
     await waitFor(() => expect(loansApi.approveLoan).toHaveBeenCalledWith(12, '2026-09-01'))
   })
 
+  it('requires a rejection reason and reports SMS delivery', async () => {
+    loansApi.rejectLoan.mockResolvedValue({ notification_status: 'sent' })
+    render(<Loans farmers={farmers} loans={[loan()]} loading={false} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reject' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reject and notify' }))
+    expect(screen.getByRole('alert').textContent).toContain('Enter a rejection reason')
+    expect(loansApi.rejectLoan).not.toHaveBeenCalled()
+
+    fireEvent.change(screen.getByLabelText('Reason sent to farmer'), {
+      target: { value: 'Insufficient repayment history' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Reject and notify' }))
+
+    await waitFor(() => {
+      expect(loansApi.rejectLoan).toHaveBeenCalledWith(12, 'Insufficient repayment history')
+    })
+    expect(await screen.findByText(/farmer was notified by SMS/i)).toBeTruthy()
+  })
+
   it('keeps loan origination and payment initiation off the dashboard', async () => {
     loansApi.sendLoanReminder.mockResolvedValue({ status: 'sent' })
     render(<Loans farmers={farmers} loans={[loan({ status: 'disbursed' })]} loading={false} />)

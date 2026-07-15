@@ -19,7 +19,7 @@ Example cooperative segments:
 ## Core Modules
 
 - Member Management: farmer profiles, location, crop type, acreage, cooperative standing, and membership status.
-- Finance Hub: Moolre-powered dues collection, loan disbursement, supplier payments, and transaction tracking.
+- Finance Hub: cooperative-defined dues obligations and reminders, farmer-initiated payments, loan disbursement, and transaction tracking.
 - Communication: SMS announcements for dues reminders, meetings, weather alerts, and payment notifications.
 - Production Tracking: expected harvest, actual harvest, crop type, acreage, and yield history.
 - AgroCredit: trust score generation from alternative cooperative data.
@@ -71,6 +71,26 @@ Select option: _
 4. The backend records the transaction and recalculates the farmer's Trust Score.
 5. The dashboard shows the new payment; the recalculated Trust Score is
    available through the backend API.
+
+## Cooperative Commerce and Farmer Settlement
+
+AgroOS replaces the spreadsheet handoff between collection centres, finance
+officers, and cooperative leadership:
+
+1. Staff weigh, grade, and accept each farmer delivery.
+2. Accepted deliveries are grouped into a traceable aggregation batch.
+3. The cooperative records the buyer, sale quantity, and agreed price.
+4. One staff member records receipt of buyer funds and a different authorized
+   officer verifies it.
+5. AgroOS snapshots each farmer's gross entitlement and clearly itemizes
+   cooperative fees, transport or quality adjustments, and optional loan
+   recovery.
+6. An independently approved settlement creates farmer payouts through
+   Moolre. Failed lines can be retried without paying successful lines twice.
+
+Loan disbursements and produce-sale settlements are distinct workflows.
+Likewise, a cooperative defines dues obligations, while the farmer initiates
+the actual dues payment from their own USSD session.
 6. The farmer submits a fertilizer/input loan request through USSD.
 7. A cooperative leader approves or rejects the request in the dashboard.
 8. An approved payout is sent back to the farmer through Moolre.

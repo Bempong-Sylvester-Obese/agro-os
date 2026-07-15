@@ -116,6 +116,8 @@ class TransactionResponse(TransactionBase):
     moolre_reference: Optional[str] = None
     moolre_transfer_ref: Optional[str] = None
     loan_id: Optional[int] = None
+    settlement_line_id: Optional[int] = None
+    disbursement_batch_id: Optional[int] = None
     initiation_channel: str = "legacy"
     customer_action: str = "none"
     action_expires_at: Optional[datetime] = None
@@ -206,6 +208,10 @@ class LoanApproval(BaseModel):
     expected_repayment_date: Optional[date] = None
 
 
+class LoanRejection(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
+
+
 class LoanResponse(BaseModel):
     id: int
     farmer_id: int
@@ -217,6 +223,10 @@ class LoanResponse(BaseModel):
     request_channel: str = "legacy"
     approved_by: Optional[str] = None
     approved_at: Optional[datetime] = None
+    rejection_reason: Optional[str] = None
+    rejected_by: Optional[str] = None
+    rejected_at: Optional[datetime] = None
+    notification_status: Optional[str] = None
     moolre_transfer_ref: Optional[str] = None
     disbursed_at: Optional[datetime] = None
     repaid_at: Optional[datetime] = None

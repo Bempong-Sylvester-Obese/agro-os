@@ -1,140 +1,17 @@
 // src/components/dashboard/Payments.jsx
 import React, { useCallback, useMemo, useState } from 'react'
-import { X, Loader2, RefreshCw, ReceiptText } from 'lucide-react'
-import { collectDues, fetchTransactionReceipt, reconcileTransaction } from '../../api/transactions'
+import { RefreshCw, ReceiptText } from 'lucide-react'
+import { fetchTransactionReceipt, reconcileTransaction } from '../../api/transactions'
 import { exportDashboardReport } from '../../api/reports'
 import { TableSectionSkeleton } from './DashboardSkeleton'
 import { DashboardPagination, DashboardTableToolbar, useDashboardTable } from './DashboardTableTools'
-import { useModal } from '../../hooks/useModal'
-import { ModalPresence } from '../Motion'
 
 function fmtGHS(amount) {
   return `GHS ${Number(amount).toLocaleString('en-GH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 }
 
-// ── Collect Dues Modal ────────────────────────────────────────────────────────
-function CollectDuesModal({ farmers, onClose, onSuccess }) {
-  const { onBackdropClick, dialogProps, titleId, closeButtonProps } = useModal(onClose, { label: 'collect dues dialog' })
-  const [form, setForm] = useState({ farmerId: '', amount: '', channel: '13' })
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  const [msg, setMsg] = useState(null)
-
-  const activeFarmers = farmers.filter(f => f.membership_status === 'active')
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!form.farmerId || !form.amount) {
-      setError('Please select a member and enter an amount.')
-      return
-    }
-    
-    setLoading(true)
-    setError(null)
-    setMsg(null)
-
-    try {
-      const res = await collectDues(form.farmerId, form.amount, form.channel, 'Cooperative dues')
-      if (res.customer_action === 'otp') {
-        setMsg('Request sent. The member must enter their OTP through AgroOS USSD on their own phone.')
-        setTimeout(() => onSuccess(), 3000)
-      } else if (res.customer_action === 'initiating') {
-        setMsg('Payment initiation is being confirmed. Do not send another request.')
-        setTimeout(() => onSuccess(), 3000)
-      } else if (res.customer_action === 'processing_otp') {
-        setMsg('The member’s OTP is already being processed.')
-        setTimeout(() => onSuccess(), 3000)
-      } else if (res.status === 'pending') {
-        setMsg('Payment initiated. Waiting for the member to approve on their phone.')
-        setTimeout(() => onSuccess(), 3000)
-      } else {
-        setError(res.message || 'Payment failed to initiate. Please try again.')
-      }
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const input = {
-    width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)',
-    borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif",
-    outline: 'none', background: '#fff', color: 'var(--text)', boxSizing: 'border-box',
-    marginTop: 6
-  }
-
-  return (
-    <div
-      className="dashboard-modal-overlay"
-      onClick={onBackdropClick}
-      style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)',
-      backdropFilter: 'blur(4px)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-    }}>
-      <div
-        className="dashboard-modal"
-        {...dialogProps}
-        style={{
-        background: '#fff', borderRadius: 16, width: '100%', maxWidth: 400,
-        boxShadow: '0 32px 80px rgba(0,0,0,0.22)',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '24px 28px 20px', borderBottom: '1px solid var(--border)' }}>
-          <div>
-            <div id={titleId} className="serif" style={{ fontWeight: 700, fontSize: 19 }}>Collect Dues</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Send a USSD payment prompt</div>
-          </div>
-          <button {...closeButtonProps} onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={20} /></button>
-        </div>
-
-        <form onSubmit={handleSubmit} style={{ padding: '24px 28px' }}>
-          {error && <div style={{ padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>}
-          {msg && <div style={{ padding: 12, background: 'var(--sage)', color: 'var(--g)', borderRadius: 8, fontSize: 13, marginBottom: 16, fontWeight: 500 }}>{msg}</div>}
-          
-          <>
-              <div style={{ marginBottom: 16 }}>
-                <label htmlFor="dues-member" style={{ fontSize: 13, fontWeight: 600 }}>Member</label>
-                {activeFarmers.length === 0 ? (
-                  <div style={{ marginTop: 6, padding: 12, background: 'var(--sage)', color: 'var(--g)', borderRadius: 8, fontSize: 13 }}>
-                    No active members available. Add members before collecting dues.
-                  </div>
-                ) : (
-                  <select id="dues-member" style={input} value={form.farmerId} onChange={e => setForm({...form, farmerId: e.target.value})} required disabled={loading || msg}>
-                    <option value="">Select a member...</option>
-                    {activeFarmers.map(f => <option key={f.id} value={f.id}>{f.name} ({f.phone})</option>)}
-                  </select>
-                )}
-              </div>
-
-              <div style={{ marginBottom: 16 }}>
-                <label htmlFor="dues-amount" style={{ fontSize: 13, fontWeight: 600 }}>Amount (GHS)</label>
-                <input id="dues-amount" style={input} type="number" min="1" step="0.5" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} placeholder="e.g. 50" required disabled={loading || msg}/>
-              </div>
-
-              <div style={{ marginBottom: 24 }}>
-                <label htmlFor="dues-channel" style={{ fontSize: 13, fontWeight: 600 }}>Network Channel</label>
-                <select id="dues-channel" style={input} value={form.channel} onChange={e => setForm({...form, channel: e.target.value})} disabled={loading || msg}>
-                  <option value="13">MTN Ghana</option>
-                  <option value="6">Telecel</option>
-                  <option value="7">AT</option>
-                </select>
-              </div>
-
-              <button type="submit" className="btn-lg" disabled={loading || msg || activeFarmers.length === 0} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-                {loading ? <><Loader2 size={16} className="spin" /> Processing...</> : msg ? 'Prompt Sent ✓' : 'Send Payment Prompt'}
-              </button>
-          </>
-        </form>
-      </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
-  )
-}
-
 // ── Main Component ────────────────────────────────────────────────────────
 export default function Payments({ farmers = [], transactions = [], cooperativeId, loading, onRefresh, dataStale = false }) {
-  const [showModal, setShowModal] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [processingTransaction, setProcessingTransaction] = useState(null)
   const [operationError, setOperationError] = useState('')
@@ -218,14 +95,6 @@ export default function Payments({ farmers = [], transactions = [], cooperativeI
 
   return (
     <>
-      <ModalPresence show={showModal}>
-        <CollectDuesModal 
-          farmers={farmers} 
-          onClose={() => setShowModal(false)} 
-          onSuccess={() => { setShowModal(false); if (onRefresh) onRefresh(); }} 
-        />
-      </ModalPresence>
-
       <DashboardTableToolbar
         label="Payments"
         table={table}
@@ -239,7 +108,7 @@ export default function Payments({ farmers = [], transactions = [], cooperativeI
         exportError={exportError}
       />
       <div className="info-banner" role="status" style={{ marginBottom: 16 }}>
-        Members initiate dues and loan repayments through AgroOS USSD. This ledger records and reconciles their payments.
+        Cooperatives create dues obligations and send reminders. Members initiate dues and loan repayments through AgroOS USSD; this ledger only records and reconciles those payments.
       </div>
       {dataStale && (
         <div className="info-banner" role="status" style={{ marginBottom: 16 }}>

@@ -151,6 +151,21 @@ The old admin endpoint `/transactions/dues/collect/verify` no longer exists.
 Pending OTP or approval actions expire after 15 minutes. OTP values are passed
 directly to Moolre and are never persisted or written to USSD logs.
 
+## Cooperative settlement payouts
+
+Produce-sale settlement is a transfer flow, not a farmer debit:
+
+1. AgroOS verifies the cooperative has recorded receipt of buyer funds.
+2. An approved settlement snapshots each farmer's net payable.
+3. AgroOS initiates one Moolre transfer per settlement line using a durable
+   external reference.
+4. Provider status/webhooks reconcile each line independently.
+5. Only failed lines may be retried; completed references are never reused for
+   another payout.
+
+No OTP is requested from a farmer receiving sale proceeds. This is separate
+from loan repayment and dues payment, where the farmer authorizes a debit.
+
 ### Channel codes
 
 | Code | Network |

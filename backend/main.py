@@ -19,15 +19,20 @@ from app.database.seed import seed_golden_path
 from app.middleware.rate_limit import RouteRateLimitMiddleware
 from app.routes import (
     admin,
+    aggregation,
     agro_ai,
     auth,
+    buyers,
     communications,
     cooperatives,
     farmers,
+    intake,
     loans,
     marketing,
     production,
     reports,
+    sales,
+    settlements,
     transactions,
     ussdk_hooks,
     webhooks,
@@ -168,6 +173,11 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(cooperatives.router)
 app.include_router(farmers.router)
+app.include_router(intake.router)
+app.include_router(aggregation.router)
+app.include_router(buyers.router)
+app.include_router(sales.router)
+app.include_router(settlements.router)
 app.include_router(transactions.router)
 app.include_router(loans.router)
 app.include_router(marketing.router)

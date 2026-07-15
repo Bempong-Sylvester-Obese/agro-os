@@ -36,6 +36,7 @@ from app.schemas.schemas import (
     LoanCancel,
     LoanCreate,
     LoanDisbursementStatus,
+    LoanRejection,
     LoanReminderResponse,
     LoanResponse,
 )
@@ -434,8 +435,9 @@ def approve_loan(
 
 
 @router.post("/{loan_id}/reject", response_model=LoanResponse)
-def reject_loan(
+async def reject_loan(
     loan_id: int,
+    rejection: LoanRejection,
     db: Session = Depends(get_db),
     current_user: User | None = Depends(require_roles("admin", "finance_officer")),
 ):
@@ -447,14 +449,31 @@ def reject_loan(
             detail=f"Cannot reject loan in '{loan.status}' state.",
         )
     loan.status = LoanStatus.rejected
+    loan.rejection_reason = rejection.reason.strip()
+    loan.rejected_by = str(current_user.id) if current_user is not None else "system"
+    loan.rejected_at = datetime.utcnow()
     _audit_loan_action(
         db,
         loan=loan,
         current_user=current_user,
         action="loan.rejected",
+        details=f"reason={loan.rejection_reason}",
     )
     db.commit()
     db.refresh(loan)
+    farmer = db.query(Farmer).filter(Farmer.id == loan.farmer_id).first()
+    try:
+        result = await CommunicationsService().send_loan_rejection(
+            loan=loan,
+            farmer=farmer,
+            reason=loan.rejection_reason,
+            db=db,
+            sent_by=str(current_user.id) if current_user else None,
+        )
+        loan.notification_status = "sent" if result["success"] else "failed"
+    except Exception:
+        logger.exception("Could not send rejection SMS for loan %s", loan.id)
+        loan.notification_status = "failed"
     return loan
 
 
