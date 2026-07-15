@@ -1,6 +1,6 @@
 // src/components/dashboard/Payments.jsx
 import React, { useCallback, useMemo, useState } from 'react'
-import { Plus, X, Loader2, RefreshCw, ReceiptText } from 'lucide-react'
+import { X, Loader2, RefreshCw, ReceiptText } from 'lucide-react'
 import { collectDues, fetchTransactionReceipt, reconcileTransaction } from '../../api/transactions'
 import { exportDashboardReport } from '../../api/reports'
 import { TableSectionSkeleton } from './DashboardSkeleton'
@@ -237,11 +237,10 @@ export default function Payments({ farmers = [], transactions = [], cooperativeI
         onExport={handleExport}
         exporting={exporting}
         exportError={exportError}
-      >
-        <button className="btn-nav" disabled={dataStale} onClick={() => setShowModal(true)} style={{ fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, background: 'var(--text)', color: '#fff' }}>
-          <Plus size={15} /> Collect Dues
-        </button>
-      </DashboardTableToolbar>
+      />
+      <div className="info-banner" role="status" style={{ marginBottom: 16 }}>
+        Members initiate dues and loan repayments through AgroOS USSD. This ledger records and reconciles their payments.
+      </div>
       {dataStale && (
         <div className="info-banner" role="status" style={{ marginBottom: 16 }}>
           Collections are paused until members and payments refresh successfully.
@@ -272,7 +271,7 @@ export default function Payments({ farmers = [], transactions = [], cooperativeI
         {table.filteredRows.length === 0 ? (
           <div style={{ padding: '32px 20px', color: 'var(--muted)', fontSize: 14 }}>
             {transactions.length === 0
-              ? 'No transactions recorded yet. Click "Collect Dues" to initiate a MoMo push to a member.'
+              ? 'No farmer-initiated payments have been recorded yet.'
               : 'No payments match the current filters.'}
           </div>
         ) : (
@@ -283,7 +282,13 @@ export default function Payments({ farmers = [], transactions = [], cooperativeI
             {table.pageRows.map(tx => {
               const farmer = farmers.find(f => f.id === tx.farmer_id)
               const name = farmer ? farmer.name : `Farmer #${tx.farmer_id}`
-              const method = ussdChannels.includes(tx.channel) ? 'USSD' : (tx.channel || 'Manual')
+              const channelLabel = {
+                ussdk: 'Farmer USSD',
+                moolre_ussd: 'Farmer USSD',
+                dashboard: 'Legacy staff request',
+              }
+              const method = channelLabel[tx.initiation_channel]
+                || (ussdChannels.includes(tx.channel) ? 'USSD' : (tx.channel || 'Manual'))
               const date = new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
               let cls = 'bdg-amber', label = 'Pending'
               if (tx.status === 'pending' && tx.customer_action === 'initiating') label = 'Confirming initiation'

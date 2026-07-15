@@ -54,7 +54,7 @@ def test_send_dues_reminder(mock_send, client, cooperative, farmer):
     assert data["recipients_count"] == 1
     mock_send.assert_awaited_once()
     message = mock_send.await_args.args[0][0]["message"]
-    assert "Dial *919*4020# and choose Pay Cooperative Dues" in message
+    assert "Dial *919*4020# and choose Pay Dues" in message
     assert "*203*" not in message
 
 

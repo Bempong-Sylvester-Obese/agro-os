@@ -202,8 +202,8 @@ class LoanCancel(BaseModel):
     reason: str = Field(..., min_length=3, max_length=500)
 
 
-class LoanRepayVerifyRequest(BaseModel):
-    otp_code: str = Field(..., min_length=1)
+class LoanApproval(BaseModel):
+    expected_repayment_date: Optional[date] = None
 
 
 class LoanResponse(BaseModel):
@@ -223,6 +223,10 @@ class LoanResponse(BaseModel):
     cancelled_by: Optional[str] = None
     cancelled_at: Optional[datetime] = None
     cancellation_reason: Optional[str] = None
+    due_state: str = "not_due"
+    days_overdue: int = 0
+    last_reminder_at: Optional[datetime] = None
+    next_reminder_date: Optional[date] = None
     created_at: datetime
     updated_at: datetime
 
@@ -237,6 +241,22 @@ class LoanDisbursementStatus(BaseModel):
     transfer_reference: Optional[str] = None
     can_cancel: bool
     can_retry: bool
+
+
+class LoanReminderResponse(BaseModel):
+    id: int
+    loan_id: int
+    reminder_kind: str
+    scheduled_for: date
+    status: str
+    attempts: int
+    provider_reference: Optional[str] = None
+    sent_at: Optional[datetime] = None
+    error: Optional[str] = None
+    manual: bool
+
+    class Config:
+        from_attributes = True
 
 
 # ===========================================================================

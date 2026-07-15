@@ -40,7 +40,10 @@ from app.models.models import (
     User,
     UssdSession,
 )
-from app.routes.loans import resume_loan_repayment_customer_action
+from app.routes.loans import (
+    resume_loan_repayment_customer_action,
+    start_farmer_loan_repayment,
+)
 from app.routes.transactions import (
     _run_dues_collect,
     pending_customer_actions,
@@ -366,7 +369,8 @@ USSD_MENU_MAIN = (
     "2. Pay Dues\n"
     "3. Request Loan\n"
     "4. Announcements\n"
-    "5. Complete Pending Payment"
+    "5. Complete Pending Payment\n"
+    "6. Repay Loan"
 )
 
 NOT_REGISTERED_MSG = "Phone not registered with AgroOS. Contact your cooperative."
@@ -598,9 +602,140 @@ async def handle_ussd_session(
                 "reply": True,
             }
 
+        if message == "6":
+            if not farmer:
+                _ussd_sessions.pop(session_id, None)
+                return {"message": NOT_REGISTERED_MSG, "reply": False}
+            loans = (
+                db.query(Loan)
+                .filter(
+                    Loan.farmer_id == farmer.id,
+                    Loan.status == LoanStatus.disbursed,
+                )
+                .order_by(Loan.expected_repayment_date, Loan.id)
+                .all()
+            )
+            if not loans:
+                _ussd_sessions.pop(session_id, None)
+                return {"message": "You have no active loans to repay.", "reply": False}
+            state["loan_ids"] = [loan.id for loan in loans]
+            if len(loans) > 1:
+                state["step"] = "repay_loan_select"
+                options = "\n".join(
+                    f"{index}. Loan #{loan.id} GHS {loan.amount:.2f}"
+                    for index, loan in enumerate(loans, start=1)
+                )
+                return {"message": f"Choose a loan to repay:\n{options}", "reply": True}
+            state["step"] = "repay_confirm"
+            state["loan_id"] = loans[0].id
+            return {
+                "message": (
+                    f"Repay loan #{loans[0].id} of GHS {loans[0].amount:.2f}?\n"
+                    "1. Confirm\n2. Cancel"
+                ),
+                "reply": True,
+            }
+
         msg = "Invalid option.\n" + USSD_MENU_MAIN
         _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
         return {"message": msg, "reply": True}
+
+    if state["step"] == "repay_loan_select":
+        try:
+            selected_index = int(message) - 1
+            loan_id = state["loan_ids"][selected_index]
+            if selected_index < 0:
+                raise IndexError
+        except (TypeError, ValueError, IndexError):
+            return {"message": "Choose a valid loan number:", "reply": True}
+        loan = db.query(Loan).filter(Loan.id == loan_id).first()
+        if not loan:
+            _ussd_sessions.pop(session_id, None)
+            return {"message": "Loan not found.", "reply": False}
+        state["step"] = "repay_confirm"
+        state["loan_id"] = loan.id
+        return {
+            "message": (
+                f"Repay loan #{loan.id} of GHS {loan.amount:.2f}?\n"
+                "1. Confirm\n2. Cancel"
+            ),
+            "reply": True,
+        }
+
+    if state["step"] == "repay_confirm":
+        if message != "1":
+            _ussd_sessions.pop(session_id, None)
+            return {"message": "Loan repayment cancelled.", "reply": False}
+        try:
+            loan = await start_farmer_loan_repayment(
+                loan_id=state["loan_id"],
+                farmer=farmer,
+                db=db,
+                initiation_channel="moolre_ussd",
+            )
+        except HTTPException as exc:
+            _ussd_sessions.pop(session_id, None)
+            return {"message": str(exc.detail), "reply": False}
+        tx = (
+            db.query(Transaction)
+            .filter(
+                Transaction.loan_id == loan.id,
+                Transaction.transaction_type == TransactionType.repayment,
+            )
+            .order_by(Transaction.created_at.desc())
+            .first()
+        )
+        if loan.status == LoanStatus.repaid:
+            _ussd_sessions.pop(session_id, None)
+            return {"message": "Loan repayment completed.", "reply": False}
+        if tx and tx.customer_action == "otp":
+            state["step"] = "repay_otp"
+            state["transaction_id"] = tx.id
+            return {
+                "message": "Enter the OTP Moolre sent to your phone:",
+                "reply": True,
+            }
+        _ussd_sessions.pop(session_id, None)
+        return {
+            "message": "Approve the repayment prompt on your phone to complete.",
+            "reply": False,
+        }
+
+    if state["step"] == "repay_otp":
+        tx = (
+            db.query(Transaction)
+            .filter(
+                Transaction.id == state["transaction_id"],
+                Transaction.farmer_id == farmer.id,
+            )
+            .first()
+        )
+        if not tx:
+            _ussd_sessions.pop(session_id, None)
+            return {"message": "Pending repayment not found.", "reply": False}
+        try:
+            loan = await resume_loan_repayment_customer_action(
+                transaction=tx,
+                farmer=farmer,
+                otp_code=message,
+                db=db,
+            )
+        except HTTPException as exc:
+            if exc.status_code in (404, 410):
+                _ussd_sessions.pop(session_id, None)
+                return {"message": str(exc.detail), "reply": False}
+            return {"message": str(exc.detail), "reply": True}
+        if loan.status == LoanStatus.repaid:
+            _ussd_sessions.pop(session_id, None)
+            return {"message": "Loan repayment completed.", "reply": False}
+        refreshed = db.query(Transaction).filter(Transaction.id == tx.id).first()
+        if refreshed and refreshed.customer_action == "otp":
+            return {"message": "OTP still required. Try again:", "reply": True}
+        _ussd_sessions.pop(session_id, None)
+        return {
+            "message": "OTP accepted. Approve the repayment prompt on your phone.",
+            "reply": False,
+        }
 
     if state["step"] == "pending_payment_select":
         try:

@@ -568,7 +568,14 @@ def test_farmer_completes_repayment_otp_from_ussdk(client, farmer, db):
     ):
         initiated = client.post(f"/loans/{loan_id}/repay")
         assert initiated.status_code == 200
-        tx = db.query(Transaction).filter(Transaction.loan_id == loan_id).one()
+        tx = (
+            db.query(Transaction)
+            .filter(
+                Transaction.loan_id == loan_id,
+                Transaction.transaction_type == TransactionType.repayment,
+            )
+            .one()
+        )
         assert tx.customer_action == "otp"
 
         completed = client.post(

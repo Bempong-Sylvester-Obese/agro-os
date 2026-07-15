@@ -103,7 +103,8 @@ export default function SolutionsPage({ user }) {
                   <div className="ussd-line">3. Request Loan</div>
                   <div className="ussd-line">4. Announcements</div>
                   <div className="ussd-line">5. Complete Pending Payment</div>
-                  <div className="ussd-dim">Reply 1–5</div>
+                  <div className="ussd-line">6. Repay Loan</div>
+                  <div className="ussd-dim">Reply 1–6</div>
                 </div>
                 <div className="ussd-keypad" aria-hidden="true">
                   {['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].map((key) => <i key={key}>{key}</i>)}

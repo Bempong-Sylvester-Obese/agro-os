@@ -6,12 +6,14 @@ persists all outbound messages to CommunicationLog.
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
 from app.models.models import (
     CommunicationLog,
+    Loan,
+    LoanReminder,
     MessageType,
 )
 from app.models.models import (
@@ -46,7 +48,7 @@ class CommunicationsService:
 
         message = (
             f"Dear {farmer.name}, your cooperative dues of GHS {amount:.2f} are due by {due_date}. "
-            f"Dial {ussd_code} and choose Pay Cooperative Dues. - AgroOS"
+            f"Dial {ussd_code} and choose Pay Dues. - AgroOS"
         )
 
         result = await self.moolre.send_single_sms(
@@ -99,6 +101,78 @@ class CommunicationsService:
             status="sent" if result["success"] else "failed",
         )
         return {"success": result["success"], "log_id": log.id}
+
+    async def send_loan_repayment_reminder(
+        self,
+        *,
+        loan: Loan,
+        farmer: Farmer,
+        reminder_kind: str,
+        scheduled_for: date,
+        db: Session,
+        manual: bool = False,
+        sent_by: str | None = None,
+    ) -> LoanReminder:
+        """Send an idempotent reminder without initiating a payment."""
+        existing = (
+            db.query(LoanReminder)
+            .filter(
+                LoanReminder.loan_id == loan.id,
+                LoanReminder.reminder_kind == reminder_kind,
+                LoanReminder.scheduled_for == scheduled_for,
+            )
+            .first()
+        )
+        if existing and existing.status == "sent":
+            return existing
+        reminder = existing or LoanReminder(
+            loan_id=loan.id,
+            reminder_kind=reminder_kind,
+            scheduled_for=scheduled_for,
+            status="pending",
+            manual=manual,
+        )
+        if not existing:
+            db.add(reminder)
+            db.commit()
+            db.refresh(reminder)
+
+        from app.config import get_settings
+
+        ussd_code = get_settings().agroos_ussd_code.strip() or "*919*4020#"
+        due_date = (
+            loan.expected_repayment_date.strftime("%d %b %Y")
+            if loan.expected_repayment_date
+            else "the agreed date"
+        )
+        message = (
+            f"AgroOS: Loan #{loan.id} repayment of GHS {loan.amount:.2f} is due "
+            f"{due_date}. Dial {ussd_code} and choose Repay Loan. Never share your OTP."
+        )
+        reminder.attempts += 1
+        result = await self.moolre.send_single_sms(
+            phone=farmer.phone,
+            message=message,
+            ref=f"loan-reminder-{loan.id}-{scheduled_for.isoformat()}-{reminder_kind}",
+        )
+        reminder.status = "sent" if result["success"] else "failed"
+        reminder.sent_at = datetime.utcnow() if result["success"] else None
+        reminder.error = None if result["success"] else result.get("message")
+        provider_ref = result.get("raw", {}).get("data")
+        reminder.provider_reference = str(provider_ref) if provider_ref else None
+        self._log(
+            db=db,
+            message_type=MessageType.sms,
+            cooperative_id=farmer.cooperative_id,
+            recipients_count=1,
+            body=message,
+            moolre_ref=reminder.provider_reference,
+            sent_by=sent_by,
+            status=reminder.status,
+        )
+        db.commit()
+        db.refresh(reminder)
+        return reminder
 
     async def send_payment_action_required(
         self,
@@ -216,7 +290,7 @@ class CommunicationsService:
                 "recipient": f.phone,
                 "message": (
                     f"Dear {f.name}, your cooperative dues of GHS {amount:.2f} are due by {due_date}. "
-                    f"Dial {ussd_code} and choose Pay Cooperative Dues. - AgroOS"
+                    f"Dial {ussd_code} and choose Pay Dues. - AgroOS"
                 ),
                 "ref": str(uuid.uuid4()),
             }

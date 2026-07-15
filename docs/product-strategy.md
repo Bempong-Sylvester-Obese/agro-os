@@ -59,6 +59,7 @@ Welcome to AgroOS (Kuapa Kokoo)
 3. Request Input Loan
 4. View Latest Announcements
 5. Complete Pending Payment
+6. Repay Loan
 Select option: _
 ```
 

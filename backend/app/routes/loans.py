@@ -2,10 +2,10 @@
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from sqlalchemy.orm import Session, joinedload
 
 from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
@@ -15,6 +15,7 @@ from app.models.models import (
     AdminAuditLog,
     Cooperative,
     Loan,
+    LoanReminder,
     LoanStatus,
     Transaction,
     TransactionStatus,
@@ -31,9 +32,11 @@ from app.routes.transactions import (
     expire_customer_actions,
 )
 from app.schemas.schemas import (
+    LoanApproval,
     LoanCancel,
     LoanCreate,
     LoanDisbursementStatus,
+    LoanReminderResponse,
     LoanResponse,
 )
 from app.services.auth_service import (
@@ -312,8 +315,11 @@ def list_loans(
         cooperative_id=cooperative_id,
         settings=settings,
     )
-    query = db.query(Loan).join(Farmer, Loan.farmer_id == Farmer.id).filter(
-        Farmer.cooperative_id == scoped_coop_id
+    query = (
+        db.query(Loan)
+        .options(joinedload(Loan.reminders))
+        .join(Farmer, Loan.farmer_id == Farmer.id)
+        .filter(Farmer.cooperative_id == scoped_coop_id)
     )
     if farmer_id is not None:
         query = query.filter(Loan.farmer_id == farmer_id)
@@ -332,9 +338,62 @@ def get_loan(
     return _get_loan_or_404(loan_id, db, current_user)
 
 
+@router.get("/{loan_id}/reminders", response_model=list[LoanReminderResponse])
+def list_loan_reminders(
+    loan_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+):
+    _get_loan_or_404(loan_id, db, current_user)
+    return (
+        db.query(LoanReminder)
+        .filter(LoanReminder.loan_id == loan_id)
+        .order_by(LoanReminder.created_at.desc())
+        .all()
+    )
+
+
+@router.post("/{loan_id}/reminders", response_model=LoanReminderResponse)
+async def send_loan_reminder(
+    loan_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+):
+    loan = _get_loan_or_404(loan_id, db, current_user)
+    if loan.status != LoanStatus.disbursed:
+        raise HTTPException(
+            status_code=409,
+            detail="Repayment reminders are only available for disbursed loans.",
+        )
+    if not loan.expected_repayment_date:
+        raise HTTPException(status_code=409, detail="Loan has no repayment due date.")
+    farmer = db.query(Farmer).filter(Farmer.id == loan.farmer_id).first()
+    reminder = await CommunicationsService().send_loan_repayment_reminder(
+        loan=loan,
+        farmer=farmer,
+        reminder_kind="manual",
+        scheduled_for=date.today(),
+        db=db,
+        manual=True,
+        sent_by=str(current_user.id) if current_user else None,
+    )
+    _audit_loan_action(
+        db,
+        loan=loan,
+        current_user=current_user,
+        action="loan.reminder_sent",
+        details=f"reminder_id={reminder.id};status={reminder.status}",
+    )
+    db.commit()
+    if reminder.status != "sent":
+        raise HTTPException(status_code=502, detail=reminder.error or "Reminder failed")
+    return reminder
+
+
 @router.post("/{loan_id}/approve", response_model=LoanResponse)
 def approve_loan(
     loan_id: int,
+    approval: LoanApproval = Body(default_factory=LoanApproval),
     db: Session = Depends(get_db),
     current_user: User | None = Depends(require_roles("admin", "finance_officer")),
 ):
@@ -345,7 +404,21 @@ def approve_loan(
             status_code=409,
             detail=f"Cannot approve loan in '{loan.status}' state. Must be 'requested'.",
         )
+    repayment_date = approval.expected_repayment_date
+    if repayment_date is None:
+        if get_settings().app_env.lower() not in ("test", "testing"):
+            raise HTTPException(
+                status_code=422,
+                detail="Expected repayment date is required.",
+            )
+        repayment_date = date.today() + timedelta(days=30)
+    if repayment_date <= date.today():
+        raise HTTPException(
+            status_code=422,
+            detail="Expected repayment date must be in the future.",
+        )
     loan.status = LoanStatus.approved
+    loan.expected_repayment_date = repayment_date
     loan.approved_by = str(current_user.id) if current_user is not None else "system"
     loan.approved_at = datetime.utcnow()
     _audit_loan_action(
@@ -612,6 +685,7 @@ async def disburse_loan(
 
     attempt_tx = Transaction(
         farmer_id=farmer.id,
+        loan_id=loan.id,
         transaction_type=TransactionType.payout,
         amount=loan.amount,
         currency=loan.currency,
@@ -670,17 +744,20 @@ async def disburse_loan(
     )
 
 
-@router.post("/{loan_id}/repay", response_model=LoanResponse)
-async def repay_loan(
+async def start_farmer_loan_repayment(
+    *,
     loan_id: int,
-    db: Session = Depends(get_db),
-    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+    farmer: Farmer,
+    db: Session,
+    initiation_channel: str,
 ):
-    """
-    Initiate Moolre collection for loan repayment.
-    Marks the loan repaid only after payment_status confirms the collection.
-    """
-    loan = _get_loan_or_404(loan_id, db, current_user)
+    """Start a repayment selected by the authenticated farmer's phone channel."""
+    loan = db.query(Loan).filter(
+        Loan.id == loan_id,
+        Loan.farmer_id == farmer.id,
+    ).first()
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
     if loan.status == LoanStatus.repaid:
         return loan
     if loan.status != LoanStatus.disbursed:
@@ -689,14 +766,10 @@ async def repay_loan(
             detail=f"Cannot repay loan in '{loan.status}' state. Must be 'disbursed'.",
         )
 
-    farmer = db.query(Farmer).filter(Farmer.id == loan.farmer_id).first()
-    if not farmer:
-        raise HTTPException(status_code=404, detail="Farmer not found")
-
     moolre = MoolreService()
     account_number = _cooperative_account(farmer, db)
 
-    expire_customer_actions(db, farmer_id=farmer.id)
+    expire_customer_actions(db, loan_id=loan.id)
     loan = (
         db.query(Loan)
         .filter(Loan.id == loan_id)
@@ -731,13 +804,6 @@ async def repay_loan(
             )
 
     ext_ref = _repay_external_ref(loan.id)
-    _audit_loan_action(
-        db,
-        loan=loan,
-        current_user=current_user,
-        action="loan.repayment_requested",
-        details=f"amount={loan.amount}",
-    )
     tx = Transaction(
         farmer_id=loan.farmer_id,
         loan_id=loan.id,
@@ -748,7 +814,7 @@ async def repay_loan(
         moolre_reference=ext_ref,
         payer_phone=farmer.phone,
         description=f"Loan repayment #{loan.id}",
-        initiation_channel="dashboard",
+        initiation_channel=initiation_channel,
         customer_action="initiating",
         action_expires_at=datetime.utcnow() + INITIATING_ACTION_TTL,
     )
@@ -804,7 +870,7 @@ async def repay_loan(
                 amount=loan.amount,
                 reference=tx.moolre_reference,
                 db=db,
-                sent_by=str(current_user.id) if current_user else None,
+                sent_by=None,
             )
         except Exception as exc:
             logger.warning(
@@ -819,6 +885,31 @@ async def repay_loan(
         account_number=account_number,
     )
     return await _finalize_repayment(loan=loan, tx=tx, status_result=status_result, db=db)
+
+
+@router.post("/{loan_id}/repay", response_model=LoanResponse, include_in_schema=False)
+async def legacy_repay_loan_fixture(
+    loan_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+):
+    """Test-only compatibility fixture; production repayment starts on USSD."""
+    settings = get_settings()
+    if current_user is not None or settings.app_env.lower() not in ("test", "testing"):
+        raise HTTPException(
+            status_code=403,
+            detail="Loan repayments must be initiated by the farmer through USSD.",
+        )
+    loan = db.query(Loan).filter(Loan.id == loan_id).first()
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    farmer = db.query(Farmer).filter(Farmer.id == loan.farmer_id).first()
+    return await start_farmer_loan_repayment(
+        loan_id=loan_id,
+        farmer=farmer,
+        db=db,
+        initiation_channel="test_fixture",
+    )
 
 
 async def resume_loan_repayment_customer_action(

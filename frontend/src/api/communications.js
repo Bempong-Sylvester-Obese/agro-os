@@ -41,3 +41,20 @@ export async function sendBroadcast(cooperativeId, message) {
   }
   return data
 }
+
+export async function sendDuesReminder(cooperativeId, amount, dueDate) {
+  const res = await apiFetch(`${API_URL}/communications/sms/dues-reminder`, {
+    method: 'POST',
+    headers: authHeaders(true),
+    body: JSON.stringify({
+      cooperative_id: cooperativeId,
+      amount: Number(amount),
+      due_date: dueDate,
+    }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok || data.status !== 'success') {
+    throw new Error(data.detail || data.message || 'Failed to send dues reminder')
+  }
+  return data
+}

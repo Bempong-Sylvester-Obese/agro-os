@@ -10,7 +10,7 @@ vi.mock('../../api/loans', () => ({
   disburseLoan: vi.fn(),
   cancelLoan: vi.fn(),
   fetchDisbursementStatus: vi.fn(),
-  repayLoan: vi.fn(),
+  sendLoanReminder: vi.fn(),
 }))
 
 vi.mock('../Motion', () => ({
@@ -56,22 +56,29 @@ describe('Loans operations', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Approve loan?' })
     expect(dialog.getAttribute('aria-modal')).toBe('true')
+    fireEvent.change(screen.getByLabelText('Repayment due date'), {
+      target: { value: '2026-09-01' },
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Approve loan' }))
 
-    await waitFor(() => expect(loansApi.approveLoan).toHaveBeenCalledWith(12))
+    await waitFor(() => expect(loansApi.approveLoan).toHaveBeenCalledWith(12, '2026-09-01'))
   })
 
-  it('keeps loan origination and repayment OTP entry off the dashboard', async () => {
-    loansApi.repayLoan.mockResolvedValue({ status: 'disbursed' })
+  it('keeps loan origination and payment initiation off the dashboard', async () => {
+    loansApi.sendLoanReminder.mockResolvedValue({ status: 'sent' })
     render(<Loans farmers={farmers} loans={[loan({ status: 'disbursed' })]} loading={false} />)
 
     expect(screen.queryByRole('button', { name: /log loan request/i })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: 'Collect repayment' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Send repayment request' }))
+    expect(screen.queryByRole('button', { name: /collect repayment/i })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Send reminder' }))
+    fireEvent.click(
+      screen.getByRole('dialog', { name: 'Send repayment reminder?' })
+        .querySelector('button[type="submit"]'),
+    )
 
-    await waitFor(() => expect(loansApi.repayLoan).toHaveBeenCalledWith(12))
+    await waitFor(() => expect(loansApi.sendLoanReminder).toHaveBeenCalledWith(12))
     expect(screen.queryByLabelText(/one-time password/i)).toBeNull()
-    expect(await screen.findByText(/member must complete it on their phone/i)).toBeTruthy()
+    expect(await screen.findByText(/repayment reminder sent/i)).toBeTruthy()
   })
 
   it('shows explicit failed-payout recovery and eligible cancellation actions', async () => {

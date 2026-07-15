@@ -44,6 +44,7 @@ Welcome to AgroOS (Kuapa Kokoo)
 3. Request Input Loan
 4. View Latest Announcements
 5. Complete Pending Payment
+6. Repay Loan
 Select option: 2
 ```
 
@@ -51,7 +52,7 @@ What to show:
 
 - USSD menu mock or event log.
 - Farmer selects dues payment.
-- Payment is initiated through Moolre.
+- The farmer—not dashboard staff—initiates payment through Moolre.
 - If Moolre requests OTP verification, the farmer completes it in the same
   phone channel; the dashboard never displays an OTP field.
 
@@ -94,7 +95,7 @@ What to show:
 
 - Farmer profile.
 - USSD-originated loan request details.
-- Approval action.
+- Approval action with the agreed repayment due date.
 
 ### 6. Moolre Disburses Loan
 
@@ -105,6 +106,12 @@ What to show:
 - Disbursement batch or transfer request.
 - Recipient, amount, and status.
 - Final successful payout confirmation.
+
+### 7. AgroOS Reminds; Farmer Repays
+
+AgroOS sends due-date reminders without creating a debit. Abena dials the
+AgroOS code, chooses **Repay Loan**, and authorizes the Moolre payment on her
+own phone. Staff monitor and reconcile the result from the dashboard.
 
 ## Closing Message
 

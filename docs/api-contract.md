@@ -65,14 +65,13 @@ When the database is seeded, Agro-AI assessments are built from DB farmer record
 | Payment history | GET | `/transactions/` | `TransactionResponse[]` |
 | Wallet balance | GET | `/transactions/moolre/wallet-balance` | Moolre wallet object |
 | Webhook audit | GET | `/transactions/webhook-events` | `PaymentWebhookEventResponse[]` |
-| Payment link | POST | `/transactions/payment-link` | `PaymentLinkResponse` |
-| Collect dues | POST | `/transactions/dues/collect` | `DuesCollectResponse` |
+| Reconcile payment | POST | `/transactions/{transaction_id}/reconcile` | Reconciliation result |
 
 **TransactionResponse** statuses: `pending`, `completed`, `failed`. Channel `13` = MoMo.
 Pending collections also expose `customer_action` (`initiating`, `otp`,
 `processing_otp`, `approval`, or `none`), `action_expires_at`, and
-`initiation_channel`. The dashboard initiates a collect once and never accepts
-a member OTP.
+`initiation_channel`. Production debits originate only from the farmer's
+signed USSD session. The dashboard never initiates a debit or accepts an OTP.
 
 ### Loans, Production, SMS
 
@@ -80,7 +79,8 @@ a member OTP.
 |----|--------|------|
 | Loans tab | GET | `/loans/` |
 | Approve/reject request | POST | `/loans/{loan_id}/approve`, `/loans/{loan_id}/reject` |
-| Disburse/collect repayment | POST | `/loans/{loan_id}/disburse`, `/loans/{loan_id}/repay` |
+| Disburse loan | POST | `/loans/{loan_id}/disburse` |
+| Send repayment reminder | POST | `/loans/{loan_id}/reminders` |
 | Production tab | GET | `/production/` |
 | SMS tab | GET/POST | `/communications/logs`, `/communications/sms/broadcast` |
 
@@ -94,14 +94,15 @@ a member OTP.
 | USSDK loan request | POST | `/ussdk/loan-request` |
 | USSDK pending payment | POST | `/ussdk/pending-payment` |
 | USSDK dues payment | POST | `/ussdk/pay-dues` |
+| USSDK loan repayment | POST | `/ussdk/loan-repayment` |
 
 Farmers originate loan requests from the Moolre menu or signed USSDK
 `/loan-request` hook. Staff do not create requests; they only review the
-resulting `requested` loan. If a staff-initiated dues or repayment request
-returns Moolre `TP14`, the farmer selects **Complete Pending Payment** in their
-own USSD session. AgroOS resolves the transaction from the caller's registered
-phone and reuses its original Moolre reference. OTP values are never stored in
-transactions or USSD logs.
+resulting `requested` loan. Farmers also initiate dues and loan repayments in
+their own signed USSD session. Moolre sends and verifies any required OTP;
+AgroOS reuses the original payment reference and never stores OTP values in
+transactions or USSD logs. **Complete Pending Payment** is a recovery path for
+an interrupted farmer session, not a staff-started collection flow.
 
 ### Cooperative profile
 

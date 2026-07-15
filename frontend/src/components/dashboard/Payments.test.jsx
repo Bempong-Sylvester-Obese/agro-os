@@ -1,11 +1,9 @@
 import React from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Payments from './Payments'
-import * as transactionsApi from '../../api/transactions'
 
 vi.mock('../../api/transactions', () => ({
-  collectDues: vi.fn(),
   fetchTransactionReceipt: vi.fn(),
   reconcileTransaction: vi.fn(),
 }))
@@ -28,23 +26,12 @@ describe('Payments operations', () => {
     vi.clearAllMocks()
   })
 
-  it('leaves OTP completion with the member after sending one request', async () => {
-    transactionsApi.collectDues.mockResolvedValue({
-      status: 'verification_required',
-      customer_action: 'otp',
-      transaction_id: 21,
-    })
+  it('keeps payment initiation on farmer USSD', () => {
     render(<Payments farmers={farmers} transactions={[]} loading={false} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Collect Dues' }))
-    fireEvent.change(screen.getByLabelText('Member'), { target: { value: '4' } })
-    fireEvent.change(screen.getByLabelText('Amount (GHS)'), { target: { value: '50' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Send Payment Prompt' }))
-
-    await waitFor(() => expect(transactionsApi.collectDues).toHaveBeenCalledTimes(1))
-    expect(await screen.findByText(/member must enter their OTP through AgroOS USSD/i)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Collect Dues' })).toBeNull()
+    expect(screen.getByText(/members initiate dues and loan repayments through AgroOS USSD/i)).toBeTruthy()
     expect(screen.queryByLabelText(/OTP/i)).toBeNull()
-    expect(screen.queryByRole('button', { name: /submit OTP/i })).toBeNull()
   })
 
   it('labels durable customer-action states', () => {

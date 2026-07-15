@@ -51,6 +51,7 @@ _PUBLIC_PATHS = frozenset({
     "/webhooks/moolre/ussd",
     "/ussdk/loan-balance",
     "/ussdk/loan-request",
+    "/ussdk/loan-repayment",
     "/ussdk/pay-dues",
     "/ussdk/pending-payment",
     "/ussdk/wallet-balance",

@@ -126,46 +126,22 @@ the dashboard. AgroOS persists the original payment reference as an
 
 ### Farmer-action flow
 
-**Step 1 — Initiate collect** (creates a pending transaction):
-
-```http
-POST /transactions/dues/collect
-Content-Type: application/json
-
-{
-  "farmer_id": 1,
-  "amount": 1.00,
-  "channel": "13",
-  "description": "Cooperative dues"
-}
-```
-
-If TP14, the response includes:
-
-```json
-{
-  "transaction_id": 42,
-  "moolre_reference": "<uuid>",
-  "status": "verification_required",
-  "outcome": "verification_required",
-  "moolre_code": "TP14",
-  "customer_action": "otp",
-  "action_expires_at": "2026-07-15T11:30:00",
-  "message": "Please complete the verification process sent to you via SMS and try again."
-}
-```
+**Step 1 — Farmer starts payment:** the member dials `AGROOS_USSD_CODE` and
+chooses **Pay Dues** or **Repay Loan**. Signed USSDK menus call
+`POST /ussdk/pay-dues` or `POST /ussdk/loan-repayment`. Dashboard collection
+and payment-link endpoints are disabled in production.
 
 **Step 2 — Farmer completes the pending payment on their phone:**
 
 1. The member dials the configured `AGROOS_USSD_CODE` (currently
    `*919*4020#`).
-2. They choose **Complete Pending Payment**.
-3. AgroOS resolves pending actions from the caller's registered phone.
+2. They continue in the same dues or loan-repayment flow.
+3. AgroOS resolves the action from the caller's registered phone.
 4. The member enters the Moolre OTP in that USSD session.
-5. AgroOS reuses the original `moolre_reference`; no second dashboard collect
-   request is sent.
+5. AgroOS reuses the original `moolre_reference`; no second payment starts.
 
-USSDK deployments map the same screens to `POST /ussdk/pending-payment`.
+If the session is interrupted, **Complete Pending Payment** and
+`POST /ussdk/pending-payment` provide a recovery path.
 Calling it without `transaction_id` lists phone-scoped actions; calling it with
 the selected `transaction_id` first requests and then submits `otp_code`.
 The old admin endpoint `/transactions/dues/collect/verify` no longer exists.

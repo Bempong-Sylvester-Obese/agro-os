@@ -211,6 +211,7 @@ Map the production menu screens to these signed hooks:
 | Check Loan Balance | `POST /ussdk/loan-balance` |
 | Pay Dues | `POST /ussdk/pay-dues` |
 | Request Loan | `POST /ussdk/loan-request` |
+| Repay Loan | `POST /ussdk/loan-repayment` |
 | Complete Pending Payment | `POST /ussdk/pending-payment` |
 | Announcements | `POST /ussdk/announcements` |
 
@@ -218,6 +219,20 @@ The loan request screen sends `amount`, `purpose`, and, when needed,
 `membership_id`. The pending-payment screen first stores the returned
 `transaction_id`, then sends `otp_code` only from the farmer's USSD session.
 Never add an OTP field to the dashboard.
+
+### Render loan-reminder cron
+
+Create a Render Cron Job with root directory `backend/`, the same
+`DATABASE_URL`, Moolre SMS credentials, and `AGROOS_USSD_CODE` as the API.
+Run it daily with:
+
+```bash
+python -m app.jobs.send_loan_reminders
+```
+
+The job sends idempotent reminders seven, three, and one day before the
+repayment date, on the due date, and at controlled overdue intervals. It never
+creates a transaction or initiates a Moolre debit.
 
 ---
 

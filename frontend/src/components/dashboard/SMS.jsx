@@ -1,6 +1,6 @@
 // src/components/dashboard/SMS.jsx
 import { useState, useEffect } from 'react'
-import { fetchSMSLogs, sendBroadcast } from '../../api/communications'
+import { fetchSMSLogs, sendBroadcast, sendDuesReminder } from '../../api/communications'
 import { SMSLogsSkeleton } from './DashboardSkeleton'
 
 export default function SMS({ cooperativeId, memberCount = 0 }) {
@@ -10,6 +10,8 @@ export default function SMS({ cooperativeId, memberCount = 0 }) {
   const [sending, setSending]         = useState(false)
   const [sendSuccess, setSendSuccess] = useState(false)
   const [sendError, setSendError]     = useState(null)
+  const [reminder, setReminder]       = useState({ amount: '', dueDate: '' })
+  const [sendingReminder, setSendingReminder] = useState(false)
 
   useEffect(() => {
     let mounted = true
@@ -39,6 +41,22 @@ export default function SMS({ cooperativeId, memberCount = 0 }) {
       setSendError(err.message || 'Failed to send broadcast. Check your Moolre SMS configuration.')
     } finally {
       setSending(false)
+    }
+  }
+
+  const handleReminder = async () => {
+    if (!cooperativeId || !reminder.amount || !reminder.dueDate) return
+    setSendingReminder(true)
+    setSendError(null)
+    try {
+      await sendDuesReminder(cooperativeId, reminder.amount, reminder.dueDate)
+      setReminder({ amount: '', dueDate: '' })
+      setSendSuccess(true)
+      setLogs(await fetchSMSLogs(cooperativeId))
+    } catch (err) {
+      setSendError(err.message || 'Failed to send dues reminder.')
+    } finally {
+      setSendingReminder(false)
     }
   }
 
@@ -104,6 +122,44 @@ export default function SMS({ cooperativeId, memberCount = 0 }) {
           >
             {sending ? 'Sending…' : sendSuccess ? '✓ Sent!' : 'Send broadcast →'}
           </button>
+
+          <div style={{ borderTop: '1px solid var(--border)', marginTop: 22, paddingTop: 18 }}>
+            <div className="sms-lbl">Dues reminder</div>
+            <p style={{ color: 'var(--muted)', fontSize: 12, lineHeight: 1.5 }}>
+              Sends instructions only. Members initiate payment by dialing AgroOS USSD.
+            </p>
+            <label htmlFor="dues-reminder-amount" className="sms-lbl">Amount (GHS)</label>
+            <input
+              id="dues-reminder-amount"
+              type="number"
+              min="1"
+              value={reminder.amount}
+              onChange={event => setReminder(current => ({ ...current, amount: event.target.value }))}
+              style={{ width: '100%', boxSizing: 'border-box', padding: 10, border: '1.5px solid var(--border)', borderRadius: 8, marginBottom: 12 }}
+            />
+            <label htmlFor="dues-reminder-date" className="sms-lbl">Due date</label>
+            <input
+              id="dues-reminder-date"
+              type="date"
+              value={reminder.dueDate}
+              onChange={event => setReminder(current => ({ ...current, dueDate: event.target.value }))}
+              style={{ width: '100%', boxSizing: 'border-box', padding: 10, border: '1.5px solid var(--border)', borderRadius: 8, marginBottom: 12 }}
+            />
+            {reminder.amount && reminder.dueDate && (
+              <div className="info-banner" style={{ marginBottom: 12, fontSize: 12 }}>
+                Preview: Your dues of GHS {Number(reminder.amount).toFixed(2)} are due by {reminder.dueDate}. Dial *919*4020# and choose Pay Dues.
+              </div>
+            )}
+            <button
+              className="btn-nav"
+              type="button"
+              onClick={handleReminder}
+              disabled={sendingReminder || !reminder.amount || !reminder.dueDate}
+              style={{ width: '100%' }}
+            >
+              {sendingReminder ? 'Sending reminder…' : 'Send dues reminder'}
+            </button>
+          </div>
 
           {!cooperativeId && (
             <div style={{ marginTop: 10, fontSize: 12, color: '#991B1B', textAlign: 'center' }}>

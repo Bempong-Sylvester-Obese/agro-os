@@ -1,13 +1,13 @@
 // src/components/dashboard/Loans.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { X, Loader2, Check, XCircle, Send, RefreshCw, Banknote, Ban } from 'lucide-react'
+import { X, Loader2, Check, XCircle, Send, RefreshCw, Bell, Ban } from 'lucide-react'
 import {
   approveLoan,
   rejectLoan,
   disburseLoan,
   cancelLoan,
   fetchDisbursementStatus,
-  repayLoan,
+  sendLoanReminder,
 } from '../../api/loans'
 import { TableSectionSkeleton } from './DashboardSkeleton'
 import { useModal } from '../../hooks/useModal'
@@ -33,7 +33,7 @@ const ACTION_COPY = {
   cancel: ['Cancel loan?', 'Provide a reason for cancelling this loan.', 'Cancel loan'],
   disburse: ['Disburse loan?', 'This starts a payout to the member. Confirm the amount and member before continuing.', 'Start disbursement'],
   retry: ['Retry payout?', 'This retries the failed payout using the existing loan details.', 'Retry payout'],
-  repay: ['Collect repayment?', 'This sends one repayment request to the member. They complete any OTP step on their own phone.', 'Send repayment request'],
+  reminder: ['Send repayment reminder?', 'This sends an SMS reminder only. The member initiates repayment through AgroOS USSD.', 'Send reminder'],
 }
 
 const actionButtonStyle = {
@@ -51,17 +51,22 @@ function ConfirmationModal({ action, processing, error, onClose, onConfirm }) {
     label: `${action.type} loan dialog`,
   })
   const [reason, setReason] = useState('')
+  const [repaymentDate, setRepaymentDate] = useState('')
   const [validationError, setValidationError] = useState('')
   const [title, description, confirmLabel] = ACTION_COPY[action.type]
   const destructive = ['reject', 'cancel'].includes(action.type)
 
   const submit = (event) => {
     event.preventDefault()
+    if (action.type === 'approve' && !repaymentDate) {
+      setValidationError('Choose a future repayment due date.')
+      return
+    }
     if (action.type === 'cancel' && !reason.trim()) {
       setValidationError('Enter a cancellation reason.')
       return
     }
-    onConfirm(reason)
+    onConfirm({ reason, repaymentDate })
   }
 
   return (
@@ -95,6 +100,20 @@ function ConfirmationModal({ action, processing, error, onClose, onConfirm }) {
               disabled={processing}
               rows={3}
               style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 6, padding: 10, border: '1px solid var(--border)', borderRadius: 8, resize: 'vertical', font: 'inherit' }}
+            />
+          </div>
+        )}
+        {action.type === 'approve' && (
+          <div style={{ marginTop: 16 }}>
+            <label htmlFor="loan-repayment-date" style={{ fontSize: 13, fontWeight: 700 }}>Repayment due date</label>
+            <input
+              id="loan-repayment-date"
+              type="date"
+              value={repaymentDate}
+              onChange={(event) => { setRepaymentDate(event.target.value); setValidationError('') }}
+              disabled={processing}
+              required
+              style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 6, padding: 10, border: '1px solid var(--border)', borderRadius: 8, font: 'inherit' }}
             />
           </div>
         )}
@@ -206,13 +225,13 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
     setActiveAction({ loan, type })
   }
 
-  const handleAction = async (reason = '') => {
+  const handleAction = async ({ reason = '', repaymentDate = '' } = {}) => {
     const { loan, type } = activeAction
     setProcessing(loan.id)
     setActionError(null)
     setActionMessage(null)
     try {
-      if (type === 'approve') await approveLoan(loan.id)
+      if (type === 'approve') await approveLoan(loan.id, repaymentDate)
       if (type === 'reject') await rejectLoan(loan.id)
       if (type === 'cancel') await cancelLoan(loan.id, reason)
       if (type === 'disburse' || type === 'retry') {
@@ -222,13 +241,9 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
         }
         await reconcileLoan(loan.id, { quiet: true })
       }
-      if (type === 'repay') {
-        const result = await repayLoan(loan.id)
-        setActionMessage(
-          result.status === 'repaid'
-            ? `Repayment for loan #${loan.id} completed.`
-            : `Repayment request sent for loan #${loan.id}. The member must complete it on their phone.`
-        )
+      if (type === 'reminder') {
+        await sendLoanReminder(loan.id)
+        setActionMessage(`Repayment reminder sent for loan #${loan.id}.`)
       }
       setActiveAction(null)
       if (onRefresh) onRefresh()
@@ -341,6 +356,14 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
               const farmer = farmers.find(f => f.id === loan.farmer_id)
               const name = farmer ? farmer.name : `Farmer #${loan.farmer_id}`
               const repayDate = fmtRepaymentDate(loan.expected_repayment_date || loan.repayment_date)
+              const dueLabels = {
+                not_due: 'Not due',
+                scheduled: 'Scheduled',
+                due_soon: 'Due soon',
+                due_today: 'Due today',
+                overdue: `${loan.days_overdue || 0} days overdue`,
+                paid: 'Paid',
+              }
               const payout = payoutStatuses[loan.id]
               const payoutStatus = payout?.payout_status || 'none'
               const payoutLabels = {
@@ -365,7 +388,22 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
                   </div>
                   <span className="pt-v">{fmtGHS(loan.amount)}</span>
                   <span className="pt-m" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{loan.purpose}</span>
-                  <span className="pt-m">{repayDate}</span>
+                  <span className="pt-m">
+                    {repayDate}
+                    <span className={`bdg ${loan.due_state === 'overdue' ? 'bdg-red' : 'bdg-amber'}`} style={{ display: 'block', width: 'fit-content', marginTop: 5 }}>
+                      {dueLabels[loan.due_state] || 'Not due'}
+                    </span>
+                    {loan.last_reminder_at && (
+                      <small style={{ display: 'block', marginTop: 5 }}>
+                        Last reminder {new Date(loan.last_reminder_at).toLocaleDateString()}
+                      </small>
+                    )}
+                    {loan.next_reminder_date && (
+                      <small style={{ display: 'block' }}>
+                        Next reminder {fmtRepaymentDate(loan.next_reminder_date)}
+                      </small>
+                    )}
+                  </span>
                   <div>
                     <span className={`bdg ${cls}`} style={{ textTransform: 'capitalize' }}>{label}</span>
                     <div style={{ fontSize: 10, color: payoutStatus === 'failed' ? '#991B1B' : 'var(--muted)', marginTop: 5 }}>
@@ -409,8 +447,8 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
                       </button>
                     )}
                     {loan.status === 'disbursed' && (
-                      <button disabled={dataStale} onClick={() => openAction(loan, 'repay')} style={{ ...rowButton, background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE' }}>
-                        <Banknote size={12} /> Collect repayment
+                      <button disabled={dataStale} onClick={() => openAction(loan, 'reminder')} style={{ ...rowButton, background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE' }}>
+                        <Bell size={12} /> Send reminder
                       </button>
                     )}
                     {payout?.can_cancel && (

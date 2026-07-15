@@ -1,7 +1,7 @@
 """Database Models for AgroOS"""
 
 import enum
-from datetime import datetime
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import (
     Boolean,
@@ -258,6 +258,84 @@ class Loan(Base):
 
     # Relationships
     farmer = relationship("CooperativeMembership", back_populates="loans")
+    reminders = relationship("LoanReminder", back_populates="loan")
+
+    @property
+    def due_state(self) -> str:
+        if self.status == LoanStatus.repaid:
+            return "paid"
+        if self.status != LoanStatus.disbursed or not self.expected_repayment_date:
+            return "not_due"
+        delta = (self.expected_repayment_date - date.today()).days
+        if delta < 0:
+            return "overdue"
+        if delta == 0:
+            return "due_today"
+        if delta <= 7:
+            return "due_soon"
+        return "scheduled"
+
+    @property
+    def days_overdue(self) -> int:
+        if self.due_state != "overdue" or not self.expected_repayment_date:
+            return 0
+        return (date.today() - self.expected_repayment_date).days
+
+    @property
+    def last_reminder_at(self):
+        sent = [reminder.sent_at for reminder in self.reminders if reminder.sent_at]
+        return max(sent) if sent else None
+
+    @property
+    def next_reminder_date(self):
+        if self.status != LoanStatus.disbursed or not self.expected_repayment_date:
+            return None
+        today = date.today()
+        before_due = [
+            self.expected_repayment_date - timedelta(days=days)
+            for days in (7, 3, 1, 0)
+        ]
+        upcoming = [scheduled for scheduled in before_due if scheduled >= today]
+        if upcoming:
+            return min(upcoming)
+        days_overdue = (today - self.expected_repayment_date).days
+        overdue_intervals = [1, 3, 7]
+        future_intervals = [
+            interval for interval in overdue_intervals if interval >= days_overdue
+        ]
+        if future_intervals:
+            return self.expected_repayment_date + timedelta(days=min(future_intervals))
+        weeks = (days_overdue // 7) + 1
+        return self.expected_repayment_date + timedelta(days=weeks * 7)
+
+
+class LoanReminder(Base):
+    """Idempotent delivery record for a loan repayment reminder."""
+
+    __tablename__ = "loan_reminders"
+    __table_args__ = (
+        UniqueConstraint(
+            "loan_id",
+            "reminder_kind",
+            "scheduled_for",
+            name="uq_loan_reminder_delivery",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    loan_id = Column(Integer, ForeignKey("loans.id"), nullable=False, index=True)
+    reminder_kind = Column(String, nullable=False)
+    scheduled_for = Column(Date, nullable=False)
+    status = Column(String, default="pending", nullable=False)
+    attempts = Column(Integer, default=0, nullable=False)
+    provider_reference = Column(String, nullable=True)
+    sent_at = Column(DateTime, nullable=True)
+    error = Column(Text, nullable=True)
+    manual = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    loan = relationship("Loan", back_populates="reminders")
 
 
 # ---------------------------------------------------------------------------
