@@ -2,19 +2,7 @@
 import { useState } from 'react'
 import { signupAdmin, storeAuthToken } from '../api/auth'
 
-const ALLOW_DEMO_LOGIN = import.meta.env.DEV || import.meta.env.VITE_ALLOW_DEMO_LOGIN === 'true'
 const STEPS = ['Account', 'Cooperative', 'Done']
-
-function buildUserFromForm(form) {
-  const initials = form.name.trim().split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
-  return {
-    name: form.name.trim(),
-    initials,
-    email: form.email.trim(),
-    role: 'Field Officer',
-    cooperative: form.cooperative.trim(),
-  }
-}
 
 export default function GetStartedModal({ onClose, onSignIn, onAuth }) {
   const [step, setStep] = useState(0)
@@ -69,16 +57,10 @@ export default function GetStartedModal({ onClose, onSignIn, onAuth }) {
       setStep(2)
       return
     } catch (err) {
-      if (!ALLOW_DEMO_LOGIN) {
-        setErr(err.message || 'Could not create account')
-        return
-      }
+      setErr(err.message || 'Could not create account')
     } finally {
       setSubmitting(false)
     }
-
-    setSignedUpUser(buildUserFromForm(form))
-    setStep(2)
   }
 
   const planFeatures = [
@@ -151,7 +133,7 @@ export default function GetStartedModal({ onClose, onSignIn, onAuth }) {
 
             <div style={{ background: 'var(--sage)', borderRadius: 10, padding: '14px 16px' }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--g)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10 }}>What's included — Free plan</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px' }}>
+              <div className="plan-feature-grid">
                 {planFeatures.map((f) => (
                   <div key={f} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text)' }}>
                     <span style={{ color: 'var(--gl)', fontSize: 13 }}>✓</span>{f}
@@ -220,7 +202,7 @@ export default function GetStartedModal({ onClose, onSignIn, onAuth }) {
               Your cooperative <strong>{form.cooperative}</strong> is registered on the free plan.<br />
               Open your dashboard to get started.
             </div>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+            <div className="modal-complete-actions">
               <button type="button" className="btn-out-lg" style={{ fontSize: 13, padding: '10px 22px' }} onClick={onClose}>Back to site</button>
               <button
                 type="button"

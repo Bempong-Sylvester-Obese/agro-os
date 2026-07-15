@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
+import { AnimatePresence } from 'framer-motion'
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { clearAuthSession, getAuthToken, getAuthUser, storeAuthUser, userFromAuthToken } from './api/auth'
+import { clearAuthSession, getAuthToken, getAuthUser, isAuthTokenUsable, storeAuthUser, userFromAuthToken } from './api/auth'
 import Navbar from './components/Navbar'
 import { pageKeyFromPath } from './constants/routes'
 import HomePage from './pages/HomePage'
@@ -12,6 +13,8 @@ import CompliancePage from './pages/CompliancePage'
 import DashboardPage from './pages/DashboardPage'
 import { DashboardGateSkeleton } from './components/dashboard/DashboardSkeleton'
 import AuthPage from './pages/AuthPage'
+import SubscriptionPage from './pages/SubscriptionPage'
+import { PageMotion } from './components/Motion'
 
 function safeNextPath(next) {
   if (!next || !next.startsWith('/') || next.startsWith('//')) return '/dashboard'
@@ -36,7 +39,7 @@ function ScrollToHash() {
 function DashboardGate({ user, authReady, onLogout }) {
   const location = useLocation()
   if (!authReady) return <DashboardGateSkeleton />
-  if (!user) {
+  if (!user || !isAuthTokenUsable()) {
     const next = encodeURIComponent(`${location.pathname}${location.search}${location.hash}`)
     return <Navigate to={`/login?next=${next}`} replace />
   }
@@ -65,18 +68,23 @@ function AppShell({ user, authReady, onAuth, onLogout }) {
     <div className="app-shell">
       <ScrollToHash />
       {showNavbar && <Navbar isAuthenticated={Boolean(user)} onLogout={onLogout} />}
-      <Routes>
-        <Route path="/" element={<HomePage user={user} />} />
-        <Route path="/solutions" element={<SolutionsPage user={user} />} />
-        <Route path="/features" element={<FeaturesPage user={user} />} />
-        <Route path="/pricing" element={<PricingPage />} />
-        <Route path="/book-demo" element={<BookDemoPage />} />
-        <Route path="/compliance" element={<CompliancePage />} />
-        <Route path="/login" element={<AuthPage onAuth={onAuth} />} />
-        <Route path="/dashboard" element={<DashboardGate user={user} authReady={authReady} onLogout={onLogout} />} />
-        <Route path="/dashboard/:section" element={<DashboardGate user={user} authReady={authReady} onLogout={onLogout} />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <AnimatePresence mode="wait" initial={false}>
+        <PageMotion key={pageKey} pageKey={pageKey} className={`page-motion--${pageKey}`}>
+          <Routes location={location}>
+            <Route path="/" element={<HomePage user={user} />} />
+            <Route path="/solutions" element={<SolutionsPage user={user} />} />
+            <Route path="/features" element={<FeaturesPage user={user} />} />
+            <Route path="/pricing" element={<PricingPage />} />
+            <Route path="/subscribe/:plan" element={<SubscriptionPage />} />
+            <Route path="/book-demo" element={<BookDemoPage />} />
+            <Route path="/compliance" element={<CompliancePage />} />
+            <Route path="/login" element={<AuthPage onAuth={onAuth} />} />
+            <Route path="/dashboard" element={<DashboardGate user={user} authReady={authReady} onLogout={onLogout} />} />
+            <Route path="/dashboard/:section" element={<DashboardGate user={user} authReady={authReady} onLogout={onLogout} />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </PageMotion>
+      </AnimatePresence>
     </div>
   )
 }
@@ -90,8 +98,9 @@ function AppRouter() {
     const token = getAuthToken()
     const storedUser = getAuthUser()
 
-    if (!token) {
+    if (!isAuthTokenUsable(token)) {
       if (storedUser) clearAuthSession()
+      else if (token) clearAuthSession()
       setAuthReady(true)
       return
     }

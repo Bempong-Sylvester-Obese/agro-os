@@ -138,6 +138,18 @@ export function getAuthToken() {
   return localStorage.getItem(TOKEN_KEY)
 }
 
+export function isAuthTokenUsable(token = getAuthToken()) {
+  if (!token) return false
+  try {
+    const segment = token.split('.')[1]
+    if (!segment) return false
+    const payload = JSON.parse(decodeJwtPayloadSegment(segment))
+    return typeof payload.exp === 'number' && payload.exp > Date.now() / 1000
+  } catch {
+    return false
+  }
+}
+
 export function clearAuthToken() {
   localStorage.removeItem(TOKEN_KEY)
 }

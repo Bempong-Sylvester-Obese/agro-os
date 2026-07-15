@@ -1,4 +1,6 @@
 // src/components/CTASection.jsx
+import React from 'react'
+
 export default function CTASection({ heading, subtext, primaryLabel, secondaryLabel, onPrimary, onSecondary }) {
   return (
     <div className="cta-sec">

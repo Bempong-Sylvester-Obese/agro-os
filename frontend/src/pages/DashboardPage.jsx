@@ -1,5 +1,6 @@
 // src/pages/DashboardPage.jsx
 import { useEffect, useState } from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { resolveCooperativeId } from '../utils/auth'
 import { formatTransportError } from '../api/config'
@@ -58,6 +59,7 @@ export default function DashboardPage({ user, onLogout }) {
   const [cooperativeId, setCooperativeId] = useState(() => resolveCooperativeId(user))
   const [loading, setLoading]           = useState(true)
   const [fetchError, setFetchError]     = useState(null)
+  const reduceMotion = useReducedMotion()
 
   const loadAll = () => {
     setLoading(true)
@@ -174,9 +176,17 @@ export default function DashboardPage({ user, onLogout }) {
         </div>
 
         <div className="admin-content">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={section}
+              initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
+              transition={{ duration: reduceMotion ? 0 : 0.18, ease: 'easeOut' }}
+            >
           {fetchError && section !== 'sms' && section !== 'ussd' && section !== 'settings' && section !== 'loans' && (
             <div
-              className="info-banner"
+              className="info-banner info-banner-row"
               style={{
                 background: '#FEF2F2',
                 borderColor: '#FECACA',
@@ -256,6 +266,8 @@ export default function DashboardPage({ user, onLogout }) {
           {section === 'ussd' && (
             <USSD />
           )}
+            </motion.div>
+          </AnimatePresence>
         </div>
       </div>
     </div>

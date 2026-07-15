@@ -4,6 +4,7 @@ import { Search, UserPlus, X, Loader2 } from 'lucide-react'
 import { createFarmer } from '../../api/farmers'
 import { MembersSkeleton } from './DashboardSkeleton'
 import { useModal } from '../../hooks/useModal'
+import { ModalPresence } from '../Motion'
 
 const STATUS_CLS = {
   active:    'bdg-green',
@@ -63,6 +64,7 @@ function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
 
   return (
     <div
+      className="dashboard-modal-overlay"
       onClick={onBackdropClick}
       style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)',
@@ -70,6 +72,7 @@ function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
     }}>
       <div
+        className="dashboard-modal"
         {...dialogProps}
         style={{
         background: '#fff', borderRadius: 16, width: '100%', maxWidth: 500,
@@ -203,13 +206,13 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
 
   return (
     <>
-      {showModal && (
+      <ModalPresence show={showModal}>
         <AddMemberModal
           cooperativeId={cooperativeId}
           onClose={() => setShowModal(false)}
           onSuccess={handleSuccess}
         />
-      )}
+      </ModalPresence>
 
       {/* ── Toolbar ── */}
       {success && (
@@ -293,35 +296,37 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
           <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--muted)' }}>
             Showing {filtered.length} of {farmers.length} member{farmers.length !== 1 ? 's' : ''}
           </div>
-          <div className="mt-head">
-            {['Member', 'Phone', 'Location', 'Crop', 'Status', 'Trust Score'].map(h => (
-              <span key={h} className="pt-lbl">{h}</span>
-            ))}
-          </div>
-
-          {filtered.length === 0 ? (
-            <div style={{ padding: '24px 20px', color: 'var(--muted)', fontSize: 14 }}>
-              No members match your search.
+          <div className="table-scroll">
+            <div className="mt-head">
+              {['Member', 'Phone', 'Location', 'Crop', 'Status', 'Trust Score'].map(h => (
+                <span key={h} className="pt-lbl">{h}</span>
+              ))}
             </div>
-          ) : (
-            filtered.map(farmer => (
-              <div key={farmer.id} className="mt-row">
-                <div>
-                  <div className="pt-name">{farmer.name}</div>
-                  <div className="pt-id">#{farmer.id}</div>
-                </div>
-                <span className="pt-m" style={{ fontSize: 12 }}>{farmer.phone}</span>
-                <span className="pt-m">{farmer.location || '—'}</span>
-                <span className="pt-m">{farmer.crop_type || '—'}</span>
-                <span className={`bdg ${STATUS_CLS[farmer.membership_status] || 'bdg-amber'}`}>
-                  {farmer.membership_status}
-                </span>
-                <span className={`score-bdg ${scoreTier(farmer.trust_score)}`}>
-                  {farmer.trust_score > 0 ? Math.round(farmer.trust_score) : '—'}
-                </span>
+
+            {filtered.length === 0 ? (
+              <div style={{ padding: '24px 20px', color: 'var(--muted)', fontSize: 14 }}>
+                No members match your search.
               </div>
-            ))
-          )}
+            ) : (
+              filtered.map(farmer => (
+                <div key={farmer.id} className="mt-row">
+                  <div>
+                    <div className="pt-name">{farmer.name}</div>
+                    <div className="pt-id">#{farmer.id}</div>
+                  </div>
+                  <span className="pt-m" style={{ fontSize: 12 }}>{farmer.phone}</span>
+                  <span className="pt-m">{farmer.location || '—'}</span>
+                  <span className="pt-m">{farmer.crop_type || '—'}</span>
+                  <span className={`bdg ${STATUS_CLS[farmer.membership_status] || 'bdg-amber'}`}>
+                    {farmer.membership_status}
+                  </span>
+                  <span className={`score-bdg ${scoreTier(farmer.trust_score)}`}>
+                    {farmer.trust_score > 0 ? Math.round(farmer.trust_score) : '—'}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       )}
     </>
