@@ -1,9 +1,12 @@
 // src/components/dashboard/Payments.jsx
-import { useState } from 'react'
-import { Plus, X, Loader2 } from 'lucide-react'
-import { collectDues, verifyDuesCollect } from '../../api/transactions'
+import React, { useCallback, useMemo, useState } from 'react'
+import { Plus, X, Loader2, RefreshCw, ReceiptText } from 'lucide-react'
+import { collectDues, fetchTransactionReceipt, reconcileTransaction } from '../../api/transactions'
+import { exportDashboardReport } from '../../api/reports'
 import { TableSectionSkeleton } from './DashboardSkeleton'
+import { DashboardPagination, DashboardTableToolbar, useDashboardTable } from './DashboardTableTools'
 import { useModal } from '../../hooks/useModal'
+import { ModalPresence } from '../Motion'
 
 function fmtGHS(amount) {
   return `GHS ${Number(amount).toLocaleString('en-GH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
@@ -16,9 +19,6 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [msg, setMsg] = useState(null)
-  const [otpRequired, setOtpRequired] = useState(false)
-  const [otpCode, setOtpCode] = useState('')
-  const [transactionId, setTransactionId] = useState(null)
 
   const activeFarmers = farmers.filter(f => f.membership_status === 'active')
 
@@ -34,36 +34,21 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
     setMsg(null)
 
     try {
-      if (!otpRequired) {
-        const res = await collectDues(form.farmerId, form.amount, form.channel, 'Cooperative dues')
-        if (res.verification_required) {
-          setOtpRequired(true)
-          setTransactionId(res.transaction_id)
-          setMsg('Moolre sent an SMS with an OTP to the member. Please enter it below.')
-        } else if (res.status === 'pending') {
-          setMsg('Payment initiated. Waiting for member to approve on their phone.')
-          setTimeout(() => onSuccess(), 3000)
-        } else {
-          setError(res.message || 'Payment failed to initiate. Please try again.')
-        }
+      const res = await collectDues(form.farmerId, form.amount, form.channel, 'Cooperative dues')
+      if (res.customer_action === 'otp') {
+        setMsg('Request sent. The member must enter their OTP through AgroOS USSD on their own phone.')
+        setTimeout(() => onSuccess(), 3000)
+      } else if (res.customer_action === 'initiating') {
+        setMsg('Payment initiation is being confirmed. Do not send another request.')
+        setTimeout(() => onSuccess(), 3000)
+      } else if (res.customer_action === 'processing_otp') {
+        setMsg('The member’s OTP is already being processed.')
+        setTimeout(() => onSuccess(), 3000)
+      } else if (res.status === 'pending') {
+        setMsg('Payment initiated. Waiting for the member to approve on their phone.')
+        setTimeout(() => onSuccess(), 3000)
       } else {
-        if (!otpCode) {
-          setError('Please enter the OTP.')
-          setLoading(false)
-          return
-        }
-        if (!transactionId) {
-          setError('Missing payment session. Please start the payment again.')
-          setLoading(false)
-          return
-        }
-        const res = await verifyDuesCollect(transactionId, otpCode)
-        if (res.status === 'pending') {
-          setMsg('OTP verified! Waiting for member to approve on their phone.')
-          setTimeout(() => onSuccess(), 3000)
-        } else {
-          setError('Verification failed. ' + res.message)
-        }
+        setError(res.message || 'Payment failed to initiate. Please try again.')
       }
     } catch (err) {
       setError(err.message)
@@ -81,6 +66,7 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
 
   return (
     <div
+      className="dashboard-modal-overlay"
       onClick={onBackdropClick}
       style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)',
@@ -88,6 +74,7 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
     }}>
       <div
+        className="dashboard-modal"
         {...dialogProps}
         style={{
         background: '#fff', borderRadius: 16, width: '100%', maxWidth: 400,
@@ -105,8 +92,7 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
           {error && <div style={{ padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>}
           {msg && <div style={{ padding: 12, background: 'var(--sage)', color: 'var(--g)', borderRadius: 8, fontSize: 13, marginBottom: 16, fontWeight: 500 }}>{msg}</div>}
           
-          {!otpRequired ? (
-            <>
+          <>
               <div style={{ marginBottom: 16 }}>
                 <label htmlFor="dues-member" style={{ fontSize: 13, fontWeight: 600 }}>Member</label>
                 {activeFarmers.length === 0 ? (
@@ -138,28 +124,7 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
               <button type="submit" className="btn-lg" disabled={loading || msg || activeFarmers.length === 0} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
                 {loading ? <><Loader2 size={16} className="spin" /> Processing...</> : msg ? 'Prompt Sent ✓' : 'Send Payment Prompt'}
               </button>
-            </>
-          ) : (
-            <>
-              <div style={{ marginBottom: 24 }}>
-                <label htmlFor="dues-otp" style={{ fontSize: 13, fontWeight: 600 }}>Enter SMS OTP</label>
-                <input 
-                  id="dues-otp"
-                  style={{...input, fontSize: 18, letterSpacing: 4, textAlign: 'center'}} 
-                  type="text" 
-                  value={otpCode} 
-                  onChange={e => setOtpCode(e.target.value)} 
-                  placeholder="123456" 
-                  required 
-                  disabled={loading || msg && msg.includes('verified')}
-                  autoFocus
-                />
-              </div>
-              <button type="submit" className="btn-lg" disabled={loading || msg && msg.includes('verified')} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-                {loading ? <><Loader2 size={16} className="spin" /> Verifying...</> : (msg && msg.includes('verified')) ? 'Verified ✓' : 'Submit OTP'}
-              </button>
-            </>
-          )}
+          </>
         </form>
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -168,10 +133,12 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
 }
 
 // ── Main Component ────────────────────────────────────────────────────────
-export default function Payments({ farmers = [], transactions = [], loading, onRefresh }) {
+export default function Payments({ farmers = [], transactions = [], cooperativeId, loading, onRefresh, dataStale = false }) {
   const [showModal, setShowModal] = useState(false)
-
-  if (loading) return <TableSectionSkeleton statCount={3} rows={6} columns={5} />
+  const [exporting, setExporting] = useState(false)
+  const [processingTransaction, setProcessingTransaction] = useState(null)
+  const [operationError, setOperationError] = useState('')
+  const [exportError, setExportError] = useState('')
 
   const completed = transactions.filter(t => t.status === 'completed')
   const totalCollected = completed.reduce((s, t) => s + t.amount, 0)
@@ -183,24 +150,104 @@ export default function Payments({ farmers = [], transactions = [], loading, onR
   const ussdPct = totalCollected > 0 ? Math.round((ussdAmount / totalCollected) * 100) : 0
   const momoPct = totalCollected > 0 ? Math.round((momoAmount / totalCollected) * 100) : 0
 
-  const sorted = [...transactions].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+  const sorted = useMemo(
+    () => [...transactions].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
+    [transactions],
+  )
+  const farmerName = useCallback(
+    transaction => farmers.find(f => f.id === transaction.farmer_id)?.name || `Farmer #${transaction.farmer_id}`,
+    [farmers],
+  )
+  const searchableText = useCallback(
+    transaction => `${farmerName(transaction)} ${transaction.id} ${transaction.channel || ''}`,
+    [farmerName],
+  )
+  const statusValue = useCallback(transaction => transaction.status, [])
+  const dateValue = useCallback(transaction => transaction.created_at, [])
+  const table = useDashboardTable({
+    rows: sorted,
+    searchableText,
+    statusValue,
+    dateValue,
+  })
+  const handleExport = async () => {
+    setExporting(true)
+    setExportError('')
+    try {
+      await exportDashboardReport('payments', cooperativeId, table.exportFilters)
+    } catch (error) {
+      setExportError(error.message || 'Could not export payments. Please try again.')
+    } finally {
+      setExporting(false)
+    }
+  }
+  const handleReconcile = async (transactionId) => {
+    setProcessingTransaction(transactionId)
+    setOperationError('')
+    try {
+      await reconcileTransaction(transactionId)
+      if (onRefresh) await onRefresh()
+    } catch (error) {
+      setOperationError(error.message || 'Could not reconcile payment.')
+    } finally {
+      setProcessingTransaction(null)
+    }
+  }
+  const handleReceipt = async (transactionId) => {
+    setProcessingTransaction(transactionId)
+    setOperationError('')
+    try {
+      const receipt = await fetchTransactionReceipt(transactionId)
+      const url = window.URL.createObjectURL(new window.Blob(
+        [JSON.stringify(receipt, null, 2)],
+        { type: 'application/json' },
+      ))
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = `${receipt.receipt_number}.json`
+      anchor.click()
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      setOperationError(error.message || 'Could not generate receipt.')
+    } finally {
+      setProcessingTransaction(null)
+    }
+  }
+
+  if (loading) return <TableSectionSkeleton statCount={3} rows={6} columns={5} />
 
   return (
     <>
-      {showModal && (
+      <ModalPresence show={showModal}>
         <CollectDuesModal 
           farmers={farmers} 
           onClose={() => setShowModal(false)} 
           onSuccess={() => { setShowModal(false); if (onRefresh) onRefresh(); }} 
         />
-      )}
+      </ModalPresence>
 
-      {/* ── Toolbar ── */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
-        <button className="btn-nav" onClick={() => setShowModal(true)} style={{ fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, background: 'var(--text)', color: '#fff' }}>
+      <DashboardTableToolbar
+        label="Payments"
+        table={table}
+        statuses={[
+          { value: 'completed', label: 'Paid' },
+          { value: 'pending', label: 'Pending' },
+          { value: 'failed', label: 'Failed' },
+        ]}
+        onExport={handleExport}
+        exporting={exporting}
+        exportError={exportError}
+      >
+        <button className="btn-nav" disabled={dataStale} onClick={() => setShowModal(true)} style={{ fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, background: 'var(--text)', color: '#fff' }}>
           <Plus size={15} /> Collect Dues
         </button>
-      </div>
+      </DashboardTableToolbar>
+      {dataStale && (
+        <div className="info-banner" role="status" style={{ marginBottom: 16 }}>
+          Collections are paused until members and payments refresh successfully.
+        </div>
+      )}
+      {operationError && <div className="dashboard-inline-error" role="alert">{operationError}</div>}
 
       <div className="pay-stats">
         {[
@@ -222,35 +269,65 @@ export default function Payments({ farmers = [], transactions = [], loading, onR
           <span className="admin-card-action">{transactions.length} record{transactions.length !== 1 ? 's' : ''}</span>
         </div>
 
-        {sorted.length === 0 ? (
+        {table.filteredRows.length === 0 ? (
           <div style={{ padding: '32px 20px', color: 'var(--muted)', fontSize: 14 }}>
-            No transactions recorded yet. Click "Collect Dues" to initiate a MoMo push to a member.
+            {transactions.length === 0
+              ? 'No transactions recorded yet. Click "Collect Dues" to initiate a MoMo push to a member.'
+              : 'No payments match the current filters.'}
           </div>
         ) : (
-          <>
+          <div className="table-scroll">
             <div className="pay-head">
               {['Member', 'Amount', 'Method', 'Date', 'Status'].map(h => <span key={h} className="pt-lbl">{h}</span>)}
             </div>
-            {sorted.map(tx => {
+            {table.pageRows.map(tx => {
               const farmer = farmers.find(f => f.id === tx.farmer_id)
               const name = farmer ? farmer.name : `Farmer #${tx.farmer_id}`
               const method = ussdChannels.includes(tx.channel) ? 'USSD' : (tx.channel || 'Manual')
               const date = new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
               let cls = 'bdg-amber', label = 'Pending'
+              if (tx.status === 'pending' && tx.customer_action === 'initiating') label = 'Confirming initiation'
+              if (tx.status === 'pending' && tx.customer_action === 'otp') label = 'Awaiting member OTP'
+              if (tx.status === 'pending' && tx.customer_action === 'processing_otp') label = 'Processing member OTP'
+              if (tx.status === 'pending' && tx.customer_action === 'approval') label = 'Awaiting phone approval'
               if (tx.status === 'completed') { cls = 'bdg-green'; label = 'Paid' }
               if (tx.status === 'failed') { cls = 'bdg-red'; label = 'Failed' }
+              if (tx.customer_action === 'expired') { cls = 'bdg-red'; label = 'Expired' }
               return (
                 <div key={tx.id} className="pay-row">
                   <div><div className="pt-name">{name}</div><div className="pt-id">#{tx.id}</div></div>
                   <span className="pt-v">{fmtGHS(tx.amount)}</span>
                   <span className="pt-m">{method}</span>
                   <span className="pt-m">{date}</span>
-                  <span className={`bdg ${cls}`}>{label}</span>
+                  <div className="payment-row-actions">
+                    <span className={`bdg ${cls}`}>{label}</span>
+                    <button
+                      type="button"
+                      className="table-row-action"
+                      onClick={() => handleReceipt(tx.id)}
+                      disabled={processingTransaction === tx.id}
+                      aria-label={`Download receipt for transaction ${tx.id}`}
+                    >
+                      <ReceiptText size={12} /> Receipt
+                    </button>
+                    {tx.status === 'pending' && (
+                      <button
+                        type="button"
+                        className="table-row-action"
+                        onClick={() => handleReconcile(tx.id)}
+                        disabled={processingTransaction === tx.id}
+                        aria-label={`Reconcile pending transaction ${tx.id}`}
+                      >
+                        <RefreshCw size={12} /> Check
+                      </button>
+                    )}
+                  </div>
                 </div>
               )
             })}
-          </>
+          </div>
         )}
+        <DashboardPagination label="Payments" table={table} />
       </div>
     </>
   )

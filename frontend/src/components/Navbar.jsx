@@ -1,7 +1,8 @@
 // src/components/Navbar.jsx
 import { useCallback, useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
-import { Menu } from 'lucide-react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { Menu, X } from 'lucide-react'
 import { pageKeyFromPath, MARKETING_PATHS } from '../constants/routes'
 import { useAppNavigate } from '../hooks/useAppNavigate'
 
@@ -10,6 +11,7 @@ export default function Navbar({ isAuthenticated, onLogout }) {
   const { pathname } = useLocation()
   const activePage = pageKeyFromPath(pathname)
   const [menuOpen, setMenuOpen] = useState(false)
+  const reduceMotion = useReducedMotion()
 
   const links = [
     { key: 'home', label: 'Home' },
@@ -24,12 +26,19 @@ export default function Navbar({ isAuthenticated, onLogout }) {
 
   useEffect(() => {
     if (!menuOpen) return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
     const onKeyDown = (e) => {
       if (e.key === 'Escape') closeMenu()
     }
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    return () => {
+      document.body.style.overflow = previousOverflow
+      window.removeEventListener('keydown', onKeyDown)
+    }
   }, [menuOpen, closeMenu])
+
+  useEffect(() => closeMenu(), [pathname, closeMenu])
 
   const showMarketingNav = activePage !== 'dashboard'
 
@@ -89,12 +98,12 @@ export default function Navbar({ isAuthenticated, onLogout }) {
           <button
             type="button"
             className="nav-menu-toggle"
-            aria-label="Open menu"
+            aria-label={menuOpen ? 'Close menu' : 'Open menu'}
             aria-expanded={menuOpen}
             aria-controls="nav-mobile-menu"
             onClick={() => setMenuOpen((open) => !open)}
           >
-            <Menu size={22} />
+            {menuOpen ? <X size={22} /> : <Menu size={22} />}
           </button>
         )}
         {isAuthenticated ? (
@@ -102,29 +111,50 @@ export default function Navbar({ isAuthenticated, onLogout }) {
         ) : (
           <>
             <a href="/login" className="btn-ghost" onClick={(e) => { e.preventDefault(); setPage('login') }}>Log in</a>
-            <a href="/login" className="btn-nav" onClick={(e) => { e.preventDefault(); setPage('login', { loginMode: 'signup' }) }}>Get started free</a>
+            <a href="/subscribe/starter" className="btn-nav" onClick={(e) => { e.preventDefault(); setPage('subscription', { plan: 'starter' }) }}>Get started free</a>
           </>
         )}
       </div>
 
-      {showMarketingNav && (
-        <div
-          id="nav-mobile-menu"
-          className={`nav-mobile-panel${menuOpen ? ' open' : ''}`}
-          hidden={!menuOpen}
-        >
-          {links.map(({ key, label }) => (
-            <a
-              key={key}
-              href={navHref(key)}
-              className={`nav-mobile-link${isActive(key) ? ' active' : ''}`}
-              onClick={handleNav(key)}
-            >
-              {label}
-            </a>
-          ))}
-        </div>
-      )}
+      <AnimatePresence>
+        {showMarketingNav && menuOpen && (
+          <motion.div
+            id="nav-mobile-menu"
+            className="nav-mobile-panel open"
+            initial={reduceMotion ? false : { opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -8 }}
+            transition={{ duration: reduceMotion ? 0 : 0.18, ease: 'easeOut' }}
+          >
+            {links.map(({ key, label }) => (
+              <a
+                key={key}
+                href={navHref(key)}
+                className={`nav-mobile-link${isActive(key) ? ' active' : ''}`}
+                onClick={handleNav(key)}
+              >
+                {label}
+              </a>
+            ))}
+            <div className="nav-mobile-actions">
+              {isAuthenticated ? (
+                <button type="button" className="btn-nav" onClick={() => { closeMenu(); onLogout?.() }}>
+                  Log out
+                </button>
+              ) : (
+                <>
+                  <a href="/login" className="btn-ghost" onClick={(e) => { e.preventDefault(); closeMenu(); setPage('login') }}>
+                    Log in
+                  </a>
+                  <a href="/subscribe/starter" className="btn-nav" onClick={(e) => { e.preventDefault(); closeMenu(); setPage('subscription', { plan: 'starter' }) }}>
+                    Get started free
+                  </a>
+                </>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </nav>
   )
 }

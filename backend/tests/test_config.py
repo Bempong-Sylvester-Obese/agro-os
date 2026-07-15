@@ -25,3 +25,15 @@ def test_auth_enabled_rejects_default_admin_password():
 def test_production_rejects_default_database_url():
     with pytest.raises(ValueError, match="DATABASE_URL"):
         Settings(app_env="production", secret_key="strong-secret-key", database_url="postgresql://user:password@localhost:5432/agro_os")
+
+
+def test_production_requires_authentication():
+    with pytest.raises(ValueError, match="AUTH_ENABLED"):
+        Settings(
+            _env_file=None,
+            app_env="production",
+            secret_key="strong-secret-key",
+            admin_password="strong-password",
+            database_url="postgresql://user:password@db.example.com:5432/agro_os",
+            auth_enabled=False,
+        )

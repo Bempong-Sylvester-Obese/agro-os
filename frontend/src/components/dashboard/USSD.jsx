@@ -33,7 +33,7 @@ export default function USSD() {
 
       {error && (
         <div
-          className="info-banner"
+          className="info-banner info-banner-row"
           style={{
             marginBottom: 20,
             background: '#FEF2F2',

@@ -1,18 +1,10 @@
-import { API_URL, apiFetch, authHeaders } from './config'
+import { API_URL, apiFetch, authHeaders, fetchJson } from './config'
 
 export async function fetchProductions(cooperativeId = null) {
   const qs = cooperativeId ? `?cooperative_id=${cooperativeId}&limit=100` : '?limit=100'
-
-  try {
-    const res = await apiFetch(`${API_URL}/production/${qs}`, {
-      headers: authHeaders(),
-    })
-    if (!res.ok) throw new Error('Production API unavailable')
-    return await res.json()
-  } catch (error) {
-    console.error('Failed to fetch production logs:', error)
-    return []
-  }
+  return fetchJson(`${API_URL}/production/${qs}`, {
+    headers: authHeaders(),
+  })
 }
 
 export async function logProduction(farmerId, cropType, expectedKg, quantityKg, harvestDate) {

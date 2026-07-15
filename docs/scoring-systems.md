@@ -20,7 +20,7 @@ AgroOS currently has **two independent scoring engines** running in parallel:
 | **Endpoint** | `GET /farmers/{id}/trust-score` | `GET /api/farmers`, `/api/agro-ai/*` |
 | **Shown on dashboard?** | ❌ Not currently displayed | ✅ Shown on dashboard |
 | **Updated by webhooks?** | ✅ Yes — Moolre payment webhook triggers recalculation | ❌ No |
-| **Used by USSD?** | ✅ Yes — USSD option 5 reads DB trust score | ❌ No |
+| **Used by USSD?** | ❌ No — Option 5 completes pending payments | ❌ No |
 
 These two systems **do not share data**. They produce different scores for
 the same farmer and are not interchangeable.
@@ -44,21 +44,20 @@ The Trust Score recalculates automatically when a Moolre payment webhook
 fires — i.e. when a farmer pays cooperative dues through the USSD menu.
 
 ### Where it is used
-- **USSD Option 5 ("Check Farm Status")** — reads and displays the DB trust
-  score for the authenticated farmer
 - **`/farmers/{id}/trust-score`** — REST endpoint for admin or integration use
+- **Backend member records** — the current rules-based score is persisted for
+  API and integration use, but is not yet rendered in the dashboard
 
 ### What it is NOT
-The Trust Score is not currently visible on the web dashboard. This is a
-known gap — see Roadmap below.
+The current feature-phone menu does not expose a score lookup. Option 5 is
+reserved for completing a pending payment privately on the farmer's phone.
 
 ### Demo narration (Trust Score path)
 > *"When the farmer pays dues through the USSD menu, Moolre fires a webhook
 > to our FastAPI backend. The backend records the transaction, then
 > recalculates the farmer's Trust Score using our rules engine — weighing
-> payment history, loan repayment, production records, and attendance.
-> The farmer can check their updated score by selecting Option 5 on the
-> USSD menu."*
+> payment history, loan repayment, production records, and attendance. The
+> updated score is available through the cooperative's Trust Score API."*
 
 ---
 
@@ -105,8 +104,7 @@ Farmer selects USSD Option 2 (Pay Cooperative Dues)
     → Moolre fires webhook to /webhooks/moolre
       → FastAPI records Transaction in DB
         → trust_score_service.py recalculates Trust Score
-          → Farmer selects USSD Option 5 (Check Farm Status)
-            → Updated Trust Score is returned
+          → Updated Trust Score is available from the REST API
 ```
 
 **What does NOT update:** the dashboard Agro-AI score. Do not tell a judge
@@ -115,25 +113,17 @@ Farmer selects USSD Option 2 (Pay Cooperative Dues)
 **Safe demo narration sequence:**
 1. Show the dashboard — narrate it as the Agro-AI ML layer
 2. Demonstrate dues payment via USSD
-3. Switch to USSD Option 5 to show the updated Trust Score
-4. Explain that in production these two layers will merge (see Roadmap)
+3. Explain that the recalculated Trust Score is available through the REST API
+4. Explain how this rules layer complements Agro-AI (see Roadmap)
 
 ---
 
-## USSD Option 5 — Demo Script Note
+## USSD Option 5 — Payment Completion
 
-USSD Option 5 ("Check Farm Status") is backed by the **Trust Score engine**,
-not Agro-AI. When demoing this option:
-
-- The score returned is computed from DB transactions, loans, production, and
-  attendance records
-- It will reflect any dues payment made during the same demo session
-- It will **not** match the score shown on the web dashboard (which is Agro-AI)
-
-If a judge asks why the two numbers differ, the answer is:
-> *"The dashboard shows our ML prediction layer running on a representative
-> dataset. The USSD score is our rules-based engine reading live DB records.
-> Merging these two into a unified score is on our roadmap."*
+Option 5 lists payment requests tied to the caller's registered membership.
+If Moolre requires TP14 verification, the farmer enters the OTP in this USSD
+session. It does not display a score and never asks cooperative staff to relay
+the OTP.
 
 ---
 

@@ -1,10 +1,7 @@
-import { useEffect, useId, useState } from 'react'
+import React, { useEffect, useId, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { login, signup, storeAuthToken, userFromAuthToken, userFromSignupResponse, warmAuthBackend } from '../api/auth'
-import { USERS } from '../data/users'
 import { Sprout, ArrowLeft, ArrowRight, Building2, Users, MapPin, Mail, Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
-
-const ALLOW_DEMO_LOGIN = import.meta.env.DEV || import.meta.env.VITE_ALLOW_DEMO_LOGIN === 'true'
 
 // ---------------------------------------------------------------------------
 // Step indicators
@@ -88,7 +85,8 @@ const SIZE_OPTIONS = [
   { label: '1–10', value: 5 },
   { label: '11–50', value: 25 },
   { label: '51–200', value: 100 },
-  { label: '200+', value: 250 },
+  { label: '201–500', value: 350 },
+  { label: '500+', value: 750 },
 ]
 
 function SizePills({ value, onChange }) {
@@ -147,6 +145,7 @@ export default function AuthPage({ onAuth }) {
   const [signupEmail, setSignupEmail] = useState('')
   const [signupPassword, setSignupPassword] = useState('')
   const [showSignupPw, setShowSignupPw] = useState(false)
+  const [subscriptionIntent, setSubscriptionIntent] = useState(null)
 
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -167,6 +166,22 @@ export default function AuthPage({ onAuth }) {
     setError(null)
     setStep(0)
     setSuccess(false)
+
+    if (searchParams.get('onboarding') === 'subscription') {
+      try {
+        const intent = JSON.parse(window.sessionStorage.getItem('agroos-subscription-intent') || 'null')
+        if (intent?.plan === searchParams.get('plan')) {
+          setSubscriptionIntent(intent)
+          setCooperativeName(intent.organisation || '')
+          setLocation(intent.location || '')
+          setMemberCount(intent.memberCount ? Number(intent.memberCount) : null)
+        }
+      } catch {
+        setSubscriptionIntent(null)
+      }
+    } else {
+      setSubscriptionIntent(null)
+    }
   }, [searchParams])
 
   function completeAuth(tokenPayload, extras = {}) {
@@ -192,22 +207,10 @@ export default function AuthPage({ onAuth }) {
       })
       return
     } catch (err) {
-      if (!ALLOW_DEMO_LOGIN) {
-        setError(err.message)
-        return
-      }
+      setError(err.message)
     } finally {
       setLoading(false)
     }
-
-    const demoUser = USERS.find(
-      u => u.email.toLowerCase() === email.trim().toLowerCase() && u.password === password
-    )
-    if (!demoUser) {
-      setError('Invalid email or password. Try kwabena@ashantifarmers.gh / harvest2026 when the API is unavailable.')
-      return
-    }
-    onAuth(demoUser)
   }
 
   // ── SIGNUP step 0 → 1 ─────────────────────────────────────────────────────
@@ -233,8 +236,11 @@ export default function AuthPage({ onAuth }) {
         cooperativeName,
         location: location || undefined,
         memberCount: memberCount || undefined,
+        subscriptionPlan: subscriptionIntent?.plan || 'starter',
+        onboardingRole: subscriptionIntent?.role || 'Cooperative administrator',
       })
       storeAuthToken(data.access_token)
+      if (subscriptionIntent) window.sessionStorage.removeItem('agroos-subscription-intent')
       setSuccess(true)
       setTimeout(() => {
         completeAuth(data, userFromSignupResponse(data, signupEmail.trim()))
@@ -257,6 +263,10 @@ export default function AuthPage({ onAuth }) {
     if (!nextLogin) params.set('mode', 'signup')
     const next = searchParams.get('next')
     if (next) params.set('next', next)
+    const plan = searchParams.get('plan')
+    const onboarding = searchParams.get('onboarding')
+    if (plan) params.set('plan', plan)
+    if (onboarding) params.set('onboarding', onboarding)
     const search = params.toString() ? `?${params.toString()}` : ''
     navigate(`/login${search}`, { replace: true })
   }
@@ -436,16 +446,6 @@ export default function AuthPage({ onAuth }) {
                   {loading ? 'Signing in…' : 'Sign in →'}
                 </button>
               </form>
-
-              {ALLOW_DEMO_LOGIN && (
-                <div style={{
-                  marginTop: 20, padding: '12px 14px', borderRadius: 8,
-                  background: 'var(--sage)', fontSize: 12, color: 'var(--muted)', lineHeight: 1.5,
-                }}>
-                  <strong style={{ display: 'block', color: 'var(--text)', marginBottom: 4 }}>Demo credentials</strong>
-                  kwabena@ashantifarmers.gh / harvest2026
-                </div>
-              )}
             </>
           )}
 
@@ -453,9 +453,20 @@ export default function AuthPage({ onAuth }) {
           {!success && !isLogin && step === 0 && (
             <>
               <StepDots total={2} current={0} />
-              <h2 className="serif" style={{ fontSize: 26, marginBottom: 6 }}>About your cooperative</h2>
+              {subscriptionIntent && (
+                <div className="subscription-auth-context">
+                  <span>{subscriptionIntent.plan} plan</span>
+                  <strong>Subscription onboarding in progress</strong>
+                  <p>Your organisation details have carried over from the plan review.</p>
+                </div>
+              )}
+              <h2 className="serif" style={{ fontSize: 26, marginBottom: 6 }}>
+                {subscriptionIntent ? 'Confirm your organisation' : 'About your cooperative'}
+              </h2>
               <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 28 }}>
-                Tell us about your farm or cooperative to get started.
+                {subscriptionIntent
+                  ? `Complete the organisation profile for the ${subscriptionIntent.plan === 'growth' ? 'Growth' : 'Starter'} workspace.`
+                  : 'Tell us about your farm or cooperative to get started.'}
               </p>
 
               {backendWarming && !error && (
@@ -565,7 +576,7 @@ export default function AuthPage({ onAuth }) {
                   background: 'rgba(26,71,49,0.06)', borderRadius: 8, padding: '10px 14px',
                   fontSize: 12, color: 'var(--muted)', marginBottom: 16,
                 }}>
-                  🔒 Your account will have full admin access to <strong>{cooperativeName}</strong>
+                  Your account will have full administrator access to <strong>{cooperativeName}</strong>
                   {memberCount ? ` (≈${memberCount} members)` : ''}
                   {location ? ` in ${location}` : ''}.
                 </div>
@@ -576,7 +587,11 @@ export default function AuthPage({ onAuth }) {
                   disabled={loading}
                   style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}
                 >
-                  {loading ? 'Creating account…' : 'Get started free →'}
+                  {loading
+                    ? 'Creating account…'
+                    : subscriptionIntent
+                    ? `Create ${subscriptionIntent.plan === 'growth' ? 'Growth' : 'Starter'} account →`
+                    : 'Get started free →'}
                 </button>
               </form>
             </>
@@ -610,7 +625,7 @@ export default function AuthPage({ onAuth }) {
 
       {/* Hide left panel on mobile */}
       <style>{`
-        @media (max-width: 700px) { .auth-brand-panel { display: none; } }
+        @media (max-width: 768px) { .auth-brand-panel { display: none !important; } }
       `}</style>
     </div>
   )

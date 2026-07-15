@@ -1,4 +1,6 @@
 // src/components/DashboardMock.jsx
+import React from 'react'
+
 const MOCK_ROWS = [
   ['Abena Mensah', 'GHS 120', 'MoMo',  'Paid',    'bdg-green'],
   ['Kwame Asante', 'GHS 120', 'USSD',  'Paid',    'bdg-green'],

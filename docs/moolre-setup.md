@@ -119,9 +119,12 @@ On **first use** of a payer phone number in the Moolre sandbox, payment push ret
 
 > Please complete the verification process sent to you via SMS and try again.
 
-Moolre sends an OTP SMS directly to the payer phone (not via AgroOS). This is a one-time phone verification step — it does **not** mean you should call `POST /transactions/dues/collect` again. Submit the OTP via `POST /transactions/dues/collect/verify` using the **same** `transaction_id` and `moolre_reference` returned in the TP14 response; AgroOS reuses that reference internally to complete the original payment push.
+Moolre sends the OTP directly to the registered payer phone (not via AgroOS).
+Cooperative staff must never ask the member to relay that OTP or enter it in
+the dashboard. AgroOS persists the original payment reference as an
+`otp` customer action and tells the member to complete it through USSD.
 
-### Two-step AgroOS API flow
+### Farmer-action flow
 
 **Step 1 — Initiate collect** (creates a pending transaction):
 
@@ -146,25 +149,30 @@ If TP14, the response includes:
   "status": "verification_required",
   "outcome": "verification_required",
   "moolre_code": "TP14",
+  "customer_action": "otp",
+  "action_expires_at": "2026-07-15T11:30:00",
   "message": "Please complete the verification process sent to you via SMS and try again."
 }
 ```
 
-**Step 2 — Submit OTP** (reuse the same `moolre_reference`; do **not** call collect again):
+**Step 2 — Farmer completes the pending payment on their phone:**
 
-```http
-POST /transactions/dues/collect/verify
-Content-Type: application/json
+1. The member dials the AgroOS merchant code.
+2. They choose **Complete Pending Payment**.
+3. AgroOS resolves pending actions from the caller's registered phone.
+4. The member enters the Moolre OTP in that USSD session.
+5. AgroOS reuses the original `moolre_reference`; no second dashboard collect
+   request is sent.
 
-{
-  "transaction_id": 42,
-  "otp_code": "<code-from-moolre-sms>"
-}
-```
-
-On success (`TR099`), the response has `status: "pending"` and the farmer receives a USSD MoMo approval prompt on their phone.
+USSDK deployments map the same screens to `POST /ussdk/pending-payment`.
+Calling it without `transaction_id` lists phone-scoped actions; calling it with
+the selected `transaction_id` first requests and then submits `otp_code`.
+The old admin endpoint `/transactions/dues/collect/verify` no longer exists.
 
 **Step 3 — Farmer approves on phone** → Moolre sends webhook to `{PUBLIC_URL}/webhooks/moolre/payment` → transaction moves to `completed`, Trust Score recalculates, and a payment confirmation SMS is sent.
+
+Pending OTP or approval actions expire after 15 minutes. OTP values are passed
+directly to Moolre and are never persisted or written to USSD logs.
 
 ### Channel codes
 

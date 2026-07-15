@@ -1,5 +1,7 @@
 /** Shimmer skeleton primitives for dashboard loading states. */
 
+import React from 'react'
+
 export function Skeleton({ width = '100%', height = 14, radius = 6, style = {}, className = '' }) {
   return (
     <span
@@ -39,7 +41,7 @@ function SkeletonCardShell({ titleWidth = '40%', actionWidth = '18%', children }
 export function SkeletonTableRows({ rows = 5, columns = 5, gridStyle }) {
   const colWidths = ['72%', '55%', '48%', '42%', '36%'].slice(0, columns)
   return (
-    <>
+    <div className="table-scroll">
       <div className="pt-head" style={gridStyle}>
         {colWidths.map((w, i) => (
           <Skeleton key={i} width={w} height={10} radius={4} />
@@ -56,14 +58,14 @@ export function SkeletonTableRows({ rows = 5, columns = 5, gridStyle }) {
           ))}
         </div>
       ))}
-    </>
+    </div>
   )
 }
 
 export function SkeletonToolbar({ withFilter = false }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, gap: 12 }}>
-      <div style={{ display: 'flex', gap: 10, flex: 1 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 10, flex: 1, minWidth: 220 }}>
         <Skeleton width="100%" height={38} radius={8} style={{ maxWidth: 380 }} />
         {withFilter && <Skeleton width={88} height={38} radius={7} />}
       </div>

@@ -11,7 +11,7 @@ function fmtGHS(amount) {
   return `GHS ${Number(amount).toLocaleString('en-GH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
 }
 
-export default function Overview({ farmers = [], transactions = [], loading }) {
+export default function Overview({ farmers = [], transactions = [], loading, onNavigate }) {
   if (loading) return <OverviewSkeleton />
 
   // ── Real computed stats ──────────────────────────────────────────────────
@@ -84,14 +84,16 @@ export default function Overview({ farmers = [], transactions = [], loading }) {
         <div className="admin-card">
           <div className="admin-card-head">
             <span className="admin-card-title serif">Recent payments</span>
-            <span className="admin-card-action">Live data</span>
+            <button type="button" className="admin-card-action dashboard-link-button" onClick={() => onNavigate?.('payments')}>
+              View payments
+            </button>
           </div>
           {recentTxns.length === 0 ? (
             <div style={{ padding: '28px 20px', color: 'var(--muted)', fontSize: 14 }}>
               No transactions yet. Start collecting dues to see payment history here.
             </div>
           ) : (
-            <>
+            <div className="table-scroll">
               <div className="pt-head">
                 {['Member', 'Amount', 'Method', 'Date', 'Status'].map(h => (
                   <span key={h} className="pt-lbl">{h}</span>
@@ -109,7 +111,7 @@ export default function Overview({ farmers = [], transactions = [], loading }) {
                   <span className={`bdg ${cls}`}>{label}</span>
                 </div>
               ))}
-            </>
+            </div>
           )}
         </div>
 
@@ -117,7 +119,9 @@ export default function Overview({ farmers = [], transactions = [], loading }) {
         <div className="admin-card">
           <div className="admin-card-head">
             <span className="admin-card-title serif">Top credit scores</span>
-            <span className="admin-card-action">Real data</span>
+            <button type="button" className="admin-card-action dashboard-link-button" onClick={() => onNavigate?.('scores')}>
+              View scores
+            </button>
           </div>
           {topScores.length === 0 ? (
             <div style={{ padding: '28px 20px', color: 'var(--muted)', fontSize: 14 }}>
@@ -147,9 +151,9 @@ export default function Overview({ farmers = [], transactions = [], loading }) {
       <div className="admin-card" style={{ marginTop: 20 }}>
         <div className="admin-card-head">
           <span className="admin-card-title serif">Credit review queue</span>
-          <span className="admin-card-action">
+          <button type="button" className="admin-card-action dashboard-link-button" onClick={() => onNavigate?.('scores')}>
             {reviewQueue.length > 0 ? `${reviewQueue.length} need attention` : 'All clear'}
-          </span>
+          </button>
         </div>
         {reviewQueue.length === 0 ? (
           <div style={{ padding: '28px 20px', color: 'var(--muted)', fontSize: 14 }}>

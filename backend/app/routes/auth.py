@@ -1,10 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
 from datetime import timedelta
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
 from app.database.db import get_db
-from app.models.models import User, Cooperative
-from app.schemas.auth import UserCreate, UserLogin, UserResponse, Token, SignupRequest, SignupResponse
+from app.models.models import AdminAuditLog, Cooperative, User
+from app.schemas.auth import (
+    SignupRequest,
+    SignupResponse,
+    Token,
+    UserCreate,
+    UserLogin,
+    UserResponse,
+    UserUpdate,
+)
 from app.services.auth_service import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
@@ -36,6 +45,7 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
         location=data.location,
         description=description,
         currency="GHS",
+        subscription_plan=data.subscription_plan,
     )
     db.add(new_coop)
     db.flush()  # get the ID without committing yet
@@ -46,8 +56,20 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
         hashed_password=get_password_hash(data.password),
         role="admin",
         cooperative_id=new_coop.id,
+        onboarding_role=data.onboarding_role,
     )
     db.add(new_user)
+    db.flush()
+    db.add(
+        AdminAuditLog(
+            cooperative_id=new_coop.id,
+            actor_id=str(new_user.id),
+            action="workspace.created",
+            resource_type="cooperative",
+            resource_id=str(new_coop.id),
+            details=f"subscription_plan={new_coop.subscription_plan}",
+        )
+    )
     db.commit()
     db.refresh(new_user)
     db.refresh(new_coop)
@@ -69,6 +91,8 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "cooperative_id": new_coop.id,
         "cooperative_name": new_coop.name,
+        "subscription_plan": new_coop.subscription_plan,
+        "onboarding_role": new_user.onboarding_role,
     }
 
 
@@ -92,13 +116,99 @@ def register(
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
+    db.add(
+        AdminAuditLog(
+            cooperative_id=current_user.cooperative_id,
+            actor_id=str(current_user.id),
+            action="user.created",
+            resource_type="user",
+            resource_id=str(new_user.id),
+            details=f"role={new_user.role}",
+        )
+    )
+    db.commit()
     return new_user
+
+
+@router.get("/users", response_model=list[UserResponse])
+def list_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("admin")),
+):
+    return (
+        db.query(User)
+        .filter(User.cooperative_id == current_user.cooperative_id)
+        .order_by(User.email)
+        .all()
+    )
+
+
+@router.patch("/users/{user_id}", response_model=UserResponse)
+def update_user(
+    user_id: int,
+    body: UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles("admin")),
+):
+    # Serialize all administrator-count decisions per cooperative.
+    cooperative = (
+        db.query(Cooperative)
+        .filter(Cooperative.id == current_user.cooperative_id)
+        .with_for_update()
+        .first()
+    )
+    if not cooperative:
+        raise HTTPException(status_code=404, detail="Cooperative not found")
+    target = (
+        db.query(User)
+        .filter(
+            User.id == user_id,
+            User.cooperative_id == current_user.cooperative_id,
+        )
+        .first()
+    )
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.id == current_user.id and body.is_active is False:
+        raise HTTPException(status_code=409, detail="You cannot deactivate your own account")
+    removing_admin = target.role == "admin" and (
+        body.role == "finance_officer" or body.is_active is False
+    )
+    if removing_admin:
+        active_admins = (
+            db.query(User)
+            .filter(
+                User.cooperative_id == current_user.cooperative_id,
+                User.role == "admin",
+                User.is_active.is_(True),
+            )
+            .count()
+        )
+        if active_admins <= 1:
+            raise HTTPException(status_code=409, detail="At least one active administrator is required")
+    if body.role is not None:
+        target.role = body.role
+    if body.is_active is not None:
+        target.is_active = body.is_active
+    db.add(
+        AdminAuditLog(
+            cooperative_id=current_user.cooperative_id,
+            actor_id=str(current_user.id),
+            action="user.updated",
+            resource_type="user",
+            resource_id=str(target.id),
+            details=f"role={target.role};active={target.is_active}",
+        )
+    )
+    db.commit()
+    db.refresh(target)
+    return target
 
 
 @router.post("/login", response_model=Token)
 def login(user_in: UserLogin, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == user_in.email).first()
-    if not user or not verify_password(user_in.password, user.hashed_password):
+    if not user or not user.is_active or not verify_password(user_in.password, user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",

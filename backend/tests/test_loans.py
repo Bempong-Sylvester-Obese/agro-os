@@ -1,9 +1,12 @@
 """Tests for /loans endpoints (with Moolre transfer mocked)"""
 
 from contextlib import contextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from app.models.models import Transaction, TransactionStatus, TransactionType
+import pytest
+
+from app.models.models import Loan, Transaction, TransactionStatus, TransactionType
 from app.routes.loans import _disburse_external_ref
 from app.services.moolre_service import MoolreService
 
@@ -30,6 +33,23 @@ def _mock_disburse_moolre(*, transfer_result=None, status_result=None, wallet_ac
         ) as mock_status,
     ):
         yield mock_transfer, mock_status
+
+
+def test_legacy_loan_creation_is_available_only_in_test_mode(client, farmer):
+    with patch(
+        "app.routes.loans.get_settings",
+        return_value=SimpleNamespace(app_env="development"),
+    ):
+        response = client.post(
+            "/loans/",
+            json={
+                "farmer_id": farmer["id"],
+                "amount": 100,
+                "purpose": "Legacy fixture",
+            },
+        )
+
+    assert response.status_code == 403
 
 
 def _transfer_initiated(ext_ref: str = "some-uuid") -> dict:
@@ -59,6 +79,18 @@ def _payment_initiated(ext_ref: str = "repay-uuid") -> dict:
         "moolre_reference": ext_ref,
         "external_ref": ext_ref,
         "message": "Payment request sent",
+        "raw": {},
+    }
+
+
+def _payment_otp_required(ext_ref: str = "repay-otp") -> dict:
+    return {
+        "success": False,
+        "verification_required": True,
+        "outcome": "verification_required",
+        "moolre_reference": ext_ref,
+        "external_ref": ext_ref,
+        "message": "OTP required",
         "raw": {},
     }
 
@@ -173,7 +205,7 @@ def test_approve_loan(client, farmer):
     assert approve_resp.status_code == 200
     data = approve_resp.json()
     assert data["status"] == "approved"
-    assert data["approved_by"] == "Admin Kwame"
+    assert data["approved_by"] == "system"
 
 
 def test_approve_already_approved_loan_fails(client, farmer):
@@ -194,6 +226,88 @@ def test_reject_loan(client, farmer):
     resp = client.post(f"/loans/{loan_id}/reject")
     assert resp.status_code == 200
     assert resp.json()["status"] == "rejected"
+
+
+def test_cancel_requested_loan_records_reason(client, farmer):
+    loan_id = client.post(
+        "/loans/", json={"farmer_id": farmer["id"], "amount": 100.0}
+    ).json()["id"]
+
+    resp = client.post(
+        f"/loans/{loan_id}/cancel",
+        json={"reason": "Member withdrew the request"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "cancelled"
+    assert resp.json()["cancellation_reason"] == "Member withdrew the request"
+    assert resp.json()["cancelled_at"] is not None
+
+
+def test_cancel_pending_disbursement_is_blocked(client, farmer):
+    loan_id = client.post(
+        "/loans/", json={"farmer_id": farmer["id"], "amount": 250.0}
+    ).json()["id"]
+    client.post(f"/loans/{loan_id}/approve", json={"approved_by": "Admin"})
+    with _mock_disburse_moolre(
+        status_result={"success": False, "status": "pending", "raw": {}},
+    ):
+        client.post(f"/loans/{loan_id}/disburse")
+
+    resp = client.post(
+        f"/loans/{loan_id}/cancel",
+        json={"reason": "Duplicate request"},
+    )
+
+    assert resp.status_code == 409
+    assert "still processing" in resp.json()["detail"]
+
+
+def test_reconcile_failed_disbursement_enables_cancel_and_retry(client, farmer):
+    loan_id = client.post(
+        "/loans/", json={"farmer_id": farmer["id"], "amount": 250.0}
+    ).json()["id"]
+    client.post(f"/loans/{loan_id}/approve", json={"approved_by": "Admin"})
+    with _mock_disburse_moolre(
+        status_result={"success": False, "status": "pending", "raw": {}},
+    ):
+        client.post(f"/loans/{loan_id}/disburse")
+
+    with _mock_disburse_moolre(
+        status_result={"success": False, "status": "failed", "raw": {}},
+    ):
+        resp = client.get(f"/loans/{loan_id}/disbursement-status")
+
+    assert resp.status_code == 200
+    assert resp.json()["payout_status"] == "failed"
+    assert resp.json()["can_cancel"] is True
+    assert resp.json()["can_retry"] is True
+
+
+def test_disbursement_status_preserves_completed_payout(client, db, farmer):
+    loan_id = client.post(
+        "/loans/",
+        json={"farmer_id": farmer["id"], "amount": 250.0},
+    ).json()["id"]
+    client.post(f"/loans/{loan_id}/approve", json={"approved_by": "Admin"})
+    db.add(
+        Transaction(
+            farmer_id=farmer["id"],
+            transaction_type=TransactionType.payout,
+            amount=250.0,
+            status=TransactionStatus.completed,
+            moolre_transfer_ref="COMPLETED-PAYOUT",
+            description=f"Loan disbursement #{loan_id}",
+        )
+    )
+    db.commit()
+
+    response = client.get(f"/loans/{loan_id}/disbursement-status")
+
+    assert response.status_code == 200
+    assert response.json()["loan_status"] == "disbursed"
+    assert response.json()["payout_status"] == "completed"
+    assert db.query(Loan).filter(Loan.id == loan_id).one().status.value == "disbursed"
 
 
 def test_disburse_loan(client, farmer):
@@ -407,6 +521,86 @@ def test_repay_loan_stays_disbursed_when_payment_pending(client, farmer):
 
     assert repay_resp.status_code == 200
     assert repay_resp.json()["status"] == "disbursed"
+
+
+def test_ambiguous_repayment_preserves_attempt_and_blocks_duplicate(
+    client, farmer, db
+):
+    loan_id = _approve_and_disburse(client, farmer, 150.0)
+
+    with patch(
+        "app.routes.loans.MoolreService.initiate_payment",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("provider timeout"),
+    ) as mock_pay:
+        with pytest.raises(RuntimeError, match="provider timeout"):
+            client.post(f"/loans/{loan_id}/repay")
+        repeated = client.post(f"/loans/{loan_id}/repay")
+
+    tx = db.query(Transaction).filter(
+        Transaction.loan_id == loan_id,
+        Transaction.transaction_type == TransactionType.repayment,
+    ).one()
+    assert repeated.status_code == 200
+    assert repeated.json()["status"] == "disbursed"
+    assert tx.status == TransactionStatus.pending
+    assert tx.customer_action == "initiating"
+    assert tx.action_expires_at is not None
+    mock_pay.assert_called_once()
+
+
+def test_farmer_completes_repayment_otp_from_ussdk(client, farmer, db):
+    loan_id = _approve_and_disburse(client, farmer, 150.0)
+    with (
+        patch(
+            "app.routes.loans.MoolreService.initiate_payment",
+            new_callable=AsyncMock,
+            side_effect=[
+                _payment_otp_required("repay-ref-otp"),
+                _payment_initiated("repay-ref-otp"),
+            ],
+        ) as mock_pay,
+        patch(
+            "app.routes.loans.MoolreService.payment_status",
+            new_callable=AsyncMock,
+            return_value={"success": False, "status": "pending", "raw": {}},
+        ),
+    ):
+        initiated = client.post(f"/loans/{loan_id}/repay")
+        assert initiated.status_code == 200
+        tx = db.query(Transaction).filter(Transaction.loan_id == loan_id).one()
+        assert tx.customer_action == "otp"
+
+        completed = client.post(
+            "/ussdk/pending-payment",
+            json={
+                "input": {},
+                "props": {
+                    "session": {"msisdn": farmer["phone"]},
+                    "values": {
+                        "transaction_id": tx.id,
+                        "otp_code": "654321",
+                    },
+                },
+            },
+        )
+
+    assert completed.status_code == 200
+    db.refresh(tx)
+    assert tx.customer_action == "approval"
+    assert mock_pay.call_args_list[1].kwargs["otpcode"] == "654321"
+    assert (
+        mock_pay.call_args_list[1].kwargs["external_ref"]
+        == mock_pay.call_args_list[0].kwargs["external_ref"]
+    )
+
+
+def test_admin_repayment_otp_endpoint_is_removed(client, farmer):
+    resp = client.post(
+        "/loans/999/repay/verify",
+        json={"otp_code": "123456"},
+    )
+    assert resp.status_code == 404
 
 
 def test_repay_loan_uses_cooperative_account(client, farmer, cooperative):

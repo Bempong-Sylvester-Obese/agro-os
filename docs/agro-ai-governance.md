@@ -161,7 +161,7 @@ Two scoring systems run in parallel. This is a summary; see
 
 | Situation | Use |
 |---|---|
-| Farmer pays dues via USSD and checks their score | **Trust Score** (rules-based, DB-backed) |
+| Farmer pays dues and an integration reads the recalculated score | **Trust Score** (rules-based, DB-backed) |
 | Cooperative admin reviews dashboard credit profile | **Agro-AI** (ML, synthetic data in demo) |
 | Webhook fires after Moolre payment | **Trust Score** recalculates |
 | Demo narration of ML capability | **Agro-AI** |

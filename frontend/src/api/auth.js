@@ -57,14 +57,24 @@ async function authFetch(path, body, { retries = 2 } = {}) {
   throw new Error(formatTransportError(lastError))
 }
 
-export async function signupAdmin({ email, password, cooperative_name, location, member_count }) {
+export async function signupAdmin({
+  email,
+  password,
+  cooperative_name,
+  location,
+  member_count,
+  subscription_plan,
+  onboarding_role,
+}) {
   return authFetch('/auth/signup', {
     email,
     password,
     cooperative_name,
     location: location || null,
     member_count: member_count ?? null,
-  })
+    subscription_plan: subscription_plan || 'starter',
+    onboarding_role: onboarding_role || null,
+  }, { retries: 0 })
 }
 
 export async function loginAdmin(email, password) {
@@ -75,13 +85,23 @@ export async function login(email, password) {
   return loginAdmin(email, password)
 }
 
-export async function signup({ email, password, cooperativeName, location, memberCount }) {
+export async function signup({
+  email,
+  password,
+  cooperativeName,
+  location,
+  memberCount,
+  subscriptionPlan,
+  onboardingRole,
+}) {
   const data = await signupAdmin({
     email,
     password,
     cooperative_name: cooperativeName,
     location,
     member_count: memberCount ? parseInt(memberCount, 10) : null,
+    subscription_plan: subscriptionPlan,
+    onboarding_role: onboardingRole,
   })
   return {
     ...data,
@@ -136,6 +156,18 @@ export function storeAuthToken(token) {
 
 export function getAuthToken() {
   return localStorage.getItem(TOKEN_KEY)
+}
+
+export function isAuthTokenUsable(token = getAuthToken()) {
+  if (!token) return false
+  try {
+    const segment = token.split('.')[1]
+    if (!segment) return false
+    const payload = JSON.parse(decodeJwtPayloadSegment(segment))
+    return typeof payload.exp === 'number' && payload.exp > Date.now() / 1000
+  } catch {
+    return false
+  }
 }
 
 export function clearAuthToken() {

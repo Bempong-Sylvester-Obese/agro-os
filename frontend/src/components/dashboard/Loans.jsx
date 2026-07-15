@@ -1,9 +1,19 @@
 // src/components/dashboard/Loans.jsx
-import { useState } from 'react'
-import { Plus, X, Loader2, Check, XCircle, Send } from 'lucide-react'
-import { createLoan, approveLoan, rejectLoan, disburseLoan } from '../../api/loans'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { X, Loader2, Check, XCircle, Send, RefreshCw, Banknote, Ban } from 'lucide-react'
+import {
+  approveLoan,
+  rejectLoan,
+  disburseLoan,
+  cancelLoan,
+  fetchDisbursementStatus,
+  repayLoan,
+} from '../../api/loans'
 import { TableSectionSkeleton } from './DashboardSkeleton'
 import { useModal } from '../../hooks/useModal'
+import { ModalPresence } from '../Motion'
+import { exportDashboardReport } from '../../api/reports'
+import { DashboardPagination, DashboardTableToolbar, useDashboardTable } from './DashboardTableTools'
 
 function fmtGHS(amount) {
   return `GHS ${Number(amount).toLocaleString('en-GH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
@@ -17,104 +27,163 @@ function fmtRepaymentDate(raw) {
   return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
 }
 
-// ── Log Loan Request Modal ──────────────────────────────────────────────────────
-function RequestLoanModal({ farmers, onClose, onSuccess }) {
-  const { onBackdropClick, dialogProps, titleId, closeButtonProps } = useModal(onClose, { label: 'loan request dialog' })
-  const [form, setForm] = useState({ farmerId: '', amount: '', purpose: '', repaymentDate: '' })
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  
-  const activeFarmers = farmers.filter(f => f.membership_status === 'active')
+const ACTION_COPY = {
+  approve: ['Approve loan?', 'This loan will become eligible for disbursement.', 'Approve loan'],
+  reject: ['Reject loan?', 'This action closes the request and cannot be undone.', 'Reject loan'],
+  cancel: ['Cancel loan?', 'Provide a reason for cancelling this loan.', 'Cancel loan'],
+  disburse: ['Disburse loan?', 'This starts a payout to the member. Confirm the amount and member before continuing.', 'Start disbursement'],
+  retry: ['Retry payout?', 'This retries the failed payout using the existing loan details.', 'Retry payout'],
+  repay: ['Collect repayment?', 'This sends one repayment request to the member. They complete any OTP step on their own phone.', 'Send repayment request'],
+}
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!form.farmerId || !form.amount || !form.purpose || !form.repaymentDate) {
-      setError('Please fill in all fields.')
+const actionButtonStyle = {
+  border: 0,
+  borderRadius: 8,
+  padding: '9px 14px',
+  cursor: 'pointer',
+  fontSize: 13,
+  fontWeight: 700,
+}
+
+function ConfirmationModal({ action, processing, error, onClose, onConfirm }) {
+  const { onBackdropClick, dialogProps, titleId, closeButtonProps } = useModal(onClose, {
+    closeOnBackdrop: !processing,
+    label: `${action.type} loan dialog`,
+  })
+  const [reason, setReason] = useState('')
+  const [validationError, setValidationError] = useState('')
+  const [title, description, confirmLabel] = ACTION_COPY[action.type]
+  const destructive = ['reject', 'cancel'].includes(action.type)
+
+  const submit = (event) => {
+    event.preventDefault()
+    if (action.type === 'cancel' && !reason.trim()) {
+      setValidationError('Enter a cancellation reason.')
       return
     }
-    setLoading(true)
-    setError(null)
-    try {
-      await createLoan(form.farmerId, form.amount, form.purpose, form.repaymentDate)
-      onSuccess()
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const input = {
-    width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)',
-    borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif",
-    outline: 'none', background: '#fff', color: 'var(--text)', boxSizing: 'border-box',
-    marginTop: 6
+    onConfirm(reason)
   }
 
   return (
-    <div
-      onClick={onBackdropClick}
-      style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)',
-      backdropFilter: 'blur(4px)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
+    <div className="dashboard-modal-overlay" onClick={onBackdropClick} style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)', backdropFilter: 'blur(4px)',
+      zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
     }}>
-      <div
-        {...dialogProps}
-        style={{
-        background: '#fff', borderRadius: 16, width: '100%', maxWidth: 400,
-        boxShadow: '0 32px 80px rgba(0,0,0,0.22)',
+      <form className="dashboard-modal" {...dialogProps} onSubmit={submit} style={{
+        background: '#fff', borderRadius: 16, width: '100%', maxWidth: 430,
+        boxShadow: '0 32px 80px rgba(0,0,0,0.22)', padding: 24,
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '24px 28px 20px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
           <div>
-            <div id={titleId} className="serif" style={{ fontWeight: 700, fontSize: 19 }}>Log Loan Request</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Log a new input or cash loan request from a member</div>
+            <h2 id={titleId} className="serif" style={{ fontSize: 20, margin: 0 }}>{title}</h2>
+            <p style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.5, margin: '8px 0 0' }}>{description}</p>
           </div>
-          <button {...closeButtonProps} onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={20} /></button>
-        </div>
-
-        <form onSubmit={handleSubmit} style={{ padding: '24px 28px' }}>
-          {error && <div style={{ padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>}
-          
-          <div style={{ marginBottom: 16 }}>
-            <label htmlFor="loan-member" style={{ fontSize: 13, fontWeight: 600 }}>Member</label>
-            <select id="loan-member" style={input} value={form.farmerId} onChange={e => setForm({...form, farmerId: e.target.value})} required disabled={loading}>
-              <option value="">Select a member...</option>
-              {activeFarmers.map(f => <option key={f.id} value={f.id}>{f.name} ({f.phone})</option>)}
-            </select>
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label htmlFor="loan-amount" style={{ fontSize: 13, fontWeight: 600 }}>Amount (GHS)</label>
-            <input id="loan-amount" style={input} type="number" min="1" step="0.5" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} placeholder="e.g. 500" required disabled={loading}/>
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label htmlFor="loan-purpose" style={{ fontSize: 13, fontWeight: 600 }}>Purpose</label>
-            <input id="loan-purpose" style={input} type="text" value={form.purpose} onChange={e => setForm({...form, purpose: e.target.value})} placeholder="e.g. Fertilizer, Seeds" required disabled={loading}/>
-          </div>
-
-          <div style={{ marginBottom: 24 }}>
-            <label htmlFor="loan-repayment-date" style={{ fontSize: 13, fontWeight: 600 }}>Expected Repayment Date</label>
-            <input id="loan-repayment-date" style={input} type="date" value={form.repaymentDate} onChange={e => setForm({...form, repaymentDate: e.target.value})} required disabled={loading}/>
-          </div>
-
-          <button type="submit" className="btn-lg" disabled={loading} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-            {loading ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Submitting...</> : 'Log Request'}
+          <button {...closeButtonProps} disabled={processing} onClick={onClose} style={{ background: 'none', border: 0, color: 'var(--muted)', cursor: 'pointer', height: 28 }}>
+            <X size={20} />
           </button>
-        </form>
-      </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+        <div style={{ background: 'var(--sage)', borderRadius: 10, padding: 12, marginTop: 18, fontSize: 13 }}>
+          <strong>Loan #{action.loan.id}</strong> · {fmtGHS(action.loan.amount)}
+        </div>
+        {action.type === 'cancel' && (
+          <div style={{ marginTop: 16 }}>
+            <label htmlFor="loan-cancel-reason" style={{ fontSize: 13, fontWeight: 700 }}>Cancellation reason</label>
+            <textarea
+              id="loan-cancel-reason"
+              value={reason}
+              onChange={(event) => { setReason(event.target.value); setValidationError('') }}
+              disabled={processing}
+              rows={3}
+              style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 6, padding: 10, border: '1px solid var(--border)', borderRadius: 8, resize: 'vertical', font: 'inherit' }}
+            />
+          </div>
+        )}
+        {(validationError || error) && <div role="alert" style={{ color: '#991B1B', fontSize: 13, marginTop: 14 }}>{validationError || error}</div>}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 22 }}>
+          <button type="button" disabled={processing} onClick={onClose} style={{ ...actionButtonStyle, background: '#fff', border: '1px solid var(--border)', color: 'var(--text)' }}>Go back</button>
+          <button type="submit" disabled={processing} style={{ ...actionButtonStyle, background: destructive ? '#991B1B' : 'var(--text)', color: '#fff' }}>
+            {processing ? 'Working…' : confirmLabel}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }
 
 // ── Main Component ────────────────────────────────────────────────────────
-export default function Loans({ farmers = [], loans = [], loading, onRefresh }) {
-  const [showModal, setShowModal] = useState(false)
-  const [processing, setProcessing] = useState(null) // ID of loan being processed
+export default function Loans({ farmers = [], loans = [], cooperativeId, loading, onRefresh, dataStale = false }) {
+  const [activeAction, setActiveAction] = useState(null)
+  const [processing, setProcessing] = useState(null)
   const [actionError, setActionError] = useState(null)
   const [actionMessage, setActionMessage] = useState(null)
+  const [payoutStatuses, setPayoutStatuses] = useState({})
+  const [reconciling, setReconciling] = useState(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
+  const requestedPayoutIds = useRef(new Set())
+
+  const reconcileLoan = useCallback(async (loanId, { quiet = false } = {}) => {
+    if (!quiet) {
+      setReconciling(loanId)
+      setActionError(null)
+    }
+    try {
+      const status = await fetchDisbursementStatus(loanId)
+      setPayoutStatuses(current => ({ ...current, [loanId]: status }))
+      if (!quiet) setActionMessage(`Loan #${loanId} payout status reconciled: ${status.payout_status}.`)
+      return status
+    } catch (error) {
+      if (!quiet) setActionError(error.message || 'Could not reconcile payout status')
+      return null
+    } finally {
+      if (!quiet) setReconciling(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+    const unknownEligible = loans.filter(loan => (
+      !['rejected', 'cancelled', 'repaid'].includes(loan.status)
+      && !requestedPayoutIds.current.has(loan.id)
+    ))
+    unknownEligible.forEach(loan => requestedPayoutIds.current.add(loan.id))
+    Promise.all(unknownEligible.map(async loan => {
+      try {
+        const status = await fetchDisbursementStatus(loan.id)
+        return [loan.id, status]
+      } catch {
+        return null
+      }
+    })).then(results => {
+      if (!active) return
+      setPayoutStatuses(current => ({
+        ...current,
+        ...Object.fromEntries(results.filter(Boolean)),
+      }))
+    })
+    return () => { active = false }
+  }, [loans])
+
+  const sorted = useMemo(
+    () => [...loans].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
+    [loans],
+  )
+  const farmerName = useCallback(
+    loan => farmers.find(farmer => farmer.id === loan.farmer_id)?.name || `Farmer #${loan.farmer_id}`,
+    [farmers],
+  )
+  const searchableText = useCallback(
+    loan => `${farmerName(loan)} ${loan.id} ${loan.purpose || ''} ${loan.moolre_transfer_ref || ''}`,
+    [farmerName],
+  )
+  const statusValue = useCallback(loan => loan.status, [])
+  const dateValue = useCallback(loan => loan.created_at, [])
+  const table = useDashboardTable({
+    rows: sorted,
+    searchableText,
+    statusValue,
+    dateValue,
+  })
 
   if (loading) {
     return (
@@ -132,21 +201,36 @@ export default function Loans({ farmers = [], loans = [], loading, onRefresh }) 
   const totalDisbursedAmount = disbursed.reduce((s, l) => s + l.amount, 0)
   const totalRequestedAmount = requested.reduce((s, l) => s + l.amount, 0)
 
-  const sorted = [...loans].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+  const openAction = (loan, type) => {
+    setActionError(null)
+    setActiveAction({ loan, type })
+  }
 
-  const handleAction = async (loanId, action) => {
-    setProcessing(loanId)
+  const handleAction = async (reason = '') => {
+    const { loan, type } = activeAction
+    setProcessing(loan.id)
     setActionError(null)
     setActionMessage(null)
     try {
-      if (action === 'approve') await approveLoan(loanId)
-      if (action === 'reject') await rejectLoan(loanId)
-      if (action === 'disburse') {
-        const result = await disburseLoan(loanId)
+      if (type === 'approve') await approveLoan(loan.id)
+      if (type === 'reject') await rejectLoan(loan.id)
+      if (type === 'cancel') await cancelLoan(loan.id, reason)
+      if (type === 'disburse' || type === 'retry') {
+        const result = await disburseLoan(loan.id)
         if (result.status === 'approved') {
-          setActionMessage('Moolre accepted the payout and it is processing. The loan will remain approved until Moolre confirms completion.')
+          setActionMessage('Payout accepted and processing. Use Reconcile payout to check for completion.')
         }
+        await reconcileLoan(loan.id, { quiet: true })
       }
+      if (type === 'repay') {
+        const result = await repayLoan(loan.id)
+        setActionMessage(
+          result.status === 'repaid'
+            ? `Repayment for loan #${loan.id} completed.`
+            : `Repayment request sent for loan #${loan.id}. The member must complete it on their phone.`
+        )
+      }
+      setActiveAction(null)
       if (onRefresh) onRefresh()
     } catch (err) {
       setActionError(err.message || 'Action failed')
@@ -155,24 +239,58 @@ export default function Loans({ farmers = [], loans = [], loading, onRefresh }) 
     }
   }
 
+  const rowButton = {
+    borderRadius: 6, padding: '5px 8px', cursor: 'pointer', display: 'inline-flex',
+    alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap',
+  }
+  const handleExport = async () => {
+    setExporting(true)
+    setExportError('')
+    try {
+      await exportDashboardReport('loans', cooperativeId, table.exportFilters)
+    } catch (error) {
+      setExportError(error.message || 'Could not export loans. Please try again.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <>
-      {showModal && (
-        <RequestLoanModal 
-          farmers={farmers} 
-          onClose={() => setShowModal(false)} 
-          onSuccess={() => { setShowModal(false); if (onRefresh) onRefresh(); }} 
-        />
-      )}
-
+      <ModalPresence show={Boolean(activeAction)}>
+        {activeAction && (
+          <ConfirmationModal
+            action={activeAction}
+            processing={processing === activeAction.loan.id}
+            error={actionError}
+            onClose={() => { if (!processing) { setActiveAction(null); setActionError(null) } }}
+            onConfirm={handleAction}
+          />
+        )}
+      </ModalPresence>
       {/* ── Toolbar ── */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
-        <button className="btn-nav" onClick={() => setShowModal(true)} style={{ fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, background: 'var(--text)', color: '#fff' }}>
-          <Plus size={15} /> Log Loan Request
-        </button>
-      </div>
+      {dataStale && (
+        <div className="info-banner" role="status" style={{ marginBottom: 16 }}>
+          Financial actions are paused until members and loans refresh successfully.
+        </div>
+      )}
+      <DashboardTableToolbar
+        label="Loans"
+        table={table}
+        statuses={[
+          { value: 'requested', label: 'Requested' },
+          { value: 'approved', label: 'Approved' },
+          { value: 'disbursed', label: 'Disbursed' },
+          { value: 'repaid', label: 'Repaid' },
+          { value: 'rejected', label: 'Rejected' },
+          { value: 'cancelled', label: 'Cancelled' },
+        ]}
+        onExport={handleExport}
+        exporting={exporting}
+        exportError={exportError}
+      />
 
-      {actionError && (
+      {actionError && !activeAction && (
         <div style={{ padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
           {actionError}
         </div>
@@ -203,9 +321,11 @@ export default function Loans({ farmers = [], loans = [], loading, onRefresh }) 
           <span className="admin-card-action">{loans.length} record{loans.length !== 1 ? 's' : ''}</span>
         </div>
 
-        {sorted.length === 0 ? (
+        {table.filteredRows.length === 0 ? (
           <div style={{ padding: '32px 20px', color: 'var(--muted)', fontSize: 14 }}>
-            No loans recorded yet. Click "Log Loan Request" to log a new application.
+            {loans.length === 0
+              ? 'No farmer loan requests yet. Requests submitted through USSD will appear here.'
+              : 'No loans match the current filters.'}
           </div>
         ) : (
           <div className="table-scroll loans-table">
@@ -217,48 +337,85 @@ export default function Loans({ farmers = [], loans = [], loading, onRefresh }) 
               <span className="pt-lbl">Status</span>
               <span className="pt-lbl" style={{ textAlign: 'right' }}>Action</span>
             </div>
-            {sorted.map(loan => {
+            {table.pageRows.map(loan => {
               const farmer = farmers.find(f => f.id === loan.farmer_id)
               const name = farmer ? farmer.name : `Farmer #${loan.farmer_id}`
               const repayDate = fmtRepaymentDate(loan.expected_repayment_date || loan.repayment_date)
-              
+              const payout = payoutStatuses[loan.id]
+              const payoutStatus = payout?.payout_status || 'none'
+              const payoutLabels = {
+                none: 'Payout: not started',
+                pending: 'Payout: pending',
+                failed: 'Payout: failed',
+                completed: 'Payout: completed',
+              }
+
               let cls = 'bdg-amber', label = loan.status
               if (['approved', 'disbursed', 'repaid'].includes(loan.status)) cls = 'bdg-green'
-              if (loan.status === 'rejected') cls = 'bdg-red'
+              if (['rejected', 'cancelled'].includes(loan.status)) cls = 'bdg-red'
 
               return (
                 <div key={loan.id} className="pay-row" style={{ alignItems: 'center' }}>
-                  <div><div className="pt-name">{name}</div><div className="pt-id">#{loan.id}</div></div>
+                  <div>
+                    <div className="pt-name">{name}</div>
+                    <div className="pt-id">
+                      #{loan.id}
+                      {['moolre_ussd', 'ussdk'].includes(loan.request_channel) ? ' · Farmer USSD request' : ''}
+                    </div>
+                  </div>
                   <span className="pt-v">{fmtGHS(loan.amount)}</span>
                   <span className="pt-m" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{loan.purpose}</span>
                   <span className="pt-m">{repayDate}</span>
-                  <span className={`bdg ${cls}`} style={{ textTransform: 'capitalize' }}>{label}</span>
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <div>
+                    <span className={`bdg ${cls}`} style={{ textTransform: 'capitalize' }}>{label}</span>
+                    <div style={{ fontSize: 10, color: payoutStatus === 'failed' ? '#991B1B' : 'var(--muted)', marginTop: 5 }}>
+                      {payoutLabels[payoutStatus] || `Payout: ${payoutStatus}`}
+                    </div>
+                    {payout?.transfer_reference && <div className="pt-id" title={payout.transfer_reference}>{payout.transfer_reference}</div>}
+                    {loan.approved_by && (
+                      <div className="pt-id">
+                        Approved by {loan.approved_by}{loan.approved_at ? ` · ${fmtRepaymentDate(loan.approved_at)}` : ''}
+                      </div>
+                    )}
+                    {loan.repaid_at && <div className="pt-id">Repaid {fmtRepaymentDate(loan.repaid_at)}</div>}
+                    {loan.cancellation_reason && (
+                      <div className="pt-id" title={loan.cancellation_reason}>Cancelled: {loan.cancellation_reason}</div>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'flex-end' }}>
                     {loan.status === 'requested' && (
                       <>
-                        <button 
-                          disabled={processing === loan.id}
-                          onClick={() => handleAction(loan.id, 'approve')}
-                          style={{ background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600 }}
-                        >
-                          {processing === loan.id ? <Loader2 size={12} className="spin" /> : <Check size={12} />} Approve
+                        <button disabled={dataStale} onClick={() => openAction(loan, 'approve')} style={{ ...rowButton, background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>
+                          <Check size={12} /> Approve
                         </button>
-                        <button 
-                          disabled={processing === loan.id}
-                          onClick={() => handleAction(loan.id, 'reject')}
-                          style={{ background: '#FEF2F2', color: '#991B1B', border: '1px solid #fecaca', borderRadius: 6, padding: '4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600 }}
-                        >
+                        <button disabled={dataStale} onClick={() => openAction(loan, 'reject')} style={{ ...rowButton, background: '#FEF2F2', color: '#991B1B', border: '1px solid #fecaca' }}>
                           <XCircle size={12} /> Reject
                         </button>
                       </>
                     )}
-                    {loan.status === 'approved' && (
-                      <button 
-                        disabled={processing === loan.id}
-                        onClick={() => handleAction(loan.id, 'disburse')}
-                        style={{ background: 'var(--text)', color: '#fff', border: 'none', borderRadius: 6, padding: '4px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 600 }}
-                      >
-                        {processing === loan.id ? <Loader2 size={12} className="spin" /> : <Send size={12} />} Disburse
+                    {loan.status === 'approved' && payoutStatus === 'none' && (
+                      <button disabled={dataStale} onClick={() => openAction(loan, 'disburse')} style={{ ...rowButton, background: 'var(--text)', color: '#fff', border: '1px solid var(--text)' }}>
+                        <Send size={12} /> Disburse
+                      </button>
+                    )}
+                    {payoutStatus === 'failed' && payout?.can_retry && (
+                      <button disabled={dataStale} onClick={() => openAction(loan, 'retry')} style={{ ...rowButton, background: '#FFF7ED', color: '#9A3412', border: '1px solid #FDBA74' }}>
+                        <RefreshCw size={12} /> Retry payout
+                      </button>
+                    )}
+                    {['approved', 'disbursed'].includes(loan.status) && (
+                      <button disabled={reconciling === loan.id} onClick={() => reconcileLoan(loan.id)} style={{ ...rowButton, background: '#fff', color: 'var(--text)', border: '1px solid var(--border)' }}>
+                        {reconciling === loan.id ? <Loader2 size={12} className="spin" /> : <RefreshCw size={12} />} Reconcile payout
+                      </button>
+                    )}
+                    {loan.status === 'disbursed' && (
+                      <button disabled={dataStale} onClick={() => openAction(loan, 'repay')} style={{ ...rowButton, background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE' }}>
+                        <Banknote size={12} /> Collect repayment
+                      </button>
+                    )}
+                    {payout?.can_cancel && (
+                      <button disabled={dataStale} onClick={() => openAction(loan, 'cancel')} style={{ ...rowButton, background: '#fff', color: '#991B1B', border: '1px solid #fecaca' }}>
+                        <Ban size={12} /> Cancel
                       </button>
                     )}
                   </div>
@@ -267,6 +424,7 @@ export default function Loans({ farmers = [], loans = [], loading, onRefresh }) 
             })}
           </div>
         )}
+        <DashboardPagination label="Loans" table={table} />
       </div>
     </>
   )

@@ -15,11 +15,11 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import relationship
 
 from app.database.db import Base
-
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -51,6 +51,7 @@ class LoanStatus(str, enum.Enum):
     disbursed = "disbursed"
     repaid = "repaid"
     rejected = "rejected"
+    cancelled = "cancelled"
 
 
 class MessageType(str, enum.Enum):
@@ -72,6 +73,8 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     role = Column(String, default="admin")
+    is_active = Column(Boolean, default=True, nullable=False)
+    onboarding_role = Column(String, nullable=True)
     cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -95,6 +98,7 @@ class Cooperative(Base):
     description = Column(Text, nullable=True)
     location = Column(String, nullable=True)
     currency = Column(String, default="GHS")
+    subscription_plan = Column(String, default="starter", nullable=False)
     # Moolre wallet that holds cooperative funds
     moolre_account_number = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -197,11 +201,15 @@ class Transaction(Base):
     # Moolre refs
     moolre_reference = Column(String, unique=True, nullable=True)  # payment ref
     moolre_transfer_ref = Column(String, unique=True, nullable=True)  # transfer ref
+    loan_id = Column(Integer, ForeignKey("loans.id"), nullable=True, index=True)
     # Participant phones (for USSD / mobile money)
     payer_phone = Column(String, nullable=True)
     payee_phone = Column(String, nullable=True)
     channel = Column(String, nullable=True)  # e.g. "13" = MTN Ghana
     description = Column(Text, nullable=True)
+    initiation_channel = Column(String, default="legacy", nullable=False)
+    customer_action = Column(String, default="none", nullable=False, index=True)
+    action_expires_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -232,6 +240,7 @@ class Loan(Base):
     purpose = Column(Text, nullable=True)
     expected_repayment_date = Column(Date, nullable=True)
     status = Column(Enum(LoanStatus), default=LoanStatus.requested)
+    request_channel = Column(String, default="legacy", nullable=False)
     # Approval
     approved_by = Column(String, nullable=True)  # admin name / id
     approved_at = Column(DateTime, nullable=True)
@@ -240,6 +249,10 @@ class Loan(Base):
     disbursed_at = Column(DateTime, nullable=True)
     # Repayment
     repaid_at = Column(DateTime, nullable=True)
+    # Cancellation
+    cancelled_by = Column(String, nullable=True)
+    cancelled_at = Column(DateTime, nullable=True)
+    cancellation_reason = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -424,3 +437,64 @@ class AgroAiPredictionLog(Base):
     prediction = Column(Text, nullable=False)
     context = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Administrator Audit Trail
+# ---------------------------------------------------------------------------
+
+
+class AdminAuditLog(Base):
+    """Append-only cooperative-scoped record of administrator actions."""
+
+    __tablename__ = "admin_audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=False, index=True)
+    actor_id = Column(String, nullable=False)
+    action = Column(String, nullable=False, index=True)
+    resource_type = Column(String, nullable=True)
+    resource_id = Column(String, nullable=True)
+    details = Column(Text, nullable=True)
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+    )
+
+
+class AdminActionConfirmation(Base):
+    """Single-use confirmation for a sensitive administrator action."""
+
+    __tablename__ = "admin_action_confirmations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    token_id = Column(String, unique=True, nullable=False, index=True)
+    cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    action = Column(String, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, server_default=func.now(), nullable=False)
+
+
+class DemoBooking(Base):
+    """Persisted marketing consultation request."""
+
+    __tablename__ = "demo_bookings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    reference = Column(String, unique=True, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=False, index=True)
+    phone = Column(String, nullable=True)
+    cooperative = Column(String, nullable=False)
+    size = Column(String, nullable=False)
+    topic = Column(String, nullable=False)
+    notes = Column(Text, nullable=True)
+    selected_date = Column(Date, nullable=False, index=True)
+    selected_time = Column(String, nullable=False)
+    is_enterprise = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, server_default=func.now(), nullable=False)

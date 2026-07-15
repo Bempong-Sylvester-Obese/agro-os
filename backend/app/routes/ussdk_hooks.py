@@ -21,14 +21,32 @@ import hashlib
 import hmac
 import logging
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database.db import get_db
-from app.models.models import Cooperative, Loan, LoanStatus
-from app.routes.transactions import _run_dues_collect
+from app.models.models import (
+    Cooperative,
+    Loan,
+    LoanStatus,
+    Transaction,
+    TransactionStatus,
+    TransactionType,
+)
+from app.routes.loans import resume_loan_repayment_customer_action
+from app.routes.transactions import (
+    _run_dues_collect,
+    expire_customer_actions,
+    pending_customer_actions,
+    resume_dues_customer_action,
+)
+from app.services.loan_request_service import (
+    PendingLoanRequestError,
+    create_farmer_loan_request,
+)
 from app.services.membership_service import (
     cooperative_selection_payload,
     resolve_phone_membership,
@@ -49,6 +67,9 @@ def _verify_ussdk_signature(body: bytes, signature: str | None) -> bool:
     """
     settings = get_settings()
     if not settings.ussdk_hook_secret:
+        if settings.app_env.lower() in ("production", "prod"):
+            logger.error("USSDK_HOOK_SECRET is required in production")
+            return False
         logger.warning("USSDK_HOOK_SECRET not set — skipping signature verification")
         return True
     if not signature:
@@ -97,6 +118,56 @@ async def loan_balance(
     )
     total = sum(ln.amount for ln in active_loans)
     return {"registered": True, "name": farmer.name, "balance": total}
+
+
+@router.post("/loan-request")
+async def loan_request(
+    request: Request,
+    db: Session = Depends(get_db),
+    x_ussdk_signature: str | None = Header(default=None),
+):
+    """Create a farmer-originated loan request from a signed USSDK screen."""
+    payload = await _parsed_and_verified(request, x_ussdk_signature)
+    session = payload.get("props", {}).get("session", {})
+    values = payload.get("props", {}).get("values", {})
+    farmer, memberships = resolve_phone_membership(
+        session.get("msisdn", ""),
+        db,
+        membership_id=values.get("membership_id"),
+    )
+    if not farmer:
+        if len(memberships) > 1:
+            return cooperative_selection_payload(memberships)
+        return {
+            "action": "end",
+            "message": "Phone not registered with AgroOS. Contact your cooperative.",
+        }
+
+    try:
+        amount = float(values.get("amount", ""))
+    except (TypeError, ValueError):
+        return {"action": "retry", "message": "Enter a valid loan amount."}
+
+    purpose = str(values.get("purpose", "")).strip()
+    try:
+        loan = create_farmer_loan_request(
+            membership=farmer,
+            amount=amount,
+            purpose=purpose,
+            db=db,
+            request_channel="ussdk",
+        )
+    except PendingLoanRequestError as exc:
+        return {"action": "end", "message": str(exc)}
+    except ValueError as exc:
+        return {"action": "retry", "message": str(exc)}
+
+    return {
+        "action": "end",
+        "loan_id": loan.id,
+        "status": loan.status.value,
+        "message": f"Loan request #{loan.id} submitted for cooperative review.",
+    }
 
 
 @router.post("/pay-dues")
@@ -150,6 +221,7 @@ async def pay_dues(
         external_ref=external_ref,
         otp_code=otp_code,
         db=db,
+        initiation_channel="ussdk",
     )
 
     if result.outcome == "verification_required":
@@ -169,6 +241,128 @@ async def pay_dues(
         "action": "end",
         "message": result.message or "Payment could not be started. Try again later.",
     }
+
+
+@router.post("/pending-payment")
+async def pending_payment(
+    request: Request,
+    db: Session = Depends(get_db),
+    x_ussdk_signature: str | None = Header(default=None),
+):
+    """List or resume payment actions owned by the calling farmer phone."""
+    payload = await _parsed_and_verified(request, x_ussdk_signature)
+    session = payload.get("props", {}).get("session", {})
+    values = payload.get("props", {}).get("values", {})
+    farmer, memberships = resolve_phone_membership(
+        session.get("msisdn", ""),
+        db,
+        membership_id=values.get("membership_id"),
+    )
+    if not farmer:
+        if len(memberships) > 1:
+            return cooperative_selection_payload(memberships)
+        return {"action": "end", "message": "Phone not registered with AgroOS."}
+
+    transaction_id = values.get("transaction_id")
+    if not transaction_id:
+        actions = pending_customer_actions(farmer=farmer, db=db)
+        return {
+            "action": "select_payment" if actions else "end",
+            "message": (
+                "Choose a pending payment."
+                if actions
+                else "You have no pending payments."
+            ),
+            "payments": [
+                {
+                    "transaction_id": tx.id,
+                    "type": tx.transaction_type.value,
+                    "amount": tx.amount,
+                    "customer_action": tx.customer_action,
+                }
+                for tx in actions
+            ],
+        }
+
+    try:
+        selected_id = int(transaction_id)
+    except (TypeError, ValueError):
+        return {"action": "retry", "message": "Choose a valid pending payment."}
+    expire_customer_actions(db, farmer_id=farmer.id)
+    tx = (
+        db.query(Transaction)
+        .filter(
+            Transaction.id == selected_id,
+            Transaction.farmer_id == farmer.id,
+            Transaction.status == TransactionStatus.pending,
+            Transaction.customer_action.in_(("otp", "processing_otp", "approval")),
+            Transaction.action_expires_at > datetime.utcnow(),
+        )
+        .first()
+    )
+    if not tx:
+        return {"action": "end", "message": "Pending payment not found."}
+    if tx.customer_action == "approval":
+        return {
+            "action": "end",
+            "message": "Approve the payment prompt on your phone to complete.",
+        }
+    if tx.customer_action == "processing_otp":
+        return {
+            "action": "end",
+            "message": "Your OTP is already being processed. Check again shortly.",
+        }
+
+    otp_code = str(values.get("otp_code", "")).strip()
+    if not otp_code:
+        return {
+            "action": "request_otp",
+            "transaction_id": tx.id,
+            "message": "Enter the OTP sent to your phone.",
+        }
+    try:
+        if tx.transaction_type == TransactionType.dues:
+            result = await resume_dues_customer_action(
+                transaction=tx,
+                farmer=farmer,
+                otp_code=otp_code,
+                db=db,
+            )
+            message = result.message
+            retry_otp = result.customer_action == "otp"
+        elif tx.transaction_type == TransactionType.repayment:
+            loan = await resume_loan_repayment_customer_action(
+                transaction=tx,
+                farmer=farmer,
+                otp_code=otp_code,
+                db=db,
+            )
+            message = (
+                "Loan repayment completed."
+                if loan.status == LoanStatus.repaid
+                else "OTP accepted. Approve the repayment prompt on your phone."
+            )
+            retry_otp = tx.customer_action == "otp"
+        else:
+            return {"action": "end", "message": "Unsupported pending payment."}
+    except HTTPException as exc:
+        return {
+            "action": "end" if exc.status_code in (404, 410) else "retry",
+            "message": str(exc.detail),
+        }
+    except Exception:
+        logger.exception("Pending payment completion failed for transaction %s", tx.id)
+        return {
+            "action": "end",
+            "message": "Payment could not be completed. Check again shortly.",
+        }
+    if retry_otp:
+        return {
+            "action": "request_otp",
+            "transaction_id": tx.id,
+            "message": message or "OTP verification is still required. Try again.",
+        }
+    return {"action": "end", "message": message}
 
 
 @router.post("/wallet-balance")

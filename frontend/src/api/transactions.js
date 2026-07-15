@@ -1,23 +1,13 @@
-import { API_URL, apiFetch, authHeaders } from './config'
+import { API_URL, apiFetch, authHeaders, fetchJson } from './config'
 
 export async function fetchTransactions(cooperativeId = null) {
   const qs = cooperativeId ? `?cooperative_id=${cooperativeId}` : ''
-
-  try {
-    const response = await apiFetch(`${API_URL}/transactions/${qs}`, {
-      headers: authHeaders(),
-    })
-    if (!response.ok) {
-      throw new Error('Transactions API unavailable')
-    }
-    return await response.json()
-  } catch (error) {
-    console.error('Failed to fetch transactions:', error)
-    return []
-  }
+  return fetchJson(`${API_URL}/transactions/${qs}`, {
+    headers: authHeaders(),
+  })
 }
 
-export async function collectDues(farmerId, amount, channel, description, otpCode = null, externalRef = null) {
+export async function collectDues(farmerId, amount, channel, description) {
   const res = await apiFetch(`${API_URL}/transactions/dues/collect`, {
     method: 'POST',
     headers: authHeaders(true),
@@ -25,9 +15,7 @@ export async function collectDues(farmerId, amount, channel, description, otpCod
       farmer_id: parseInt(farmerId, 10),
       amount: parseFloat(amount),
       channel,
-      description,
-      otp_code: otpCode,
-      external_ref: externalRef
+      description
     })
   })
 
@@ -38,19 +26,25 @@ export async function collectDues(farmerId, amount, channel, description, otpCod
   return res.json()
 }
 
-export async function verifyDuesCollect(transactionId, otpCode) {
-  const res = await apiFetch(`${API_URL}/transactions/dues/collect/verify`, {
+export async function reconcileTransaction(transactionId) {
+  const res = await apiFetch(`${API_URL}/transactions/${transactionId}/reconcile`, {
     method: 'POST',
-    headers: authHeaders(true),
-    body: JSON.stringify({
-      transaction_id: parseInt(transactionId, 10),
-      otp_code: otpCode,
-    }),
+    headers: authHeaders(),
   })
-
   if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}))
-    throw new Error(errorData.detail || 'Failed to verify OTP')
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || 'Failed to reconcile payment')
+  }
+  return res.json()
+}
+
+export async function fetchTransactionReceipt(transactionId) {
+  const res = await apiFetch(`${API_URL}/transactions/${transactionId}/receipt`, {
+    headers: authHeaders(),
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || 'Failed to generate receipt')
   }
   return res.json()
 }

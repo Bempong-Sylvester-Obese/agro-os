@@ -58,7 +58,7 @@ Welcome to AgroOS (Kuapa Kokoo)
 2. Pay Cooperative Dues (Moolre)
 3. Request Input Loan
 4. View Latest Announcements
-5. Check Farm Status
+5. Complete Pending Payment
 Select option: _
 ```
 
@@ -68,9 +68,11 @@ Select option: _
 2. The farmer dials the USSD code and pays dues through Moolre.
 3. Moolre sends a payment webhook to the FastAPI backend.
 4. The backend records the transaction and recalculates the farmer's Trust Score.
-5. The admin dashboard updates with the new payment and higher Trust Score.
-6. A cooperative leader approves a fertilizer/input loan.
-7. The payout is sent back to the farmer through Moolre bulk disbursement.
+5. The dashboard shows the new payment; the recalculated Trust Score is
+   available through the backend API.
+6. The farmer submits a fertilizer/input loan request through USSD.
+7. A cooperative leader approves or rejects the request in the dashboard.
+8. An approved payout is sent back to the farmer through Moolre.
 
 ## MVP Principle
 

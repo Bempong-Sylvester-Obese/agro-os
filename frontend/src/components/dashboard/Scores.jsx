@@ -1,8 +1,10 @@
 // src/components/dashboard/Scores.jsx
-import { useState, useEffect } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchFarmerTrustScore, recalculateTrustScore } from '../../api/farmers'
+import { exportDashboardReport } from '../../api/reports'
 import { RefreshCw, Loader2 } from 'lucide-react'
 import { ScoresSkeleton, Skeleton } from './DashboardSkeleton'
+import { DashboardPagination, DashboardTableToolbar, useDashboardTable } from './DashboardTableTools'
 
 const scoreTier = (score) => {
   if (score >= 82) return 'sh'
@@ -151,12 +153,40 @@ function ScoreDetail({ farmer }) {
 }
 
 // ── Main Scores page ──────────────────────────────────────────────────────────
-export default function Scores({ farmers = [], loading }) {
+export default function Scores({ farmers = [], cooperativeId, loading }) {
   const [selectedId, setSelectedId] = useState(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
 
   // Default selection: highest scoring farmer
-  const sorted = [...farmers].sort((a, b) => b.trust_score - a.trust_score)
-  const selectedFarmer = farmers.find(f => f.id === selectedId) || sorted[0] || null
+  const sorted = useMemo(
+    () => [...farmers].sort((a, b) => b.trust_score - a.trust_score),
+    [farmers],
+  )
+  const searchableText = useCallback(
+    farmer => `${farmer.name} ${farmer.phone || ''} ${farmer.location || ''} ${farmer.crop_type || ''}`,
+    [],
+  )
+  const statusValue = useCallback(farmer => farmer.trust_score >= 68 ? 'eligible' : 'review', [])
+  const dateValue = useCallback(farmer => farmer.updated_at, [])
+  const table = useDashboardTable({
+    rows: sorted,
+    searchableText,
+    statusValue,
+    dateValue,
+  })
+  const selectedFarmer = table.filteredRows.find(f => f.id === selectedId) || table.filteredRows[0] || null
+  const handleExport = async () => {
+    setExporting(true)
+    setExportError('')
+    try {
+      await exportDashboardReport('scores', cooperativeId, table.exportFilters)
+    } catch (error) {
+      setExportError(error.message || 'Could not export scores. Please try again.')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   if (loading) return <ScoresSkeleton />
 
@@ -177,6 +207,17 @@ export default function Scores({ farmers = [], loading }) {
         <strong>AgroCredit Trust Score</strong> — Calculated from real cooperative data: payment compliance (40%),
         production history (25%), loan repayment (20%), and attendance (15%). Threshold for credit eligibility: 68/100.
       </div>
+      <DashboardTableToolbar
+        label="Scores"
+        table={table}
+        statuses={[
+          { value: 'eligible', label: 'Eligible' },
+          { value: 'review', label: 'Review' },
+        ]}
+        onExport={handleExport}
+        exporting={exporting}
+        exportError={exportError}
+      />
 
       <div className="score-layout">
         {/* ── Left: farmer list ── */}
@@ -185,39 +226,47 @@ export default function Scores({ farmers = [], loading }) {
             <span className="admin-card-title serif">Credit decision queue</span>
             <span className="admin-card-action">Real data</span>
           </div>
-          <div className="sc-head">
-            {['Member', 'Crop', 'Status', 'Score'].map(h => (
-              <span key={h} className="pt-lbl">{h}</span>
-            ))}
+          <div className="table-scroll">
+            <div className="sc-head">
+              {['Member', 'Crop', 'Status', 'Score'].map(h => (
+                <span key={h} className="pt-lbl">{h}</span>
+              ))}
+            </div>
+            {table.pageRows.map(farmer => {
+              const score = farmer.trust_score ? Math.round(farmer.trust_score) : 0
+              const eligible = score >= 68
+              const isSelected = farmer.id === (selectedFarmer?.id)
+              return (
+                <button
+                  key={farmer.id}
+                  className={`sc-row sc-row-btn${isSelected ? ' on' : ''}`}
+                  onClick={() => setSelectedId(farmer.id)}
+                >
+                  <div>
+                    <div className="pt-name">{farmer.name}</div>
+                    <div className="pt-id">{farmer.location || '—'}</div>
+                  </div>
+                  <span className="pt-m" style={{ fontSize: 11 }}>{farmer.crop_type || '—'}</span>
+                  <span className={`bdg ${eligible ? 'bdg-green' : 'bdg-amber'}`}>
+                    {eligible ? 'Eligible' : 'Review'}
+                  </span>
+                  <span className={`score-bdg ${scoreTier(score)}`}>
+                    {score || '—'}
+                  </span>
+                </button>
+              )
+            })}
+            {table.filteredRows.length === 0 && (
+              <div style={{ padding: '24px 20px', color: 'var(--muted)', fontSize: 14 }}>
+                No scores match the current filters.
+              </div>
+            )}
           </div>
-          {sorted.map(farmer => {
-            const score = farmer.trust_score ? Math.round(farmer.trust_score) : 0
-            const eligible = score >= 68
-            const isSelected = farmer.id === (selectedFarmer?.id)
-            return (
-              <button
-                key={farmer.id}
-                className={`sc-row sc-row-btn${isSelected ? ' on' : ''}`}
-                onClick={() => setSelectedId(farmer.id)}
-              >
-                <div>
-                  <div className="pt-name">{farmer.name}</div>
-                  <div className="pt-id">{farmer.location || '—'}</div>
-                </div>
-                <span className="pt-m" style={{ fontSize: 11 }}>{farmer.crop_type || '—'}</span>
-                <span className={`bdg ${eligible ? 'bdg-green' : 'bdg-amber'}`}>
-                  {eligible ? 'Eligible' : 'Review'}
-                </span>
-                <span className={`score-bdg ${scoreTier(score)}`}>
-                  {score || '—'}
-                </span>
-              </button>
-            )
-          })}
+          <DashboardPagination label="Scores" table={table} />
         </div>
 
         {/* ── Right: detail panel ── */}
-        <ScoreDetail farmer={selectedFarmer} />
+        {selectedFarmer && <ScoreDetail farmer={selectedFarmer} />}
       </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

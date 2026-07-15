@@ -5,8 +5,12 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from app.models.models import LoanStatus, MembershipStatus, TransactionStatus, TransactionType
-
+from app.models.models import (
+    LoanStatus,
+    MembershipStatus,
+    TransactionStatus,
+    TransactionType,
+)
 
 # ===========================================================================
 # Cooperative
@@ -111,6 +115,10 @@ class TransactionResponse(TransactionBase):
     status: TransactionStatus
     moolre_reference: Optional[str] = None
     moolre_transfer_ref: Optional[str] = None
+    loan_id: Optional[int] = None
+    initiation_channel: str = "legacy"
+    customer_action: str = "none"
+    action_expires_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -132,8 +140,6 @@ class DuesCollectRequest(BaseModel):
     amount: float = Field(..., gt=0)
     channel: str = Field("13", description="Moolre channel code. 13=MTN Ghana, 6=Telecel, 7=AT")
     description: Optional[str] = "Cooperative dues payment"
-    external_ref: Optional[str] = Field(None, description="Provide this if retrying a payment push after OTP verification")
-    otp_code: Optional[str] = Field(None, description="Provide this if retrying after receiving OTP")
 
 
 class DuesCollectResponse(BaseModel):
@@ -144,11 +150,8 @@ class DuesCollectResponse(BaseModel):
     verification_required: bool = False
     outcome: Optional[str] = None
     moolre_code: Optional[str] = None
-
-
-class DuesCollectVerifyRequest(BaseModel):
-    transaction_id: int
-    otp_code: str = Field(..., min_length=4)
+    customer_action: str = "none"
+    action_expires_at: Optional[datetime] = None
 
 
 class PaymentLinkRequest(BaseModel):
@@ -195,8 +198,8 @@ class LoanCreate(BaseModel):
     model_config = {"populate_by_name": True}
 
 
-class LoanApprove(BaseModel):
-    approved_by: str
+class LoanCancel(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
 
 
 class LoanRepayVerifyRequest(BaseModel):
@@ -211,16 +214,29 @@ class LoanResponse(BaseModel):
     purpose: Optional[str] = None
     expected_repayment_date: Optional[date] = None
     status: LoanStatus
+    request_channel: str = "legacy"
     approved_by: Optional[str] = None
     approved_at: Optional[datetime] = None
     moolre_transfer_ref: Optional[str] = None
     disbursed_at: Optional[datetime] = None
     repaid_at: Optional[datetime] = None
+    cancelled_by: Optional[str] = None
+    cancelled_at: Optional[datetime] = None
+    cancellation_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class LoanDisbursementStatus(BaseModel):
+    loan_id: int
+    loan_status: LoanStatus
+    payout_status: str
+    transfer_reference: Optional[str] = None
+    can_cancel: bool
+    can_retry: bool
 
 
 # ===========================================================================

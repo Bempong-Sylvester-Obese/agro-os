@@ -45,6 +45,7 @@ Copy from `backend/.env.example` before running locally or deploying.
 | `MOOLRE_API_KEY` | Moolre API key | `mk_live_...` |
 | `MOOLRE_API_PUBKEY` | Moolre live public key (required for live API calls) | `mpk_live_...` |
 | `MOOLRE_WEBHOOK_SECRET` | Secret for verifying webhook signatures | `whsec_...` |
+| `USSDK_HOOK_SECRET` | HMAC secret shared with USSDK hooks | `ussdk_...` |
 | `DEFAULT_SMS_SENDER_ID` | Approved SMS sender ID | `AgroOS` |
 | `SENTRY_DSN` | Optional Sentry DSN for backend error tracking | `https://...@sentry.io/...` |
 | `AGRO_AI_REQUIRE_ARTIFACT` | Fail health check when synthetic model is used | `true` / `false` |
@@ -198,6 +199,24 @@ https://agro-os-api.onrender.com/webhooks/moolre/payment
 
 > ⚠️ The webhook URL must be a public HTTPS URL. `localhost` will not work
 > with Moolre. Use ngrok for local testing (Section 7).
+
+### USSDK menu mapping
+
+Set `USSDK_HOOK_SECRET` in Render and configure the same value in USSDK.
+Map the production menu screens to these signed hooks:
+
+| Screen | Hook |
+|---|---|
+| Check Loan Balance | `POST /ussdk/loan-balance` |
+| Pay Dues | `POST /ussdk/pay-dues` |
+| Request Loan | `POST /ussdk/loan-request` |
+| Complete Pending Payment | `POST /ussdk/pending-payment` |
+| Announcements | `POST /ussdk/announcements` |
+
+The loan request screen sends `amount`, `purpose`, and, when needed,
+`membership_id`. The pending-payment screen first stores the returned
+`transaction_id`, then sends `otp_code` only from the farmer's USSD session.
+Never add an OTP field to the dashboard.
 
 ---
 

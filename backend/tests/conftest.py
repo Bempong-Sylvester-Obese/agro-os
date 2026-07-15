@@ -21,7 +21,7 @@ os.environ["MOOLRE_WEBHOOK_SECRET"] = ""
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.config import get_settings
@@ -38,6 +38,15 @@ def reset_rate_limiter():
     rate_limiter.reset()
     yield
     rate_limiter.reset()
+
+
+@pytest.fixture(autouse=True)
+def reset_settings_cache():
+    """Prevent environment-mutating tests from leaking cached settings."""
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
 
 # --------------------------------------------------------------------------
 # Shared in-memory SQLite engine
