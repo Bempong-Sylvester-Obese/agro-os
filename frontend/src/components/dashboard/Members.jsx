@@ -1,8 +1,10 @@
 // src/components/dashboard/Members.jsx
-import { useState } from 'react'
-import { Search, UserPlus, X, Loader2 } from 'lucide-react'
-import { createFarmer } from '../../api/farmers'
+import React, { useState } from 'react'
+import { Edit3, UserPlus, X, Loader2 } from 'lucide-react'
+import { createFarmer, deactivateFarmer, updateFarmer } from '../../api/farmers'
+import { exportDashboardReport } from '../../api/reports'
 import { MembersSkeleton } from './DashboardSkeleton'
+import { DashboardPagination, DashboardTableToolbar, useDashboardTable } from './DashboardTableTools'
 import { useModal } from '../../hooks/useModal'
 import { ModalPresence } from '../Motion'
 
@@ -178,18 +180,84 @@ function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
   )
 }
 
+function EditMemberModal({ farmer, onClose, onSuccess }) {
+  const { onBackdropClick, dialogProps, titleId, closeButtonProps } = useModal(onClose, { label: 'edit member dialog' })
+  const [form, setForm] = useState({
+    name: farmer.name || '',
+    phone: farmer.phone || '',
+    email: farmer.email || '',
+    location: farmer.location || '',
+    crop_type: farmer.crop_type || '',
+    acreage: farmer.acreage ?? '',
+  })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const set = key => event => setForm(previous => ({ ...previous, [key]: event.target.value }))
+
+  const run = async action => {
+    setLoading(true)
+    setError(null)
+    try {
+      if (action === 'save') {
+        await updateFarmer(farmer.id, {
+          ...form,
+          acreage: form.acreage === '' ? null : Number(form.acreage),
+        })
+      } else if (action === 'suspend') {
+        await updateFarmer(farmer.id, { membership_status: 'suspended' })
+      } else {
+        await deactivateFarmer(farmer.id)
+      }
+      onSuccess(action)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="dashboard-modal-overlay" onClick={onBackdropClick}>
+      <div className="dashboard-modal member-edit-modal" {...dialogProps}>
+        <div className="dashboard-modal-head">
+          <div>
+            <div id={titleId} className="serif">Member details</div>
+            <div className="pt-id">Membership #{farmer.id}</div>
+          </div>
+          <button {...closeButtonProps} onClick={onClose} className="dashboard-icon-close"><X size={20} /></button>
+        </div>
+        <form onSubmit={event => { event.preventDefault(); run('save') }} className="dashboard-modal-body">
+          {error && <div role="alert" className="dashboard-form-error">{error}</div>}
+          <div className="modal-row">
+            <label>Full name<input className="auth-input" value={form.name} onChange={set('name')} required /></label>
+            <label>Phone<input className="auth-input" value={form.phone} onChange={set('phone')} required /></label>
+            <label>Email<input className="auth-input" type="email" value={form.email} onChange={set('email')} /></label>
+            <label>Location<input className="auth-input" value={form.location} onChange={set('location')} /></label>
+            <label>Crop type<input className="auth-input" value={form.crop_type} onChange={set('crop_type')} /></label>
+            <label>Farm size (acres)<input className="auth-input" type="number" min="0" step="0.1" value={form.acreage} onChange={set('acreage')} /></label>
+          </div>
+          <div className="member-edit-actions">
+            <button type="button" onClick={() => run('deactivate')} disabled={loading || farmer.membership_status === 'inactive'} className="danger-text-btn">Deactivate</button>
+            <button type="button" onClick={() => run('suspend')} disabled={loading || farmer.membership_status === 'suspended'} className="warning-text-btn">Suspend</button>
+            <button type="submit" disabled={loading} className="btn-nav">{loading ? 'Saving…' : 'Save changes'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 // ── Members table ─────────────────────────────────────────────────────────────
 export default function Members({ farmers = [], cooperativeId, onMemberAdded, loading }) {
-  const [search, setSearch]       = useState('')
-  const [statusFilter, setStatus] = useState('all')
   const [showModal, setShowModal] = useState(false)
+  const [editing, setEditing] = useState(null)
   const [success, setSuccess] = useState(null)
-
-  const filtered = farmers.filter(f => {
-    const q = search.toLowerCase()
-    const matchSearch = !q || f.name.toLowerCase().includes(q) || f.phone.includes(q)
-    const matchStatus = statusFilter === 'all' || f.membership_status === statusFilter
-    return matchSearch && matchStatus
+  const [exporting, setExporting] = useState(false)
+  const table = useDashboardTable({
+    rows: farmers,
+    searchableText: farmer => `${farmer.name} ${farmer.phone} ${farmer.location || ''} ${farmer.crop_type || ''}`,
+    statusValue: farmer => farmer.membership_status,
+    dateValue: farmer => farmer.created_at,
   })
 
   const handleSuccess = (membership) => {
@@ -200,6 +268,21 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
         : `${membership.name} was added to this cooperative.`,
     )
     onMemberAdded()
+  }
+
+  const handleMemberChanged = action => {
+    setEditing(null)
+    setSuccess(action === 'save' ? 'Member details updated.' : `Member ${action === 'suspend' ? 'suspended' : 'deactivated'}.`)
+    onMemberAdded()
+  }
+
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      await exportDashboardReport('members', cooperativeId, table.exportFilters)
+    } finally {
+      setExporting(false)
+    }
   }
 
   if (loading) return <MembersSkeleton />
@@ -213,8 +296,10 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
           onSuccess={handleSuccess}
         />
       </ModalPresence>
+      <ModalPresence show={Boolean(editing)}>
+        {editing && <EditMemberModal farmer={editing} onClose={() => setEditing(null)} onSuccess={handleMemberChanged} />}
+      </ModalPresence>
 
-      {/* ── Toolbar ── */}
       {success && (
         <div
           role="status"
@@ -226,32 +311,17 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
           {success}
         </div>
       )}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flex: 1, minWidth: 0 }}>
-          <div className="search-bar" style={{ flex: 1, maxWidth: 380 }}>
-            <Search size={16} />
-            <input
-              type="text"
-              placeholder="Search by name or phone…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-          <select
-            value={statusFilter}
-            onChange={e => setStatus(e.target.value)}
-            style={{
-              border: '1px solid var(--border)', borderRadius: 7, fontSize: 13,
-              padding: '7px 10px', fontFamily: "'DM Sans', sans-serif",
-              background: '#fff', cursor: 'pointer', outline: 'none',
-            }}
-          >
-            <option value="all">All</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="suspended">Suspended</option>
-          </select>
-        </div>
+      <DashboardTableToolbar
+        label="Members"
+        table={table}
+        statuses={[
+          { value: 'active', label: 'Active' },
+          { value: 'inactive', label: 'Inactive' },
+          { value: 'suspended', label: 'Suspended' },
+        ]}
+        onExport={handleExport}
+        exporting={exporting}
+      >
         <button
           className="btn-nav"
           onClick={() => cooperativeId && setShowModal(true)}
@@ -264,7 +334,7 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
         >
           <UserPlus size={15} /> Add member
         </button>
-      </div>
+      </DashboardTableToolbar>
 
       {/* ── Empty state ── */}
       {farmers.length === 0 ? (
@@ -294,22 +364,22 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
       ) : (
         <div className="admin-card">
           <div style={{ padding: '10px 20px', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--muted)' }}>
-            Showing {filtered.length} of {farmers.length} member{farmers.length !== 1 ? 's' : ''}
+            {table.filteredRows.length} of {farmers.length} member{farmers.length !== 1 ? 's' : ''} match
           </div>
           <div className="table-scroll">
-            <div className="mt-head">
-              {['Member', 'Phone', 'Location', 'Crop', 'Status', 'Trust Score'].map(h => (
+            <div className="mt-head members-admin-head">
+              {['Member', 'Phone', 'Location', 'Crop', 'Status', 'Trust Score', 'Actions'].map(h => (
                 <span key={h} className="pt-lbl">{h}</span>
               ))}
             </div>
 
-            {filtered.length === 0 ? (
+            {table.filteredRows.length === 0 ? (
               <div style={{ padding: '24px 20px', color: 'var(--muted)', fontSize: 14 }}>
-                No members match your search.
+                No members match the current filters.
               </div>
             ) : (
-              filtered.map(farmer => (
-                <div key={farmer.id} className="mt-row">
+              table.pageRows.map(farmer => (
+                <div key={farmer.id} className="mt-row members-admin-row">
                   <div>
                     <div className="pt-name">{farmer.name}</div>
                     <div className="pt-id">#{farmer.id}</div>
@@ -323,10 +393,14 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
                   <span className={`score-bdg ${scoreTier(farmer.trust_score)}`}>
                     {farmer.trust_score > 0 ? Math.round(farmer.trust_score) : '—'}
                   </span>
+                  <button type="button" className="table-row-action" onClick={() => setEditing(farmer)} aria-label={`Edit ${farmer.name}`}>
+                    <Edit3 size={14} aria-hidden="true" /> Edit
+                  </button>
                 </div>
               ))
             )}
           </div>
+          <DashboardPagination label="Members" table={table} />
         </div>
       )}
     </>

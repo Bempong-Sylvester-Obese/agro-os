@@ -51,6 +51,7 @@ class LoanStatus(str, enum.Enum):
     disbursed = "disbursed"
     repaid = "repaid"
     rejected = "rejected"
+    cancelled = "cancelled"
 
 
 class MessageType(str, enum.Enum):
@@ -72,6 +73,7 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     role = Column(String, default="admin")
+    is_active = Column(Boolean, default=True, nullable=False)
     cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -240,6 +242,10 @@ class Loan(Base):
     disbursed_at = Column(DateTime, nullable=True)
     # Repayment
     repaid_at = Column(DateTime, nullable=True)
+    # Cancellation
+    cancelled_by = Column(String, nullable=True)
+    cancelled_at = Column(DateTime, nullable=True)
+    cancellation_reason = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -424,3 +430,23 @@ class AgroAiPredictionLog(Base):
     prediction = Column(Text, nullable=False)
     context = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Administrator Audit Trail
+# ---------------------------------------------------------------------------
+
+
+class AdminAuditLog(Base):
+    """Append-only cooperative-scoped record of administrator actions."""
+
+    __tablename__ = "admin_audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=False, index=True)
+    actor_id = Column(String, nullable=False)
+    action = Column(String, nullable=False, index=True)
+    resource_type = Column(String, nullable=True)
+    resource_id = Column(String, nullable=True)
+    details = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)

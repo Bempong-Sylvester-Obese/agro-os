@@ -196,6 +196,62 @@ def test_reject_loan(client, farmer):
     assert resp.json()["status"] == "rejected"
 
 
+def test_cancel_requested_loan_records_reason(client, farmer):
+    loan_id = client.post(
+        "/loans/", json={"farmer_id": farmer["id"], "amount": 100.0}
+    ).json()["id"]
+
+    resp = client.post(
+        f"/loans/{loan_id}/cancel",
+        json={"reason": "Member withdrew the request"},
+    )
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "cancelled"
+    assert resp.json()["cancellation_reason"] == "Member withdrew the request"
+    assert resp.json()["cancelled_at"] is not None
+
+
+def test_cancel_pending_disbursement_is_blocked(client, farmer):
+    loan_id = client.post(
+        "/loans/", json={"farmer_id": farmer["id"], "amount": 250.0}
+    ).json()["id"]
+    client.post(f"/loans/{loan_id}/approve", json={"approved_by": "Admin"})
+    with _mock_disburse_moolre(
+        status_result={"success": False, "status": "pending", "raw": {}},
+    ):
+        client.post(f"/loans/{loan_id}/disburse")
+
+    resp = client.post(
+        f"/loans/{loan_id}/cancel",
+        json={"reason": "Duplicate request"},
+    )
+
+    assert resp.status_code == 409
+    assert "still processing" in resp.json()["detail"]
+
+
+def test_reconcile_failed_disbursement_enables_cancel_and_retry(client, farmer):
+    loan_id = client.post(
+        "/loans/", json={"farmer_id": farmer["id"], "amount": 250.0}
+    ).json()["id"]
+    client.post(f"/loans/{loan_id}/approve", json={"approved_by": "Admin"})
+    with _mock_disburse_moolre(
+        status_result={"success": False, "status": "pending", "raw": {}},
+    ):
+        client.post(f"/loans/{loan_id}/disburse")
+
+    with _mock_disburse_moolre(
+        status_result={"success": False, "status": "failed", "raw": {}},
+    ):
+        resp = client.get(f"/loans/{loan_id}/disbursement-status")
+
+    assert resp.status_code == 200
+    assert resp.json()["payout_status"] == "failed"
+    assert resp.json()["can_cancel"] is True
+    assert resp.json()["can_retry"] is True
+
+
 def test_disburse_loan(client, farmer):
     """Mock Moolre transfer + status reconciliation."""
     create_resp = client.post(

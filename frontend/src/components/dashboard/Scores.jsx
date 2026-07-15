@@ -1,8 +1,10 @@
 // src/components/dashboard/Scores.jsx
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { fetchFarmerTrustScore, recalculateTrustScore } from '../../api/farmers'
+import { exportDashboardReport } from '../../api/reports'
 import { RefreshCw, Loader2 } from 'lucide-react'
 import { ScoresSkeleton, Skeleton } from './DashboardSkeleton'
+import { DashboardPagination, DashboardTableToolbar, useDashboardTable } from './DashboardTableTools'
 
 const scoreTier = (score) => {
   if (score >= 82) return 'sh'
@@ -151,12 +153,27 @@ function ScoreDetail({ farmer }) {
 }
 
 // ── Main Scores page ──────────────────────────────────────────────────────────
-export default function Scores({ farmers = [], loading }) {
+export default function Scores({ farmers = [], cooperativeId, loading }) {
   const [selectedId, setSelectedId] = useState(null)
+  const [exporting, setExporting] = useState(false)
 
   // Default selection: highest scoring farmer
   const sorted = [...farmers].sort((a, b) => b.trust_score - a.trust_score)
-  const selectedFarmer = farmers.find(f => f.id === selectedId) || sorted[0] || null
+  const table = useDashboardTable({
+    rows: sorted,
+    searchableText: farmer => `${farmer.name} ${farmer.phone || ''} ${farmer.location || ''} ${farmer.crop_type || ''}`,
+    statusValue: farmer => farmer.trust_score >= 68 ? 'eligible' : 'review',
+    dateValue: farmer => farmer.updated_at,
+  })
+  const selectedFarmer = table.filteredRows.find(f => f.id === selectedId) || table.filteredRows[0] || null
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      await exportDashboardReport('scores', cooperativeId, table.exportFilters)
+    } finally {
+      setExporting(false)
+    }
+  }
 
   if (loading) return <ScoresSkeleton />
 
@@ -177,6 +194,16 @@ export default function Scores({ farmers = [], loading }) {
         <strong>AgroCredit Trust Score</strong> — Calculated from real cooperative data: payment compliance (40%),
         production history (25%), loan repayment (20%), and attendance (15%). Threshold for credit eligibility: 68/100.
       </div>
+      <DashboardTableToolbar
+        label="Scores"
+        table={table}
+        statuses={[
+          { value: 'eligible', label: 'Eligible' },
+          { value: 'review', label: 'Review' },
+        ]}
+        onExport={handleExport}
+        exporting={exporting}
+      />
 
       <div className="score-layout">
         {/* ── Left: farmer list ── */}
@@ -191,7 +218,7 @@ export default function Scores({ farmers = [], loading }) {
                 <span key={h} className="pt-lbl">{h}</span>
               ))}
             </div>
-            {sorted.map(farmer => {
+            {table.pageRows.map(farmer => {
               const score = farmer.trust_score ? Math.round(farmer.trust_score) : 0
               const eligible = score >= 68
               const isSelected = farmer.id === (selectedFarmer?.id)
@@ -215,11 +242,17 @@ export default function Scores({ farmers = [], loading }) {
                 </button>
               )
             })}
+            {table.filteredRows.length === 0 && (
+              <div style={{ padding: '24px 20px', color: 'var(--muted)', fontSize: 14 }}>
+                No scores match the current filters.
+              </div>
+            )}
           </div>
+          <DashboardPagination label="Scores" table={table} />
         </div>
 
         {/* ── Right: detail panel ── */}
-        <ScoreDetail farmer={selectedFarmer} />
+        {selectedFarmer && <ScoreDetail farmer={selectedFarmer} />}
       </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>

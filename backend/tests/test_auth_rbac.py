@@ -104,3 +104,70 @@ def test_finance_officer_cannot_mutate_admin_resource(client, db, auth_enabled):
 
     assert response.status_code == 403
 
+
+def test_admin_manages_only_own_cooperative_users(client, db, auth_enabled):
+    _, admin, _, headers = _tenant(db, "6")
+    _, other_admin, _, _ = _tenant(db, "7")
+    created = client.post(
+        "/auth/register",
+        headers=headers,
+        json={
+            "email": "finance-6@example.com",
+            "password": "strong-password",
+            "role": "finance_officer",
+        },
+    )
+    assert created.status_code == 200
+
+    listed = client.get("/auth/users", headers=headers)
+    assert listed.status_code == 200
+    assert {row["email"] for row in listed.json()} == {
+        admin.email,
+        "finance-6@example.com",
+    }
+    assert other_admin.email not in {row["email"] for row in listed.json()}
+    audit = client.get("/admin/audit", headers=headers)
+    assert audit.status_code == 200
+    assert any(row["action"] == "user.created" for row in audit.json())
+
+    updated = client.patch(
+        f"/auth/users/{created.json()['id']}",
+        headers=headers,
+        json={"is_active": False},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["is_active"] is False
+
+    login = client.post(
+        "/auth/login",
+        json={"email": "finance-6@example.com", "password": "strong-password"},
+    )
+    assert login.status_code == 401
+
+
+def test_admin_cannot_deactivate_self(client, db, auth_enabled):
+    _, admin, _, headers = _tenant(db, "8")
+    response = client.patch(
+        f"/auth/users/{admin.id}",
+        headers=headers,
+        json={"is_active": False},
+    )
+    assert response.status_code == 409
+
+
+def test_agro_ai_ignores_cross_tenant_scope_request(client, db, auth_enabled):
+    own_coop, _, own_farmer, headers = _tenant(db, "9")
+    other_coop, _, other_farmer, _ = _tenant(db, "10")
+
+    response = client.get(
+        f"/api/farmers?cooperative_id={other_coop.id}",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    own_code = f"GH-{own_farmer.id:04d}"
+    other_code = f"GH-{other_farmer.id:04d}"
+    assert {item["farmer_id"] for item in response.json()} == {own_code}
+    assert other_code not in {item["farmer_id"] for item in response.json()}
+    assert own_coop.id != other_coop.id
+

@@ -11,6 +11,7 @@ from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.dependencies.cooperative_scope import resolve_cooperative_scope
 from app.models.models import (
+    AdminAuditLog,
     Cooperative,
     CooperativeMembership as Farmer,
     Loan,
@@ -21,7 +22,14 @@ from app.models.models import (
     User,
 )
 from app.services.auth_service import enforce_cooperative_scope, get_current_user, require_roles
-from app.schemas.schemas import LoanApprove, LoanCreate, LoanRepayVerifyRequest, LoanResponse
+from app.schemas.schemas import (
+    LoanApprove,
+    LoanCancel,
+    LoanCreate,
+    LoanDisbursementStatus,
+    LoanRepayVerifyRequest,
+    LoanResponse,
+)
 from app.services.moolre_service import MoolreService
 from app.services.trust_score_service import TrustScoreService
 
@@ -87,6 +95,46 @@ def _latest_loan_transaction(
         )
         .order_by(Transaction.created_at.desc())
         .first()
+    )
+
+
+def _disbursement_status_response(
+    loan: Loan,
+    payout: Transaction | None,
+) -> LoanDisbursementStatus:
+    payout_status = payout.status.value if payout else "none"
+    return LoanDisbursementStatus(
+        loan_id=loan.id,
+        loan_status=loan.status,
+        payout_status=payout_status,
+        transfer_reference=(payout.moolre_transfer_ref if payout else None) or loan.moolre_transfer_ref,
+        can_cancel=loan.status in (LoanStatus.requested, LoanStatus.approved)
+        and (payout is None or payout.status == TransactionStatus.failed),
+        can_retry=loan.status == LoanStatus.approved
+        and payout is not None
+        and payout.status == TransactionStatus.failed,
+    )
+
+
+def _audit_loan_action(
+    db: Session,
+    *,
+    loan: Loan,
+    current_user: User | None,
+    action: str,
+    details: str | None = None,
+) -> None:
+    if current_user is None:
+        return
+    db.add(
+        AdminAuditLog(
+            cooperative_id=loan.farmer.cooperative_id,
+            actor_id=current_user.email,
+            action=action,
+            resource_type="loan",
+            resource_id=str(loan.id),
+            details=details,
+        )
     )
 
 
@@ -259,6 +307,13 @@ def approve_loan(
     loan.status = LoanStatus.approved
     loan.approved_by = approval.approved_by
     loan.approved_at = datetime.utcnow()
+    _audit_loan_action(
+        db,
+        loan=loan,
+        current_user=current_user,
+        action="loan.approved",
+        details=f"amount={loan.amount}",
+    )
     db.commit()
     db.refresh(loan)
     return loan
@@ -278,9 +333,112 @@ def reject_loan(
             detail=f"Cannot reject loan in '{loan.status}' state.",
         )
     loan.status = LoanStatus.rejected
+    _audit_loan_action(
+        db,
+        loan=loan,
+        current_user=current_user,
+        action="loan.rejected",
+    )
     db.commit()
     db.refresh(loan)
     return loan
+
+
+@router.post("/{loan_id}/cancel", response_model=LoanResponse)
+def cancel_loan(
+    loan_id: int,
+    body: LoanCancel,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+):
+    """Cancel a loan only while no payout is in flight or completed."""
+    loan = _get_loan_or_404(loan_id, db, current_user)
+    loan = db.query(Loan).filter(Loan.id == loan_id).with_for_update().one()
+    if loan.status not in (LoanStatus.requested, LoanStatus.approved):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot cancel loan in '{loan.status}' state.",
+        )
+
+    payout = _latest_loan_transaction(
+        db,
+        loan=loan,
+        transaction_type=TransactionType.payout,
+    )
+    if payout and payout.status == TransactionStatus.pending:
+        raise HTTPException(
+            status_code=409,
+            detail="Payout is still processing. Check its Moolre status before cancelling.",
+        )
+    if payout and payout.status == TransactionStatus.completed:
+        loan.status = LoanStatus.disbursed
+        loan.moolre_transfer_ref = payout.moolre_transfer_ref
+        loan.disbursed_at = loan.disbursed_at or datetime.utcnow()
+        db.commit()
+        raise HTTPException(
+            status_code=409,
+            detail="Payout already completed; the loan cannot be cancelled.",
+        )
+
+    loan.status = LoanStatus.cancelled
+    loan.cancelled_by = current_user.email if current_user else "system"
+    loan.cancelled_at = datetime.utcnow()
+    loan.cancellation_reason = body.reason.strip()
+    _audit_loan_action(
+        db,
+        loan=loan,
+        current_user=current_user,
+        action="loan.cancelled",
+        details=f"reason={loan.cancellation_reason}",
+    )
+    db.commit()
+    db.refresh(loan)
+    return loan
+
+
+@router.get("/{loan_id}/disbursement-status", response_model=LoanDisbursementStatus)
+async def get_disbursement_status(
+    loan_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+):
+    """Reconcile the latest payout attempt and return safe operator actions."""
+    loan = _get_loan_or_404(loan_id, db, current_user)
+    payout = _latest_loan_transaction(
+        db,
+        loan=loan,
+        transaction_type=TransactionType.payout,
+    )
+    if (
+        loan.status == LoanStatus.approved
+        and payout
+        and payout.status == TransactionStatus.pending
+        and payout.moolre_transfer_ref
+    ):
+        moolre = MoolreService()
+        account_number, wallet_error = await moolre.resolve_verified_account(None)
+        if wallet_error:
+            raise HTTPException(status_code=502, detail=wallet_error)
+        status_result = await moolre.transfer_status(
+            reference=payout.moolre_transfer_ref,
+            account_number=account_number,
+            id_type="2",
+        )
+        if status_result["status"] == "failed":
+            payout.status = TransactionStatus.failed
+            db.commit()
+        elif status_result["status"] == "completed":
+            await _finalize_disbursement(
+                loan=loan,
+                farmer=loan.farmer,
+                transfer_result={"moolre_transfer_ref": payout.moolre_transfer_ref},
+                status_result=status_result,
+                db=db,
+                existing_tx=payout,
+            )
+        db.refresh(loan)
+        db.refresh(payout)
+    return _disbursement_status_response(loan, payout)
 
 
 @router.post("/{loan_id}/disburse", response_model=LoanResponse)
@@ -306,6 +464,15 @@ async def disburse_loan(
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")
 
+    _audit_loan_action(
+        db,
+        loan=loan,
+        current_user=current_user,
+        action="loan.disbursement_requested",
+        details=f"amount={loan.amount}",
+    )
+    db.commit()
+
     ext_ref = _disburse_external_ref(loan.id)
     moolre = MoolreService()
     # Always disburse from the platform merchant wallet (MoMo-enabled), not an alternate coop wallet.
@@ -313,6 +480,12 @@ async def disburse_loan(
     if wallet_error:
         raise HTTPException(status_code=502, detail=wallet_error)
 
+    loan = db.query(Loan).filter(Loan.id == loan_id).with_for_update().one()
+    if loan.status != LoanStatus.approved:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Loan changed to '{loan.status}' before payout could start.",
+        )
     existing_tx = _latest_loan_transaction(db, loan=loan, transaction_type=TransactionType.payout)
     if existing_tx and existing_tx.status == TransactionStatus.completed:
         loan.status = LoanStatus.disbursed
@@ -343,6 +516,20 @@ async def disburse_loan(
                 existing_tx=existing_tx,
             )
 
+    attempt_tx = Transaction(
+        farmer_id=farmer.id,
+        transaction_type=TransactionType.payout,
+        amount=loan.amount,
+        currency=loan.currency,
+        status=TransactionStatus.pending,
+        moolre_transfer_ref=ext_ref,
+        payee_phone=farmer.phone,
+        description=f"Loan disbursement #{loan.id}",
+    )
+    db.add(attempt_tx)
+    db.commit()
+    db.refresh(attempt_tx)
+
     transfer_result = await moolre.initiate_transfer(
         receiver_phone=farmer.phone,
         amount=loan.amount,
@@ -353,23 +540,20 @@ async def disburse_loan(
     )
 
     if not transfer_result["success"]:
-        failed_tx = Transaction(
-            farmer_id=farmer.id,
-            transaction_type=TransactionType.payout,
-            amount=loan.amount,
-            currency=loan.currency,
-            status=TransactionStatus.failed,
-            moolre_transfer_ref=transfer_result.get("moolre_transfer_ref"),
-            payee_phone=farmer.phone,
-            description=f"Loan disbursement #{loan.id}",
+        attempt_tx.status = TransactionStatus.failed
+        attempt_tx.moolre_transfer_ref = (
+            transfer_result.get("moolre_transfer_ref") or attempt_tx.moolre_transfer_ref
         )
-        db.add(failed_tx)
         db.commit()
         raise HTTPException(
             status_code=502,
             detail=f"Moolre transfer failed: {transfer_result['message']}",
         )
 
+    attempt_tx.moolre_transfer_ref = (
+        transfer_result.get("moolre_transfer_ref") or attempt_tx.moolre_transfer_ref
+    )
+    db.commit()
     status_result = await moolre.transfer_status(
         reference=transfer_result.get("moolre_transfer_ref"),
         account_number=account_number,
@@ -381,6 +565,7 @@ async def disburse_loan(
         transfer_result=transfer_result,
         status_result=status_result,
         db=db,
+        existing_tx=attempt_tx,
     )
 
 
@@ -406,6 +591,15 @@ async def repay_loan(
     farmer = db.query(Farmer).filter(Farmer.id == loan.farmer_id).first()
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")
+
+    _audit_loan_action(
+        db,
+        loan=loan,
+        current_user=current_user,
+        action="loan.repayment_requested",
+        details=f"amount={loan.amount}",
+    )
+    db.commit()
 
     ext_ref = _repay_external_ref(loan.id)
     moolre = MoolreService()

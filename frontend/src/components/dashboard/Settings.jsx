@@ -1,8 +1,24 @@
 // src/components/dashboard/Settings.jsx
-import { useState, useEffect } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
+import { confirmDemoReset, previewDemoReset } from '../../api/admin'
 import { updateCooperative } from '../../api/cooperatives'
+import { formatTransportError } from '../../api/config'
 import { SettingsSkeleton } from './DashboardSkeleton'
+import GovernanceSettings from './GovernanceSettings'
+
+const RESET_COUNT_LABELS = {
+  memberships: 'Farmer memberships',
+  transactions: 'Transactions',
+  loans: 'Loans',
+  productions: 'Production records',
+  trust_scores: 'Trust scores',
+  attendances: 'Attendance records',
+  webhook_events: 'Payment webhook events',
+  communications: 'Communication logs',
+  ussd_sessions: 'USSD sessions',
+  ai_predictions: 'AI prediction logs',
+}
 
 export default function Settings({ cooperative, cooperativeId, loading, onRefresh }) {
   const [form, setForm] = useState({
@@ -15,6 +31,13 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [successMsg, setSuccessMsg] = useState(null)
+  const [resetPreview, setResetPreview] = useState(null)
+  const [resetPhrase, setResetPhrase] = useState('')
+  const [resetStatus, setResetStatus] = useState('idle')
+  const [resetError, setResetError] = useState(null)
+  const [resetDialogOpen, setResetDialogOpen] = useState(false)
+  const [resetting, setResetting] = useState(false)
+  const resetInputRef = useRef(null)
 
   useEffect(() => {
     if (cooperative) {
@@ -27,6 +50,16 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
       })
     }
   }, [cooperative])
+
+  useEffect(() => {
+    if (!resetDialogOpen) return undefined
+    resetInputRef.current?.focus()
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape' && !resetting) setResetDialogOpen(false)
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [resetDialogOpen, resetting])
 
   if (loading) return <SettingsSkeleton />
 
@@ -66,6 +99,44 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
       setError(err.message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleOpenReset = async () => {
+    setResetStatus('loading')
+    setResetError(null)
+    setResetPhrase('')
+    try {
+      const preview = await previewDemoReset()
+      setResetPreview(preview)
+      setResetStatus('eligible')
+      setResetDialogOpen(true)
+    } catch (err) {
+      if (err?.status === 403 || err?.status === 404) {
+        setResetStatus('unavailable')
+      } else {
+        setResetStatus('error')
+        setResetError(formatTransportError(err))
+      }
+    }
+  }
+
+  const handleConfirmReset = async (event) => {
+    event.preventDefault()
+    if (!resetPreview || resetPhrase !== resetPreview.confirmation_phrase) return
+    setResetting(true)
+    setResetError(null)
+    try {
+      await confirmDemoReset(resetPreview.confirmation_token, resetPhrase)
+      setResetDialogOpen(false)
+      setResetPreview(null)
+      setResetPhrase('')
+      setResetStatus('success')
+      if (onRefresh) await onRefresh()
+    } catch (err) {
+      setResetError(formatTransportError(err))
+    } finally {
+      setResetting(false)
     }
   }
 
@@ -148,6 +219,136 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
           </div>
         </form>
       </div>
+      <GovernanceSettings />
+      <section
+        className="admin-card"
+        aria-labelledby="demo-reset-title"
+        style={{ marginTop: 24, border: '1px solid #FCA5A5' }}
+      >
+        <div style={{ padding: '24px 28px' }}>
+          <div id="demo-reset-title" className="serif" style={{ fontWeight: 700, fontSize: 18, color: '#991B1B' }}>
+            Demo data danger zone
+          </div>
+          <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, margin: '8px 0 16px' }}>
+            Permanently remove operational demo records while preserving the demo cooperative and admin users.
+            This action cannot be undone.
+          </p>
+
+          {resetStatus === 'unavailable' ? (
+            <div style={{ padding: 14, background: '#F8FAFC', borderRadius: 8, fontSize: 13, lineHeight: 1.6 }}>
+              Demo reset is not available for this workspace. In production, retain records according to your
+              organization&apos;s data policy and use an approved archive or retention process instead of deleting
+              operational history.
+            </div>
+          ) : (
+            <>
+              {resetStatus === 'success' && (
+                <div role="status" style={{ padding: 12, background: '#ECFDF5', color: '#047857', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
+                  Demo data was reset successfully.
+                </div>
+              )}
+              {resetStatus === 'error' && resetError && (
+                <div role="alert" style={{ padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
+                  {resetError}
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={handleOpenReset}
+                disabled={resetStatus === 'loading'}
+                style={{
+                  border: '1px solid #DC2626', background: '#fff', color: '#B91C1C', borderRadius: 8,
+                  padding: '10px 16px', fontWeight: 700, cursor: resetStatus === 'loading' ? 'wait' : 'pointer',
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                }}
+              >
+                {resetStatus === 'loading' ? <><Loader2 size={16} className="spin" /> Checking eligibility...</> : 'Review demo reset'}
+              </button>
+            </>
+          )}
+        </div>
+      </section>
+
+      {resetDialogOpen && resetPreview && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15, 23, 42, 0.55)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+          }}
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !resetting) setResetDialogOpen(false)
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="demo-reset-dialog-title"
+            aria-describedby="demo-reset-dialog-description"
+            style={{
+              background: '#fff', width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto',
+              borderRadius: 12, boxShadow: '0 24px 64px rgba(15, 23, 42, 0.28)', padding: 28,
+            }}
+          >
+            <h2 id="demo-reset-dialog-title" className="serif" style={{ margin: 0, fontSize: 21, color: '#991B1B' }}>
+              Confirm demo data reset
+            </h2>
+            <p id="demo-reset-dialog-description" style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--muted)' }}>
+              The following records will be permanently removed. The preview and confirmation token expire in
+              {` ${resetPreview.expires_in_seconds} seconds`}.
+            </p>
+
+            <dl style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px 20px', margin: '18px 0' }}>
+              {Object.entries(RESET_COUNT_LABELS).map(([key, label]) => (
+                <div key={key} style={{ display: 'contents' }}>
+                  <dt style={{ fontSize: 13, color: 'var(--muted)' }}>{label}</dt>
+                  <dd style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{resetPreview[key] ?? 0}</dd>
+                </div>
+              ))}
+            </dl>
+
+            <form onSubmit={handleConfirmReset}>
+              <label htmlFor="demo-reset-confirmation" style={labelStyle}>
+                Type <strong>{resetPreview.confirmation_phrase}</strong> to confirm
+              </label>
+              <input
+                ref={resetInputRef}
+                id="demo-reset-confirmation"
+                style={inputStyle}
+                type="text"
+                value={resetPhrase}
+                onChange={(event) => setResetPhrase(event.target.value)}
+                autoComplete="off"
+                disabled={resetting}
+              />
+              {resetError && (
+                <div role="alert" style={{ color: '#991B1B', fontSize: 13, marginTop: 12 }}>
+                  {resetError}
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 }}>
+                <button
+                  type="button"
+                  onClick={() => setResetDialogOpen(false)}
+                  disabled={resetting}
+                  style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={resetting || resetPhrase !== resetPreview.confirmation_phrase}
+                  style={{
+                    padding: '10px 16px', borderRadius: 8, border: 0, background: '#B91C1C', color: '#fff',
+                    fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 8,
+                  }}
+                >
+                  {resetting ? <><Loader2 size={16} className="spin" /> Resetting...</> : 'Reset demo data'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } } .spin { animation: spin 1s linear infinite; }`}</style>
     </div>
   )

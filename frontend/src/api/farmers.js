@@ -30,6 +30,30 @@ export async function createFarmer(data) {
   return res.json()
 }
 
+export async function updateFarmer(farmerId, updates) {
+  const res = await apiFetch(`${API_URL}/farmers/${farmerId}`, {
+    method: 'PUT',
+    headers: authHeaders(true),
+    body: JSON.stringify(updates),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Failed to update member')
+  }
+  return res.json()
+}
+
+export async function deactivateFarmer(farmerId) {
+  const res = await apiFetch(`${API_URL}/farmers/${farmerId}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Failed to deactivate member')
+  }
+}
+
 /**
  * Fetch the most recent trust score breakdown for a farmer.
  * Returns null if no score has been calculated yet.

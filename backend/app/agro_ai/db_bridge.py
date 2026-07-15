@@ -52,13 +52,18 @@ def farmer_to_assessment_input(farmer: Farmer, db: Session) -> dict[str, Any]:
     }
 
 
-def list_assessments_from_db(db: Session, model: AgroAiCreditModel) -> list[dict[str, Any]] | None:
-    try:
-        farmers = db.query(Farmer).order_by(Farmer.id).all()
-    except Exception:
-        return None
-    if not farmers:
-        return None
+def list_assessments_from_db(
+    db: Session,
+    model: AgroAiCreditModel,
+    *,
+    cooperative_id: int,
+) -> list[dict[str, Any]]:
+    farmers = (
+        db.query(Farmer)
+        .filter(Farmer.cooperative_id == cooperative_id)
+        .order_by(Farmer.id)
+        .all()
+    )
     return [model.assess_farmer(farmer_to_assessment_input(farmer, db)) for farmer in farmers]
 
 
@@ -66,6 +71,9 @@ def get_assessment_from_db(
     farmer_id: str,
     db: Session,
     model: AgroAiCreditModel,
+    *,
+    cooperative_id: int,
+    allow_demo: bool = False,
 ) -> dict[str, Any] | None:
     if farmer_id.startswith("GH-"):
         try:
@@ -77,12 +85,20 @@ def get_assessment_from_db(
 
     farmer = None
     if db_id is not None:
-        farmer = db.query(Farmer).filter(Farmer.id == db_id).first()
+        farmer = (
+            db.query(Farmer)
+            .filter(
+                Farmer.id == db_id,
+                Farmer.cooperative_id == cooperative_id,
+            )
+            .first()
+        )
 
     if farmer:
         return model.assess_farmer(farmer_to_assessment_input(farmer, db))
 
-    for demo_farmer in DEMO_FARMERS:
-        if demo_farmer["farmer_id"] == farmer_id:
-            return model.assess_farmer(demo_farmer)
+    if allow_demo:
+        for demo_farmer in DEMO_FARMERS:
+            if demo_farmer["farmer_id"] == farmer_id:
+                return model.assess_farmer(demo_farmer)
     return None

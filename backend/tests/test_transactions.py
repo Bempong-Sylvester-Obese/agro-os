@@ -1,5 +1,9 @@
 """Tests for /transactions endpoints"""
 
+from unittest.mock import AsyncMock, patch
+
+from app.models.models import Transaction
+
 
 def test_create_transaction(client, farmer):
     resp = client.post(
@@ -31,6 +35,27 @@ def test_get_transaction(client, transaction):
     resp = client.get(f"/transactions/{transaction['id']}")
     assert resp.status_code == 200
     assert resp.json()["id"] == transaction["id"]
+
+
+def test_transaction_receipt_and_reconciliation(client, db, transaction):
+    tx = db.query(Transaction).filter(Transaction.id == transaction["id"]).one()
+    tx.moolre_reference = "PAYMENT-REF-001"
+    db.commit()
+
+    receipt = client.get(f"/transactions/{tx.id}/receipt")
+    assert receipt.status_code == 200
+    assert receipt.json()["receipt_number"].endswith(f"{tx.id:08d}")
+
+    with patch(
+        "app.routes.transactions.MoolreService.payment_status",
+        new_callable=AsyncMock,
+        return_value={"success": True, "status": "completed", "raw": {}},
+    ):
+        reconciled = client.post(f"/transactions/{tx.id}/reconcile")
+
+    assert reconciled.status_code == 200
+    assert reconciled.json()["provider_status"] == "completed"
+    assert reconciled.json()["transaction"]["status"] == "completed"
 
 
 def test_get_transaction_not_found(client):

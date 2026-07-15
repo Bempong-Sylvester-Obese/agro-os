@@ -14,10 +14,16 @@ class UserResponse(BaseModel):
     id: int
     email: EmailStr
     role: str
+    is_active: bool = True
     cooperative_id: int | None = None
 
     class Config:
         from_attributes = True
+
+
+class UserUpdate(BaseModel):
+    role: Literal["admin", "finance_officer"] | None = None
+    is_active: bool | None = None
 
 class Token(BaseModel):
     access_token: str

@@ -9,6 +9,7 @@ from app.config import get_settings
 from app.database.db import get_db
 from app.dependencies.cooperative_scope import resolve_cooperative_scope
 from app.models.models import (
+    AdminAuditLog,
     Cooperative,
     CooperativeMembership as Farmer,
     PaymentWebhookEvent,
@@ -261,6 +262,95 @@ def get_transaction(
         raise HTTPException(status_code=404, detail="Transaction not found")
     enforce_cooperative_scope(current_user, farmer.cooperative_id)
     return tx
+
+
+@router.get("/{transaction_id}/receipt")
+def get_transaction_receipt(
+    transaction_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+):
+    tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not tx or not tx.farmer:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    enforce_cooperative_scope(current_user, tx.farmer.cooperative_id)
+    webhook_events = (
+        db.query(PaymentWebhookEvent)
+        .filter(PaymentWebhookEvent.transaction_id == tx.id)
+        .order_by(PaymentWebhookEvent.received_at)
+        .all()
+    )
+    return {
+        "receipt_number": f"AGO-TX-{tx.id:08d}",
+        "transaction": TransactionResponse.model_validate(tx),
+        "provider_events": [
+            {
+                "event_type": event.event_type,
+                "signature_valid": event.signature_valid,
+                "processed": event.processed,
+                "message": event.message,
+                "received_at": event.received_at,
+            }
+            for event in webhook_events
+        ],
+    }
+
+
+@router.post("/{transaction_id}/reconcile")
+async def reconcile_transaction(
+    transaction_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
+):
+    tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not tx or not tx.farmer:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+    enforce_cooperative_scope(current_user, tx.farmer.cooperative_id)
+    if not tx.moolre_reference and not tx.moolre_transfer_ref:
+        raise HTTPException(status_code=409, detail="Transaction has no provider reference")
+
+    cooperative = db.query(Cooperative).filter(
+        Cooperative.id == tx.farmer.cooperative_id
+    ).first()
+    moolre = MoolreService()
+    if tx.transaction_type == TransactionType.payout and tx.moolre_transfer_ref:
+        result = await moolre.transfer_status(
+            reference=tx.moolre_transfer_ref,
+            account_number=moolre.resolve_account_number(None),
+            id_type="2",
+        )
+    else:
+        result = await moolre.payment_status(
+            external_ref=tx.moolre_reference,
+            account_number=moolre.resolve_account_number(
+                cooperative.moolre_account_number if cooperative else None
+            ),
+        )
+    provider_status = result.get("status", "pending")
+    if provider_status == "completed":
+        tx.status = TransactionStatus.completed
+    elif provider_status == "failed":
+        tx.status = TransactionStatus.failed
+    else:
+        tx.status = TransactionStatus.pending
+    if current_user:
+        db.add(
+            AdminAuditLog(
+                cooperative_id=tx.farmer.cooperative_id,
+                actor_id=current_user.email,
+                action="payment.reconciled",
+                resource_type="transaction",
+                resource_id=str(tx.id),
+                details=f"provider_status={provider_status}",
+            )
+        )
+    db.commit()
+    db.refresh(tx)
+    return {
+        "transaction": TransactionResponse.model_validate(tx),
+        "provider_status": provider_status,
+        "reference": tx.moolre_transfer_ref or tx.moolre_reference,
+    }
 
 
 @router.patch("/{transaction_id}/status", response_model=TransactionResponse)

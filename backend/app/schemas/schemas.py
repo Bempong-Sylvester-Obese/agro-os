@@ -199,6 +199,10 @@ class LoanApprove(BaseModel):
     approved_by: str
 
 
+class LoanCancel(BaseModel):
+    reason: str = Field(..., min_length=3, max_length=500)
+
+
 class LoanRepayVerifyRequest(BaseModel):
     otp_code: str = Field(..., min_length=1)
 
@@ -216,11 +220,23 @@ class LoanResponse(BaseModel):
     moolre_transfer_ref: Optional[str] = None
     disbursed_at: Optional[datetime] = None
     repaid_at: Optional[datetime] = None
+    cancelled_by: Optional[str] = None
+    cancelled_at: Optional[datetime] = None
+    cancellation_reason: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class LoanDisbursementStatus(BaseModel):
+    loan_id: int
+    loan_status: LoanStatus
+    payout_status: str
+    transfer_reference: Optional[str] = None
+    can_cancel: bool
+    can_retry: bool
 
 
 # ===========================================================================

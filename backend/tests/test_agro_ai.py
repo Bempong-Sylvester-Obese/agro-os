@@ -89,11 +89,8 @@ def test_create_agro_ai_model_falls_back_to_default_artifact(tmp_path, monkeypat
     assert model.artifact_source == str(default_artifact)
 
 
-def test_credit_summary_handles_empty_assessments(monkeypatch) -> None:
-    monkeypatch.setattr("app.routes.agro_ai.agro_ai.list_farmer_assessments", lambda: [])
-
-    client = TestClient(app)
-    response = client.get("/api/agro-ai/credit-summary")
+def test_credit_summary_handles_empty_assessments(client, cooperative) -> None:
+    response = client.get(f"/api/agro-ai/credit-summary?cooperative_id={cooperative['id']}")
 
     assert response.status_code == 200
     payload = response.json()
@@ -101,8 +98,10 @@ def test_credit_summary_handles_empty_assessments(monkeypatch) -> None:
     assert payload["average_score"] == 0.0
 
 
-def test_get_assessment_rejects_fuzzy_name_lookup(client, farmer):
-    resp = client.get(f"/api/farmers/{farmer['name']}/credit-assessment")
+def test_get_assessment_rejects_fuzzy_name_lookup(client, farmer, cooperative):
+    resp = client.get(
+        f"/api/farmers/{farmer['name']}/credit-assessment?cooperative_id={cooperative['id']}"
+    )
     assert resp.status_code == 404
 
 
@@ -121,19 +120,17 @@ def test_synthetic_model_metadata_flag() -> None:
     assert synthetic.metadata["is_synthetic_fallback"] is True
 
 
-def test_predict_endpoint_returns_score_and_audits(tmp_path) -> None:
+def test_predict_endpoint_returns_score_and_audits(tmp_path, client, cooperative) -> None:
     original_audit_path = prediction_audit.path
     audit_path = tmp_path / "api_predictions.jsonl"
     prediction_audit.path = audit_path
     try:
-        client = TestClient(app)
-
         response = client.post(
             "/api/agro-ai/predict",
             json={
                 "requested_credit_amount": 3000,
                 "farmer_id": DEMO_FARMERS[1]["farmer_id"],
-                "cooperative_id": "coop-demo",
+                "cooperative_id": str(cooperative["id"]),
                 "actor_id": "admin-demo",
                 "features": DEMO_FARMERS[1]["features"],
             },
@@ -144,11 +141,11 @@ def test_predict_endpoint_returns_score_and_audits(tmp_path) -> None:
         assert 0 <= payload["score"] <= 100
         assert payload["model_version"].startswith("agro-ai")
         assert payload["farmer_id"] == DEMO_FARMERS[1]["farmer_id"]
-        assert payload["cooperative_id"] == "coop-demo"
+        assert payload["cooperative_id"] == str(cooperative["id"])
 
         saved = json.loads(audit_path.read_text(encoding="utf-8"))
         assert saved["context"]["source"] == "ad_hoc_prediction"
-        assert saved["context"]["cooperative_id"] == "coop-demo"
+        assert saved["context"]["cooperative_id"] == str(cooperative["id"])
         assert saved["context"]["actor_id"] == "admin-demo"
         assert saved["requested_credit_amount"] == 3000
     finally:

@@ -1,8 +1,10 @@
 // src/components/dashboard/Production.jsx
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { Plus, X, Loader2 } from 'lucide-react'
 import { logProduction } from '../../api/production'
+import { exportDashboardReport } from '../../api/reports'
 import { TableSectionSkeleton } from './DashboardSkeleton'
+import { DashboardPagination, DashboardTableToolbar, useDashboardTable } from './DashboardTableTools'
 import { useModal } from '../../hooks/useModal'
 import { ModalPresence } from '../Motion'
 
@@ -129,19 +131,9 @@ function LogProductionModal({ farmers, onClose, onSuccess }) {
 }
 
 // ── Main Component ────────────────────────────────────────────────────────
-export default function Production({ farmers = [], productions = [], loading, onRefresh }) {
+export default function Production({ farmers = [], productions = [], cooperativeId, loading, onRefresh }) {
   const [showModal, setShowModal] = useState(false)
-
-  if (loading) {
-    return (
-      <TableSectionSkeleton
-        statCount={3}
-        rows={6}
-        columns={5}
-        gridStyle={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}
-      />
-    )
-  }
+  const [exporting, setExporting] = useState(false)
 
   const totalExpected = productions.reduce((sum, p) => sum + (expectedKg(p) ?? 0), 0)
   const totalYield = productions.reduce((sum, p) => sum + (quantityKg(p) ?? 0), 0)
@@ -159,6 +151,32 @@ export default function Production({ farmers = [], productions = [], loading, on
     const bTime = b.harvest_date ? new Date(b.harvest_date).getTime() : 0
     return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime)
   })
+  const farmerName = production => farmers.find(f => Number(f.id) === Number(production.farmer_id))?.name || `Farmer #${production.farmer_id}`
+  const table = useDashboardTable({
+    rows: sorted,
+    searchableText: production => `${farmerName(production)} ${production.crop_type || ''}`,
+    statusValue: production => production.harvest_date ? 'harvested' : 'planned',
+    dateValue: production => production.created_at,
+  })
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      await exportDashboardReport('production', cooperativeId, table.exportFilters)
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <TableSectionSkeleton
+        statCount={3}
+        rows={6}
+        columns={5}
+        gridStyle={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}
+      />
+    )
+  }
 
   return (
     <>
@@ -170,12 +188,20 @@ export default function Production({ farmers = [], productions = [], loading, on
         />
       </ModalPresence>
 
-      {/* ── Toolbar ── */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
+      <DashboardTableToolbar
+        label="Production"
+        table={table}
+        statuses={[
+          { value: 'harvested', label: 'Harvested' },
+          { value: 'planned', label: 'Planned' },
+        ]}
+        onExport={handleExport}
+        exporting={exporting}
+      >
         <button className="btn-nav" onClick={() => setShowModal(true)} style={{ fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, background: 'var(--text)', color: '#fff' }}>
           <Plus size={15} /> Log Production
         </button>
-      </div>
+      </DashboardTableToolbar>
 
       <div className="pay-stats">
         {[
@@ -197,9 +223,11 @@ export default function Production({ farmers = [], productions = [], loading, on
           <span className="admin-card-action">{productions.length} record{productions.length !== 1 ? 's' : ''}</span>
         </div>
 
-        {sorted.length === 0 ? (
+        {table.filteredRows.length === 0 ? (
           <div style={{ padding: '32px 20px', color: 'var(--muted)', fontSize: 14 }}>
-            No production records found. Click "Log Production" to record a harvest.
+            {productions.length === 0
+              ? 'No production records found. Click "Log Production" to record a harvest.'
+              : 'No production records match the current filters.'}
           </div>
         ) : (
           <div className="table-scroll">
@@ -210,7 +238,7 @@ export default function Production({ farmers = [], productions = [], loading, on
               <span className="pt-lbl">Harvest (kg)</span>
               <span className="pt-lbl">Harvest Date</span>
             </div>
-            {sorted.map(prod => {
+            {table.pageRows.map(prod => {
               const farmer = farmers.find(
                 f => Number(f.id) === Number(prod.farmer_id)
               )
@@ -228,6 +256,7 @@ export default function Production({ farmers = [], productions = [], loading, on
             })}
           </div>
         )}
+        <DashboardPagination label="Production" table={table} />
       </div>
     </>
   )

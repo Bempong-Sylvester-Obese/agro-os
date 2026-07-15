@@ -4,8 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.constants import MAX_PAGE_SIZE
+from app.config import get_settings
 from app.database.db import get_db
-from app.models.models import Cooperative, User
+from app.models.models import AdminAuditLog, Cooperative, User
 from app.schemas.schemas import CooperativeCreate, CooperativeResponse, CooperativeUpdate
 from app.services.auth_service import enforce_cooperative_scope, get_current_user, require_roles
 
@@ -72,6 +73,17 @@ def update_cooperative(
     for field, value in updates.model_dump(exclude_none=True).items():
         setattr(coop, field, value)
 
+    if current_user:
+        db.add(
+            AdminAuditLog(
+                cooperative_id=coop.id,
+                actor_id=current_user.email,
+                action="settings.updated",
+                resource_type="cooperative",
+                resource_id=str(coop.id),
+                details="fields=" + ",".join(sorted(updates.model_dump(exclude_none=True))),
+            )
+        )
     db.commit()
     db.refresh(coop)
     return coop
@@ -84,6 +96,8 @@ def delete_cooperative(
     current_user: User | None = Depends(require_roles("admin")),
 ):
     """Delete a cooperative (only if it has no farmers)."""
+    if get_settings().app_env.lower() in ("production", "prod"):
+        raise HTTPException(status_code=404, detail="Not found")
     enforce_cooperative_scope(current_user, cooperative_id)
     coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
     if not coop:

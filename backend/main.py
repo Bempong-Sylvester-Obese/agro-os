@@ -1,8 +1,11 @@
 """AgroOS Backend API — Main Application"""
 
 import logging
+from pathlib import Path
 
 import sentry_sdk
+from alembic import command
+from alembic.config import Config
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,11 +13,12 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.config import get_settings
-from app.database.db import create_session, engine, _init_db
+from app.database.db import Base, create_session, engine, _init_db
 from app.database.seed import seed_golden_path
 from app.middleware.rate_limit import RouteRateLimitMiddleware
 from app.services.auth_service import decode_access_token
 from app.routes import (
+    admin,
     agro_ai,
     auth,
     communications,
@@ -22,6 +26,7 @@ from app.routes import (
     farmers,
     loans,
     production,
+    reports,
     transactions,
     ussdk_hooks,
     webhooks,
@@ -63,6 +68,12 @@ if settings.sentry_dsn:
 async def lifespan(app: FastAPI):
     """Initialise DB and create tables on startup."""
     _init_db()
+    Base.metadata.create_all(bind=engine)
+    if get_settings().app_env.lower() != "test":
+        backend_dir = Path(__file__).resolve().parent
+        alembic_config = Config(str(backend_dir / "alembic.ini"))
+        alembic_config.set_main_option("script_location", str(backend_dir / "alembic"))
+        command.upgrade(alembic_config, "head")
 
     if settings.seed_demo_data:
         db = create_session()
@@ -144,11 +155,13 @@ async def optional_admin_auth(request: Request, call_next):
 
 # Register all routers
 app.include_router(auth.router)
+app.include_router(admin.router)
 app.include_router(cooperatives.router)
 app.include_router(farmers.router)
 app.include_router(transactions.router)
 app.include_router(loans.router)
 app.include_router(production.router)
+app.include_router(reports.router)
 app.include_router(communications.router)
 app.include_router(webhooks.router)
 app.include_router(ussdk_hooks.router)

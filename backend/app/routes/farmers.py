@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.models.models import (
+    AdminAuditLog,
     CooperativeAttendance,
     Cooperative,
     CooperativeMembership,
@@ -101,6 +102,17 @@ def create_farmer(
     )
     db.add(membership)
     try:
+        db.flush()
+        if current_user:
+            db.add(
+                AdminAuditLog(
+                    cooperative_id=cooperative_id,
+                    actor_id=current_user.email,
+                    action="member.created",
+                    resource_type="membership",
+                    resource_id=str(membership.id),
+                )
+            )
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -193,6 +205,17 @@ def update_farmer(
         if field in values:
             setattr(membership, field, values[field])
 
+    if current_user:
+        db.add(
+            AdminAuditLog(
+                cooperative_id=membership.cooperative_id,
+                actor_id=current_user.email,
+                action="member.updated",
+                resource_type="membership",
+                resource_id=str(membership.id),
+                details="fields=" + ",".join(sorted(updates.model_dump(exclude_none=True))),
+            )
+        )
     db.commit()
     db.refresh(membership)
     return membership
@@ -207,6 +230,16 @@ def deactivate_farmer(
     """Soft-deactivate a farmer (sets membership_status → inactive)."""
     farmer = _get_farmer_or_404(farmer_id, db, current_user)
     farmer.membership_status = MembershipStatus.inactive
+    if current_user:
+        db.add(
+            AdminAuditLog(
+                cooperative_id=farmer.cooperative_id,
+                actor_id=current_user.email,
+                action="member.deactivated",
+                resource_type="membership",
+                resource_id=str(farmer.id),
+            )
+        )
     db.commit()
 
 
