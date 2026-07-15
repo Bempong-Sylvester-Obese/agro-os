@@ -105,6 +105,33 @@ def test_finance_officer_cannot_mutate_admin_resource(client, db, auth_enabled):
     assert response.status_code == 403
 
 
+def test_staff_only_decide_farmer_originated_loans(client, db, auth_enabled):
+    _, admin, membership, headers = _tenant(db, "11")
+    created = client.post(
+        "/ussdk/loan-request",
+        json={
+            "input": {},
+            "props": {
+                "session": {"msisdn": membership.phone},
+                "values": {"amount": "300", "purpose": "Seed"},
+            },
+        },
+    )
+    assert created.status_code == 200
+    loan_id = created.json()["loan_id"]
+
+    staff_create = client.post(
+        "/loans/",
+        headers=headers,
+        json={"farmer_id": membership.id, "amount": 300, "purpose": "Seed"},
+    )
+    assert staff_create.status_code == 403
+
+    approved = client.post(f"/loans/{loan_id}/approve", headers=headers)
+    assert approved.status_code == 200
+    assert approved.json()["approved_by"] == str(admin.id)
+
+
 def test_admin_manages_only_own_cooperative_users(client, db, auth_enabled):
     _, admin, _, headers = _tenant(db, "6")
     _, other_admin, _, _ = _tenant(db, "7")

@@ -43,7 +43,7 @@ Welcome to AgroOS (Kuapa Kokoo)
 2. Pay Cooperative Dues
 3. Request Input Loan
 4. View Latest Announcements
-5. Check Farm Status
+5. Complete Pending Payment
 Select option: 2
 ```
 
@@ -52,6 +52,8 @@ What to show:
 - USSD menu mock or event log.
 - Farmer selects dues payment.
 - Payment is initiated through Moolre.
+- If Moolre requests OTP verification, the farmer completes it in the same
+  phone channel; the dashboard never displays an OTP field.
 
 ### 3. Moolre Confirms Payment
 
@@ -84,13 +86,15 @@ Suggested explanation:
 
 ### 5. Admin Approves Input Loan
 
-The admin reviews Abena's improved score and approves a fertilizer/input loan.
+Abena submits a fertilizer/input loan from USSD. The request appears in the
+Loans tab, where the admin reviews her improved score and approves or rejects
+it. The admin does not log the request on her behalf.
 
 What to show:
 
 - Farmer profile.
 - Trust Score.
-- Loan request details.
+- USSD-originated loan request details.
 - Approval action.
 
 ### 6. Moolre Disburses Loan

@@ -5,15 +5,12 @@ import Loans from './Loans'
 import * as loansApi from '../../api/loans'
 
 vi.mock('../../api/loans', () => ({
-  createLoan: vi.fn(),
   approveLoan: vi.fn(),
   rejectLoan: vi.fn(),
   disburseLoan: vi.fn(),
   cancelLoan: vi.fn(),
   fetchDisbursementStatus: vi.fn(),
   repayLoan: vi.fn(),
-  verifyLoanRepayment: vi.fn(),
-  RepaymentVerificationRequiredError: class extends Error {},
 }))
 
 vi.mock('../Motion', () => ({
@@ -62,6 +59,19 @@ describe('Loans operations', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve loan' }))
 
     await waitFor(() => expect(loansApi.approveLoan).toHaveBeenCalledWith(12))
+  })
+
+  it('keeps loan origination and repayment OTP entry off the dashboard', async () => {
+    loansApi.repayLoan.mockResolvedValue({ status: 'disbursed' })
+    render(<Loans farmers={farmers} loans={[loan({ status: 'disbursed' })]} loading={false} />)
+
+    expect(screen.queryByRole('button', { name: /log loan request/i })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Collect repayment' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send repayment request' }))
+
+    await waitFor(() => expect(loansApi.repayLoan).toHaveBeenCalledWith(12))
+    expect(screen.queryByLabelText(/one-time password/i)).toBeNull()
+    expect(await screen.findByText(/member must complete it on their phone/i)).toBeTruthy()
   })
 
   it('shows explicit failed-payout recovery and eligible cancellation actions', async () => {

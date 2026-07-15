@@ -67,6 +67,18 @@ def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
             connection.execute(text("ALTER TABLE users DROP COLUMN onboarding_role"))
             connection.execute(
                 text(
+                    "ALTER TABLE transactions "
+                    "DROP COLUMN action_expires_at, "
+                    "DROP COLUMN customer_action, "
+                    "DROP COLUMN initiation_channel, "
+                    "DROP COLUMN loan_id"
+                )
+            )
+            connection.execute(
+                text("ALTER TABLE loans DROP COLUMN request_channel")
+            )
+            connection.execute(
+                text(
                     "ALTER TABLE admin_audit_logs "
                     "ALTER COLUMN created_at DROP NOT NULL, "
                     "ALTER COLUMN created_at DROP DEFAULT"
@@ -96,6 +108,19 @@ def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
         }
         assert columns["created_at"]["nullable"] is False
         assert columns["created_at"]["default"] is not None
+        transaction_columns = {
+            column["name"] for column in inspect(engine).get_columns("transactions")
+        }
+        assert {
+            "action_expires_at",
+            "customer_action",
+            "initiation_channel",
+            "loan_id",
+        }.issubset(transaction_columns)
+        loan_columns = {
+            column["name"] for column in inspect(engine).get_columns("loans")
+        }
+        assert "request_channel" in loan_columns
         with engine.connect() as connection:
             assert connection.execute(
                 text(

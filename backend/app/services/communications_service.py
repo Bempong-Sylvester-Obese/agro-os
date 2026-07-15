@@ -12,8 +12,10 @@ from sqlalchemy.orm import Session
 
 from app.models.models import (
     CommunicationLog,
-    CooperativeMembership as Farmer,
     MessageType,
+)
+from app.models.models import (
+    CooperativeMembership as Farmer,
 )
 from app.services.moolre_service import MoolreService
 
@@ -101,6 +103,40 @@ class CommunicationsService:
         )
         return {"success": result["success"], "log_id": log.id}
 
+    async def send_payment_action_required(
+        self,
+        farmer: Farmer,
+        amount: float,
+        reference: str,
+        db: Session,
+        sent_by: str | None = None,
+    ) -> dict:
+        """Tell the payer how to resume an OTP-gated request on their phone."""
+        from app.config import get_settings
+
+        merchant = get_settings().moolre_merchant_code or "AgroOS"
+        message = (
+            f"AgroOS: Complete your GHS {amount:.2f} payment on your phone. "
+            f"Dial *203*{merchant}# and choose Pending Payment. "
+            "Never share your OTP with cooperative staff."
+        )
+        result = await self.moolre.send_single_sms(
+            phone=farmer.phone,
+            message=message,
+            ref=reference,
+        )
+        log = self._log(
+            db=db,
+            message_type=MessageType.sms,
+            cooperative_id=farmer.cooperative_id,
+            recipients_count=1,
+            body=message,
+            moolre_ref=reference,
+            sent_by=sent_by,
+            status="sent" if result["success"] else "failed",
+        )
+        return {"success": result["success"], "log_id": log.id}
+
     async def broadcast_to_cooperative(
         self,
         cooperative_id: int,
@@ -113,7 +149,8 @@ class CommunicationsService:
         Send a bulk SMS to all (active) members of a cooperative.
         Returns total recipients, successes, and failures.
         """
-        from app.models.models import CooperativeMembership as Farmer, MembershipStatus
+        from app.models.models import CooperativeMembership as Farmer
+        from app.models.models import MembershipStatus
 
         query = db.query(Farmer).filter(Farmer.cooperative_id == cooperative_id)
         if active_only:
@@ -160,7 +197,8 @@ class CommunicationsService:
         Send dues reminder to ALL active members of a cooperative in one call.
         """
         from app.config import get_settings
-        from app.models.models import CooperativeMembership as Farmer, MembershipStatus
+        from app.models.models import CooperativeMembership as Farmer
+        from app.models.models import MembershipStatus
 
         settings = get_settings()
         merchant = settings.moolre_merchant_code or "AgroOS"

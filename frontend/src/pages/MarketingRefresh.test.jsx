@@ -53,8 +53,10 @@ describe('marketing refresh', () => {
     expect(menu.textContent).toContain('Welcome to AgroOS')
     expect(menu.textContent).toContain('1. Check Loan Balance')
     expect(menu.textContent).toContain('2. Pay Dues')
-    expect(menu.textContent).toContain('3. Announcements')
-    expect(menu.textContent).toContain('Reply 1–3')
+    expect(menu.textContent).toContain('3. Request Loan')
+    expect(menu.textContent).toContain('4. Announcements')
+    expect(menu.textContent).toContain('5. Complete Pending Payment')
+    expect(menu.textContent).toContain('Reply 1–5')
     expect(menu.textContent).not.toContain('*920#')
 
     fireEvent.click(screen.getByRole('button', { name: /Discuss enterprise rollout/i }))

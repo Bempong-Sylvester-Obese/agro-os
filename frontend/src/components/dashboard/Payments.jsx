@@ -1,7 +1,7 @@
 // src/components/dashboard/Payments.jsx
 import React, { useCallback, useMemo, useState } from 'react'
 import { Plus, X, Loader2, RefreshCw, ReceiptText } from 'lucide-react'
-import { collectDues, fetchTransactionReceipt, reconcileTransaction, verifyDuesCollect } from '../../api/transactions'
+import { collectDues, fetchTransactionReceipt, reconcileTransaction } from '../../api/transactions'
 import { exportDashboardReport } from '../../api/reports'
 import { TableSectionSkeleton } from './DashboardSkeleton'
 import { DashboardPagination, DashboardTableToolbar, useDashboardTable } from './DashboardTableTools'
@@ -19,9 +19,6 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [msg, setMsg] = useState(null)
-  const [otpRequired, setOtpRequired] = useState(false)
-  const [otpCode, setOtpCode] = useState('')
-  const [transactionId, setTransactionId] = useState(null)
 
   const activeFarmers = farmers.filter(f => f.membership_status === 'active')
 
@@ -37,36 +34,15 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
     setMsg(null)
 
     try {
-      if (!otpRequired) {
-        const res = await collectDues(form.farmerId, form.amount, form.channel, 'Cooperative dues')
-        if (res.verification_required) {
-          setOtpRequired(true)
-          setTransactionId(res.transaction_id)
-          setMsg('Moolre sent an SMS with an OTP to the member. Please enter it below.')
-        } else if (res.status === 'pending') {
-          setMsg('Payment initiated. Waiting for member to approve on their phone.')
-          setTimeout(() => onSuccess(), 3000)
-        } else {
-          setError(res.message || 'Payment failed to initiate. Please try again.')
-        }
+      const res = await collectDues(form.farmerId, form.amount, form.channel, 'Cooperative dues')
+      if (res.customer_action === 'otp') {
+        setMsg('Request sent. The member must enter their OTP through AgroOS USSD on their own phone.')
+        setTimeout(() => onSuccess(), 3000)
+      } else if (res.status === 'pending') {
+        setMsg('Payment initiated. Waiting for the member to approve on their phone.')
+        setTimeout(() => onSuccess(), 3000)
       } else {
-        if (!otpCode) {
-          setError('Please enter the OTP.')
-          setLoading(false)
-          return
-        }
-        if (!transactionId) {
-          setError('Missing payment session. Please start the payment again.')
-          setLoading(false)
-          return
-        }
-        const res = await verifyDuesCollect(transactionId, otpCode)
-        if (res.status === 'pending') {
-          setMsg('OTP verified! Waiting for member to approve on their phone.')
-          setTimeout(() => onSuccess(), 3000)
-        } else {
-          setError('Verification failed. ' + res.message)
-        }
+        setError(res.message || 'Payment failed to initiate. Please try again.')
       }
     } catch (err) {
       setError(err.message)
@@ -110,8 +86,7 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
           {error && <div style={{ padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>}
           {msg && <div style={{ padding: 12, background: 'var(--sage)', color: 'var(--g)', borderRadius: 8, fontSize: 13, marginBottom: 16, fontWeight: 500 }}>{msg}</div>}
           
-          {!otpRequired ? (
-            <>
+          <>
               <div style={{ marginBottom: 16 }}>
                 <label htmlFor="dues-member" style={{ fontSize: 13, fontWeight: 600 }}>Member</label>
                 {activeFarmers.length === 0 ? (
@@ -143,28 +118,7 @@ function CollectDuesModal({ farmers, onClose, onSuccess }) {
               <button type="submit" className="btn-lg" disabled={loading || msg || activeFarmers.length === 0} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
                 {loading ? <><Loader2 size={16} className="spin" /> Processing...</> : msg ? 'Prompt Sent ✓' : 'Send Payment Prompt'}
               </button>
-            </>
-          ) : (
-            <>
-              <div style={{ marginBottom: 24 }}>
-                <label htmlFor="dues-otp" style={{ fontSize: 13, fontWeight: 600 }}>Enter SMS OTP</label>
-                <input 
-                  id="dues-otp"
-                  style={{...input, fontSize: 18, letterSpacing: 4, textAlign: 'center'}} 
-                  type="text" 
-                  value={otpCode} 
-                  onChange={e => setOtpCode(e.target.value)} 
-                  placeholder="123456" 
-                  required 
-                  disabled={loading || msg && msg.includes('verified')}
-                  autoFocus
-                />
-              </div>
-              <button type="submit" className="btn-lg" disabled={loading || msg && msg.includes('verified')} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-                {loading ? <><Loader2 size={16} className="spin" /> Verifying...</> : (msg && msg.includes('verified')) ? 'Verified ✓' : 'Submit OTP'}
-              </button>
-            </>
-          )}
+          </>
         </form>
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -326,8 +280,11 @@ export default function Payments({ farmers = [], transactions = [], cooperativeI
               const method = ussdChannels.includes(tx.channel) ? 'USSD' : (tx.channel || 'Manual')
               const date = new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
               let cls = 'bdg-amber', label = 'Pending'
+              if (tx.status === 'pending' && tx.customer_action === 'otp') label = 'Awaiting member OTP'
+              if (tx.status === 'pending' && tx.customer_action === 'approval') label = 'Awaiting phone approval'
               if (tx.status === 'completed') { cls = 'bdg-green'; label = 'Paid' }
               if (tx.status === 'failed') { cls = 'bdg-red'; label = 'Failed' }
+              if (tx.customer_action === 'expired') { cls = 'bdg-red'; label = 'Expired' }
               return (
                 <div key={tx.id} className="pay-row">
                   <div><div className="pt-name">{name}</div><div className="pt-id">#{tx.id}</div></div>

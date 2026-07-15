@@ -7,7 +7,7 @@ export async function fetchTransactions(cooperativeId = null) {
   })
 }
 
-export async function collectDues(farmerId, amount, channel, description, otpCode = null, externalRef = null) {
+export async function collectDues(farmerId, amount, channel, description) {
   const res = await apiFetch(`${API_URL}/transactions/dues/collect`, {
     method: 'POST',
     headers: authHeaders(true),
@@ -15,32 +15,13 @@ export async function collectDues(farmerId, amount, channel, description, otpCod
       farmer_id: parseInt(farmerId, 10),
       amount: parseFloat(amount),
       channel,
-      description,
-      otp_code: otpCode,
-      external_ref: externalRef
+      description
     })
   })
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}))
     throw new Error(errorData.detail || 'Failed to initiate payment')
-  }
-  return res.json()
-}
-
-export async function verifyDuesCollect(transactionId, otpCode) {
-  const res = await apiFetch(`${API_URL}/transactions/dues/collect/verify`, {
-    method: 'POST',
-    headers: authHeaders(true),
-    body: JSON.stringify({
-      transaction_id: parseInt(transactionId, 10),
-      otp_code: otpCode,
-    }),
-  })
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}))
-    throw new Error(errorData.detail || 'Failed to verify OTP')
   }
   return res.json()
 }

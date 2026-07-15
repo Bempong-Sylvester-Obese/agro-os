@@ -63,6 +63,18 @@ def _payment_initiated(ext_ref: str = "repay-uuid") -> dict:
     }
 
 
+def _payment_otp_required(ext_ref: str = "repay-otp") -> dict:
+    return {
+        "success": False,
+        "verification_required": True,
+        "outcome": "verification_required",
+        "moolre_reference": ext_ref,
+        "external_ref": ext_ref,
+        "message": "OTP required",
+        "raw": {},
+    }
+
+
 def _payment_status_completed(amount: str | float = "150.0") -> dict:
     return {
         "success": True,
@@ -173,7 +185,7 @@ def test_approve_loan(client, farmer):
     assert approve_resp.status_code == 200
     data = approve_resp.json()
     assert data["status"] == "approved"
-    assert data["approved_by"] == "Admin Kwame"
+    assert data["approved_by"] == "system"
 
 
 def test_approve_already_approved_loan_fails(client, farmer):
@@ -489,6 +501,60 @@ def test_repay_loan_stays_disbursed_when_payment_pending(client, farmer):
 
     assert repay_resp.status_code == 200
     assert repay_resp.json()["status"] == "disbursed"
+
+
+def test_farmer_completes_repayment_otp_from_ussdk(client, farmer, db):
+    loan_id = _approve_and_disburse(client, farmer, 150.0)
+    with (
+        patch(
+            "app.routes.loans.MoolreService.initiate_payment",
+            new_callable=AsyncMock,
+            side_effect=[
+                _payment_otp_required("repay-ref-otp"),
+                _payment_initiated("repay-ref-otp"),
+            ],
+        ) as mock_pay,
+        patch(
+            "app.routes.loans.MoolreService.payment_status",
+            new_callable=AsyncMock,
+            return_value={"success": False, "status": "pending", "raw": {}},
+        ),
+    ):
+        initiated = client.post(f"/loans/{loan_id}/repay")
+        assert initiated.status_code == 200
+        tx = db.query(Transaction).filter(Transaction.loan_id == loan_id).one()
+        assert tx.customer_action == "otp"
+
+        completed = client.post(
+            "/ussdk/pending-payment",
+            json={
+                "input": {},
+                "props": {
+                    "session": {"msisdn": farmer["phone"]},
+                    "values": {
+                        "transaction_id": tx.id,
+                        "otp_code": "654321",
+                    },
+                },
+            },
+        )
+
+    assert completed.status_code == 200
+    db.refresh(tx)
+    assert tx.customer_action == "approval"
+    assert mock_pay.call_args_list[1].kwargs["otpcode"] == "654321"
+    assert (
+        mock_pay.call_args_list[1].kwargs["external_ref"]
+        == mock_pay.call_args_list[0].kwargs["external_ref"]
+    )
+
+
+def test_admin_repayment_otp_endpoint_is_removed(client, farmer):
+    resp = client.post(
+        "/loans/999/repay/verify",
+        json={"otp_code": "123456"},
+    )
+    assert resp.status_code == 404
 
 
 def test_repay_loan_uses_cooperative_account(client, farmer, cooperative):

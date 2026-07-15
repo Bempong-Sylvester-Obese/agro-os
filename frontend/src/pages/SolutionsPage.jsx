@@ -83,11 +83,13 @@ export default function SolutionsPage({ user }) {
               <h2 className="sol-h2 serif">Essential services without a smartphone or mobile data.</h2>
               <p className="sol-desc">
                 Registered farmers can check active loan balances, pay cooperative dues through MoMo,
-                and view announcements from a Moolre merchant-code session. Announcements may also be sent by SMS.
+                request loans, complete pending payments, and view announcements from a Moolre
+                merchant-code session. Announcements may also be sent by SMS.
               </p>
               <div className="ussd-flow-notes">
                 <div><strong>Loan balance</strong><span>Returns the farmer's active disbursed-loan total, or confirms that no active loan exists.</span></div>
-                <div><strong>Dues payment</strong><span>Requests a GHS amount, then starts the MoMo collection and asks for an OTP when verification is required.</span></div>
+                <div><strong>Farmer loan request</strong><span>Captures amount and purpose, then sends the request to the cooperative dashboard for review.</span></div>
+                <div><strong>Private payment completion</strong><span>Keeps OTP entry on the member's own phone and reuses the original collection request.</span></div>
               </div>
             </div>
             <div className="ussd-device-wrap">
@@ -98,8 +100,10 @@ export default function SolutionsPage({ user }) {
                   <div className="ussd-t">Welcome to AgroOS</div>
                   <div className="ussd-line">1. Check Loan Balance</div>
                   <div className="ussd-line">2. Pay Dues</div>
-                  <div className="ussd-line">3. Announcements</div>
-                  <div className="ussd-dim">Reply 1–3</div>
+                  <div className="ussd-line">3. Request Loan</div>
+                  <div className="ussd-line">4. Announcements</div>
+                  <div className="ussd-line">5. Complete Pending Payment</div>
+                  <div className="ussd-dim">Reply 1–5</div>
                 </div>
                 <div className="ussd-keypad" aria-hidden="true">
                   {['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].map((key) => <i key={key}>{key}</i>)}

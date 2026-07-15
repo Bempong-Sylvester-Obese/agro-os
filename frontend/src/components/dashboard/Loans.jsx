@@ -1,16 +1,13 @@
 // src/components/dashboard/Loans.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, X, Loader2, Check, XCircle, Send, RefreshCw, Banknote, Ban } from 'lucide-react'
+import { X, Loader2, Check, XCircle, Send, RefreshCw, Banknote, Ban } from 'lucide-react'
 import {
-  createLoan,
   approveLoan,
   rejectLoan,
   disburseLoan,
   cancelLoan,
   fetchDisbursementStatus,
   repayLoan,
-  verifyLoanRepayment,
-  RepaymentVerificationRequiredError,
 } from '../../api/loans'
 import { TableSectionSkeleton } from './DashboardSkeleton'
 import { useModal } from '../../hooks/useModal'
@@ -30,107 +27,13 @@ function fmtRepaymentDate(raw) {
   return d.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
 }
 
-// ── Log Loan Request Modal ──────────────────────────────────────────────────────
-function RequestLoanModal({ farmers, onClose, onSuccess }) {
-  const { onBackdropClick, dialogProps, titleId, closeButtonProps } = useModal(onClose, { label: 'loan request dialog' })
-  const [form, setForm] = useState({ farmerId: '', amount: '', purpose: '', repaymentDate: '' })
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
-  
-  const activeFarmers = farmers.filter(f => f.membership_status === 'active')
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!form.farmerId || !form.amount || !form.purpose || !form.repaymentDate) {
-      setError('Please fill in all fields.')
-      return
-    }
-    setLoading(true)
-    setError(null)
-    try {
-      await createLoan(form.farmerId, form.amount, form.purpose, form.repaymentDate)
-      onSuccess()
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const input = {
-    width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)',
-    borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif",
-    outline: 'none', background: '#fff', color: 'var(--text)', boxSizing: 'border-box',
-    marginTop: 6
-  }
-
-  return (
-    <div
-      className="dashboard-modal-overlay"
-      onClick={onBackdropClick}
-      style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)',
-      backdropFilter: 'blur(4px)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-    }}>
-      <div
-        className="dashboard-modal"
-        {...dialogProps}
-        style={{
-        background: '#fff', borderRadius: 16, width: '100%', maxWidth: 400,
-        boxShadow: '0 32px 80px rgba(0,0,0,0.22)',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '24px 28px 20px', borderBottom: '1px solid var(--border)' }}>
-          <div>
-            <div id={titleId} className="serif" style={{ fontWeight: 700, fontSize: 19 }}>Log Loan Request</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Log a new input or cash loan request from a member</div>
-          </div>
-          <button {...closeButtonProps} onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={20} /></button>
-        </div>
-
-        <form onSubmit={handleSubmit} style={{ padding: '24px 28px' }}>
-          {error && <div style={{ padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>}
-          
-          <div style={{ marginBottom: 16 }}>
-            <label htmlFor="loan-member" style={{ fontSize: 13, fontWeight: 600 }}>Member</label>
-            <select id="loan-member" style={input} value={form.farmerId} onChange={e => setForm({...form, farmerId: e.target.value})} required disabled={loading}>
-              <option value="">Select a member...</option>
-              {activeFarmers.map(f => <option key={f.id} value={f.id}>{f.name} ({f.phone})</option>)}
-            </select>
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label htmlFor="loan-amount" style={{ fontSize: 13, fontWeight: 600 }}>Amount (GHS)</label>
-            <input id="loan-amount" style={input} type="number" min="1" step="0.5" value={form.amount} onChange={e => setForm({...form, amount: e.target.value})} placeholder="e.g. 500" required disabled={loading}/>
-          </div>
-
-          <div style={{ marginBottom: 16 }}>
-            <label htmlFor="loan-purpose" style={{ fontSize: 13, fontWeight: 600 }}>Purpose</label>
-            <input id="loan-purpose" style={input} type="text" value={form.purpose} onChange={e => setForm({...form, purpose: e.target.value})} placeholder="e.g. Fertilizer, Seeds" required disabled={loading}/>
-          </div>
-
-          <div style={{ marginBottom: 24 }}>
-            <label htmlFor="loan-repayment-date" style={{ fontSize: 13, fontWeight: 600 }}>Expected Repayment Date</label>
-            <input id="loan-repayment-date" style={input} type="date" value={form.repaymentDate} onChange={e => setForm({...form, repaymentDate: e.target.value})} required disabled={loading}/>
-          </div>
-
-          <button type="submit" className="btn-lg" disabled={loading} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-            {loading ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Submitting...</> : 'Log Request'}
-          </button>
-        </form>
-      </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
-  )
-}
-
 const ACTION_COPY = {
   approve: ['Approve loan?', 'This loan will become eligible for disbursement.', 'Approve loan'],
   reject: ['Reject loan?', 'This action closes the request and cannot be undone.', 'Reject loan'],
   cancel: ['Cancel loan?', 'Provide a reason for cancelling this loan.', 'Cancel loan'],
   disburse: ['Disburse loan?', 'This starts a payout to the member. Confirm the amount and member before continuing.', 'Start disbursement'],
   retry: ['Retry payout?', 'This retries the failed payout using the existing loan details.', 'Retry payout'],
-  repay: ['Collect repayment?', 'This starts repayment collection. The member may need to provide an OTP.', 'Collect repayment'],
+  repay: ['Collect repayment?', 'This sends one repayment request to the member. They complete any OTP step on their own phone.', 'Send repayment request'],
 }
 
 const actionButtonStyle = {
@@ -207,55 +110,9 @@ function ConfirmationModal({ action, processing, error, onClose, onConfirm }) {
   )
 }
 
-function RepaymentOtpModal({ repayment, processing, error, onClose, onVerify }) {
-  const { onBackdropClick, dialogProps, titleId, closeButtonProps } = useModal(onClose, {
-    closeOnBackdrop: !processing,
-    label: 'repayment verification dialog',
-  })
-  const [otpCode, setOtpCode] = useState('')
-
-  return (
-    <div className="dashboard-modal-overlay" onClick={onBackdropClick} style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)', backdropFilter: 'blur(4px)',
-      zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-    }}>
-      <form className="dashboard-modal" {...dialogProps} onSubmit={(event) => { event.preventDefault(); onVerify(otpCode) }} style={{
-        background: '#fff', borderRadius: 16, width: '100%', maxWidth: 400,
-        boxShadow: '0 32px 80px rgba(0,0,0,0.22)', padding: 24,
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-          <div>
-            <h2 id={titleId} className="serif" style={{ fontSize: 20, margin: 0 }}>Verify repayment</h2>
-            <p style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.5, margin: '8px 0 0' }}>{repayment.message}</p>
-          </div>
-          <button {...closeButtonProps} disabled={processing} onClick={onClose} style={{ background: 'none', border: 0, color: 'var(--muted)', cursor: 'pointer', height: 28 }}><X size={20} /></button>
-        </div>
-        {repayment.transactionId && <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 12 }}>Transaction: {repayment.transactionId}</div>}
-        <label htmlFor="repayment-otp" style={{ display: 'block', fontSize: 13, fontWeight: 700, marginTop: 18 }}>One-time password</label>
-        <input
-          id="repayment-otp"
-          value={otpCode}
-          onChange={(event) => setOtpCode(event.target.value)}
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          required
-          disabled={processing}
-          style={{ width: '100%', boxSizing: 'border-box', marginTop: 6, padding: 11, border: '1px solid var(--border)', borderRadius: 8, font: 'inherit', letterSpacing: 3 }}
-        />
-        {error && <div role="alert" style={{ color: '#991B1B', fontSize: 13, marginTop: 14 }}>{error}</div>}
-        <button type="submit" disabled={processing || !otpCode.trim()} style={{ ...actionButtonStyle, width: '100%', background: 'var(--text)', color: '#fff', marginTop: 20 }}>
-          {processing ? 'Verifying…' : 'Verify and complete repayment'}
-        </button>
-      </form>
-    </div>
-  )
-}
-
 // ── Main Component ────────────────────────────────────────────────────────
 export default function Loans({ farmers = [], loans = [], cooperativeId, loading, onRefresh, dataStale = false }) {
-  const [showModal, setShowModal] = useState(false)
   const [activeAction, setActiveAction] = useState(null)
-  const [repayment, setRepayment] = useState(null)
   const [processing, setProcessing] = useState(null)
   const [actionError, setActionError] = useState(null)
   const [actionMessage, setActionMessage] = useState(null)
@@ -366,41 +223,17 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
         await reconcileLoan(loan.id, { quiet: true })
       }
       if (type === 'repay') {
-        try {
-          await repayLoan(loan.id)
-          setActionMessage(`Repayment for loan #${loan.id} completed.`)
-        } catch (error) {
-          if (error instanceof RepaymentVerificationRequiredError) {
-            setActiveAction(null)
-            setRepayment({
-              loanId: error.loanId || loan.id,
-              transactionId: error.transactionId,
-              message: error.message,
-            })
-            return
-          }
-          throw error
-        }
+        const result = await repayLoan(loan.id)
+        setActionMessage(
+          result.status === 'repaid'
+            ? `Repayment for loan #${loan.id} completed.`
+            : `Repayment request sent for loan #${loan.id}. The member must complete it on their phone.`
+        )
       }
       setActiveAction(null)
       if (onRefresh) onRefresh()
     } catch (err) {
       setActionError(err.message || 'Action failed')
-    } finally {
-      setProcessing(null)
-    }
-  }
-
-  const handleVerifyRepayment = async (otpCode) => {
-    setProcessing(repayment.loanId)
-    setActionError(null)
-    try {
-      await verifyLoanRepayment(repayment.loanId, otpCode)
-      setActionMessage(`Repayment for loan #${repayment.loanId} verified and completed.`)
-      setRepayment(null)
-      if (onRefresh) onRefresh()
-    } catch (error) {
-      setActionError(error.message || 'Repayment verification failed')
     } finally {
       setProcessing(null)
     }
@@ -424,13 +257,6 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
 
   return (
     <>
-      <ModalPresence show={showModal}>
-        <RequestLoanModal 
-          farmers={farmers} 
-          onClose={() => setShowModal(false)} 
-          onSuccess={() => { setShowModal(false); if (onRefresh) onRefresh(); }} 
-        />
-      </ModalPresence>
       <ModalPresence show={Boolean(activeAction)}>
         {activeAction && (
           <ConfirmationModal
@@ -442,18 +268,6 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
           />
         )}
       </ModalPresence>
-      <ModalPresence show={Boolean(repayment)}>
-        {repayment && (
-          <RepaymentOtpModal
-            repayment={repayment}
-            processing={processing === repayment.loanId}
-            error={actionError}
-            onClose={() => { if (!processing) { setRepayment(null); setActionError(null) } }}
-            onVerify={handleVerifyRepayment}
-          />
-        )}
-      </ModalPresence>
-
       {/* ── Toolbar ── */}
       {dataStale && (
         <div className="info-banner" role="status" style={{ marginBottom: 16 }}>
@@ -474,13 +288,9 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
         onExport={handleExport}
         exporting={exporting}
         exportError={exportError}
-      >
-        <button className="btn-nav" disabled={dataStale} onClick={() => setShowModal(true)} style={{ fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, background: 'var(--text)', color: '#fff' }}>
-          <Plus size={15} /> Log Loan Request
-        </button>
-      </DashboardTableToolbar>
+      />
 
-      {actionError && !activeAction && !repayment && (
+      {actionError && !activeAction && (
         <div style={{ padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
           {actionError}
         </div>
@@ -514,7 +324,7 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
         {table.filteredRows.length === 0 ? (
           <div style={{ padding: '32px 20px', color: 'var(--muted)', fontSize: 14 }}>
             {loans.length === 0
-              ? 'No loans recorded yet. Click "Log Loan Request" to log a new application.'
+              ? 'No farmer loan requests yet. Requests submitted through USSD will appear here.'
               : 'No loans match the current filters.'}
           </div>
         ) : (
@@ -546,7 +356,13 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
 
               return (
                 <div key={loan.id} className="pay-row" style={{ alignItems: 'center' }}>
-                  <div><div className="pt-name">{name}</div><div className="pt-id">#{loan.id}</div></div>
+                  <div>
+                    <div className="pt-name">{name}</div>
+                    <div className="pt-id">
+                      #{loan.id}
+                      {['moolre_ussd', 'ussdk'].includes(loan.request_channel) ? ' · Farmer USSD request' : ''}
+                    </div>
+                  </div>
                   <span className="pt-v">{fmtGHS(loan.amount)}</span>
                   <span className="pt-m" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{loan.purpose}</span>
                   <span className="pt-m">{repayDate}</span>

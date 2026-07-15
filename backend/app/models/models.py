@@ -201,11 +201,15 @@ class Transaction(Base):
     # Moolre refs
     moolre_reference = Column(String, unique=True, nullable=True)  # payment ref
     moolre_transfer_ref = Column(String, unique=True, nullable=True)  # transfer ref
+    loan_id = Column(Integer, ForeignKey("loans.id"), nullable=True, index=True)
     # Participant phones (for USSD / mobile money)
     payer_phone = Column(String, nullable=True)
     payee_phone = Column(String, nullable=True)
     channel = Column(String, nullable=True)  # e.g. "13" = MTN Ghana
     description = Column(Text, nullable=True)
+    initiation_channel = Column(String, default="legacy", nullable=False)
+    customer_action = Column(String, default="none", nullable=False, index=True)
+    action_expires_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -236,6 +240,7 @@ class Loan(Base):
     purpose = Column(Text, nullable=True)
     expected_repayment_date = Column(Date, nullable=True)
     status = Column(Enum(LoanStatus), default=LoanStatus.requested)
+    request_channel = Column(String, default="legacy", nullable=False)
     # Approval
     approved_by = Column(String, nullable=True)  # admin name / id
     approved_at = Column(DateTime, nullable=True)

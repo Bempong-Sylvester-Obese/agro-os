@@ -1,5 +1,6 @@
 """Loan Management Routes"""
 
+import logging
 import uuid
 from datetime import datetime
 
@@ -23,12 +24,11 @@ from app.models.models import (
 from app.models.models import (
     CooperativeMembership as Farmer,
 )
+from app.routes.transactions import CUSTOMER_ACTION_TTL, expire_customer_actions
 from app.schemas.schemas import (
-    LoanApprove,
     LoanCancel,
     LoanCreate,
     LoanDisbursementStatus,
-    LoanRepayVerifyRequest,
     LoanResponse,
 )
 from app.services.auth_service import (
@@ -36,10 +36,12 @@ from app.services.auth_service import (
     get_current_user,
     require_roles,
 )
+from app.services.communications_service import CommunicationsService
 from app.services.moolre_service import MoolreService
 from app.services.trust_score_service import TrustScoreService
 
 router = APIRouter(prefix="/loans", tags=["loans"])
+logger = logging.getLogger(__name__)
 
 
 def _disburse_external_ref(loan_id: int) -> str:
@@ -55,7 +57,7 @@ def _disburse_external_ref(loan_id: int) -> str:
 
 
 def _repay_external_ref(loan_id: int) -> str:
-    return f"agro-loan-repay-{loan_id}"
+    return f"agro-loan-repay-{loan_id}-{uuid.uuid4().hex[:8]}"
 
 
 def _provider_amount_matches(expected: float, provider_amount) -> bool:
@@ -178,6 +180,8 @@ def _apply_disbursement_status(
 
     if status_result["status"] == "failed":
         tx.status = TransactionStatus.failed
+        tx.customer_action = "none"
+        tx.action_expires_at = None
         db.commit()
         if raise_on_failed:
             provider_message = (status_result.get("raw") or {}).get("message")
@@ -198,6 +202,8 @@ def _apply_disbursement_status(
         )
 
     tx.status = TransactionStatus.completed
+    tx.customer_action = "none"
+    tx.action_expires_at = None
     loan.status = LoanStatus.disbursed
     loan.moolre_transfer_ref = transfer_ref or tx.moolre_transfer_ref
     loan.disbursed_at = datetime.utcnow()
@@ -240,19 +246,24 @@ async def _finalize_repayment(
     return loan
 
 
-@router.post("/", response_model=LoanResponse, status_code=201)
+@router.post("/", response_model=LoanResponse, status_code=201, include_in_schema=False)
 def create_loan(
     loan_in: LoanCreate,
     db: Session = Depends(get_db),
     current_user: User | None = Depends(require_roles("admin", "finance_officer")),
 ):
-    """Farmer requests an input / cash loan."""
+    """Legacy local-development fixture; production requests originate via USSD."""
+    if current_user is not None:
+        raise HTTPException(
+            status_code=403,
+            detail="Loan requests must be submitted by the farmer through USSD.",
+        )
     farmer = db.query(Farmer).filter(Farmer.id == loan_in.farmer_id).first()
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")
     enforce_cooperative_scope(current_user, farmer.cooperative_id)
 
-    loan = Loan(**loan_in.model_dump())
+    loan = Loan(**loan_in.model_dump(), request_channel="legacy_api")
     db.add(loan)
     db.commit()
     db.refresh(loan)
@@ -299,7 +310,6 @@ def get_loan(
 @router.post("/{loan_id}/approve", response_model=LoanResponse)
 def approve_loan(
     loan_id: int,
-    approval: LoanApprove,
     db: Session = Depends(get_db),
     current_user: User | None = Depends(require_roles("admin", "finance_officer")),
 ):
@@ -311,7 +321,7 @@ def approve_loan(
             detail=f"Cannot approve loan in '{loan.status}' state. Must be 'requested'.",
         )
     loan.status = LoanStatus.approved
-    loan.approved_by = approval.approved_by
+    loan.approved_by = str(current_user.id) if current_user is not None else "system"
     loan.approved_at = datetime.utcnow()
     _audit_loan_action(
         db,
@@ -658,6 +668,27 @@ async def repay_loan(
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")
 
+    moolre = MoolreService()
+    account_number = _cooperative_account(farmer, db)
+
+    expire_customer_actions(db, farmer_id=farmer.id)
+    loan = (
+        db.query(Loan)
+        .filter(Loan.id == loan_id)
+        .with_for_update()
+        .one()
+    )
+    existing_tx = _latest_loan_transaction(db, loan=loan, transaction_type=TransactionType.repayment)
+    if existing_tx and existing_tx.status == TransactionStatus.pending:
+        if existing_tx.customer_action in ("none", "otp"):
+            return loan
+        status_result = await moolre.payment_status(
+            external_ref=existing_tx.moolre_reference,
+            account_number=account_number,
+        )
+        return await _finalize_repayment(loan=loan, tx=existing_tx, status_result=status_result, db=db)
+
+    ext_ref = _repay_external_ref(loan.id)
     _audit_loan_action(
         db,
         loan=loan,
@@ -665,71 +696,67 @@ async def repay_loan(
         action="loan.repayment_requested",
         details=f"amount={loan.amount}",
     )
-    db.commit()
-
-    ext_ref = _repay_external_ref(loan.id)
-    moolre = MoolreService()
-    account_number = _cooperative_account(farmer, db)
-
-    existing_tx = _latest_loan_transaction(db, loan=loan, transaction_type=TransactionType.repayment)
-    if existing_tx and existing_tx.status == TransactionStatus.pending:
-        status_result = await moolre.payment_status(
-            external_ref=existing_tx.moolre_reference or ext_ref,
-            account_number=account_number,
-        )
-        return await _finalize_repayment(loan=loan, tx=existing_tx, status_result=status_result, db=db)
-
-    payment_result = await moolre.initiate_payment(
-        payer_phone=farmer.phone,
+    tx = Transaction(
+        farmer_id=loan.farmer_id,
+        loan_id=loan.id,
+        transaction_type=TransactionType.repayment,
         amount=loan.amount,
         currency=loan.currency,
-        external_ref=ext_ref,
-        reference=f"Loan repayment #{loan.id}",
-        account_number=account_number,
+        status=TransactionStatus.pending,
+        moolre_reference=ext_ref,
+        payer_phone=farmer.phone,
+        description=f"Loan repayment #{loan.id}",
+        initiation_channel="dashboard",
+        customer_action="none",
     )
+    db.add(tx)
+    db.commit()
+    db.refresh(tx)
 
-    if not payment_result["success"] and not payment_result.get("verification_required"):
-        failed_tx = Transaction(
-            farmer_id=loan.farmer_id,
-            transaction_type=TransactionType.repayment,
+    try:
+        payment_result = await moolre.initiate_payment(
+            payer_phone=farmer.phone,
             amount=loan.amount,
             currency=loan.currency,
-            status=TransactionStatus.failed,
-            moolre_reference=payment_result.get("external_ref") or ext_ref,
-            payer_phone=farmer.phone,
-            description=f"Loan repayment #{loan.id}",
+            external_ref=ext_ref,
+            reference=f"Loan repayment #{loan.id}",
+            account_number=account_number,
         )
-        db.add(failed_tx)
+    except Exception:
+        tx.status = TransactionStatus.failed
+        db.commit()
+        raise
+
+    if not payment_result["success"] and not payment_result.get("verification_required"):
+        tx.status = TransactionStatus.failed
         db.commit()
         raise HTTPException(
             status_code=502,
             detail=f"Moolre repayment collection failed: {payment_result['message']}",
         )
 
-    moolre_ref = payment_result.get("moolre_reference") or ext_ref
-    tx = Transaction(
-        farmer_id=loan.farmer_id,
-        transaction_type=TransactionType.repayment,
-        amount=loan.amount,
-        currency=loan.currency,
-        status=TransactionStatus.pending,
-        moolre_reference=moolre_ref,
-        payer_phone=farmer.phone,
-        description=f"Loan repayment #{loan.id}",
+    tx.customer_action = (
+        "otp" if payment_result.get("verification_required") else "approval"
     )
-    db.add(tx)
+    tx.action_expires_at = datetime.utcnow() + CUSTOMER_ACTION_TTL
     db.commit()
-    db.refresh(tx)
 
     if payment_result.get("verification_required"):
-        raise HTTPException(
-            status_code=428,
-            detail={
-                "message": "OTP verification required. Retry via POST /loans/{loan_id}/repay/verify.",
-                "transaction_id": tx.id,
-                "loan_id": loan.id,
-            },
-        )
+        try:
+            await CommunicationsService().send_payment_action_required(
+                farmer=farmer,
+                amount=loan.amount,
+                reference=tx.moolre_reference,
+                db=db,
+                sent_by=str(current_user.id) if current_user else None,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Could not send repayment-action SMS for transaction %s: %s",
+                tx.id,
+                exc,
+            )
+        return loan
 
     status_result = await moolre.payment_status(
         external_ref=payment_result.get("external_ref") or ext_ref,
@@ -738,27 +765,36 @@ async def repay_loan(
     return await _finalize_repayment(loan=loan, tx=tx, status_result=status_result, db=db)
 
 
-@router.post("/{loan_id}/repay/verify", response_model=LoanResponse)
-async def verify_loan_repay(
-    loan_id: int,
-    body: LoanRepayVerifyRequest,
-    db: Session = Depends(get_db),
-    current_user: User | None = Depends(require_roles("admin", "finance_officer")),
-):
-    """Submit OTP to complete a pending loan repayment collection."""
-    loan = _get_loan_or_404(loan_id, db, current_user)
-    if loan.status != LoanStatus.disbursed:
+async def resume_loan_repayment_customer_action(
+    *,
+    transaction: Transaction,
+    farmer: Farmer,
+    otp_code: str,
+    db: Session,
+) -> Loan:
+    """Resume an OTP-gated loan repayment from the payer's USSD session."""
+    if transaction.farmer_id != farmer.id:
+        raise HTTPException(status_code=404, detail="Pending payment not found")
+    if transaction.transaction_type != TransactionType.repayment:
+        raise HTTPException(status_code=409, detail="Pending payment is not a repayment")
+    if transaction.status != TransactionStatus.pending or transaction.customer_action != "otp":
+        raise HTTPException(status_code=409, detail="Repayment is not awaiting OTP")
+    if not transaction.action_expires_at or transaction.action_expires_at <= datetime.utcnow():
+        transaction.status = TransactionStatus.failed
+        transaction.customer_action = "expired"
+        db.commit()
+        raise HTTPException(status_code=410, detail="Repayment verification has expired")
+
+    loan = (
+        db.query(Loan)
+        .filter(Loan.id == transaction.loan_id, Loan.farmer_id == farmer.id)
+        .with_for_update()
+        .first()
+    )
+    if not loan or loan.status != LoanStatus.disbursed:
         raise HTTPException(status_code=409, detail="Loan is not awaiting repayment")
 
-    farmer = db.query(Farmer).filter(Farmer.id == loan.farmer_id).first()
-    if not farmer:
-        raise HTTPException(status_code=404, detail="Farmer not found")
-
-    tx = _latest_loan_transaction(db, loan=loan, transaction_type=TransactionType.repayment)
-    if not tx or tx.status != TransactionStatus.pending:
-        raise HTTPException(status_code=404, detail="No pending repayment transaction found")
-
-    ext_ref = tx.moolre_reference or _repay_external_ref(loan.id)
+    ext_ref = transaction.moolre_reference or _repay_external_ref(loan.id)
     moolre = MoolreService()
     account_number = _cooperative_account(farmer, db)
     payment_result = await moolre.initiate_payment(
@@ -766,13 +802,15 @@ async def verify_loan_repay(
         amount=loan.amount,
         currency=loan.currency,
         external_ref=ext_ref,
-        otpcode=body.otp_code,
+        otpcode=otp_code,
         reference=f"Loan repayment #{loan.id}",
         account_number=account_number,
     )
 
     if not payment_result["success"] and not payment_result.get("verification_required"):
-        tx.status = TransactionStatus.failed
+        transaction.status = TransactionStatus.failed
+        transaction.customer_action = "none"
+        transaction.action_expires_at = None
         db.commit()
         raise HTTPException(
             status_code=502,
@@ -780,17 +818,22 @@ async def verify_loan_repay(
         )
 
     if payment_result.get("verification_required"):
-        raise HTTPException(
-            status_code=428,
-            detail={
-                "message": "OTP verification still required.",
-                "transaction_id": tx.id,
-                "loan_id": loan.id,
-            },
-        )
+        transaction.customer_action = "otp"
+        transaction.action_expires_at = datetime.utcnow() + CUSTOMER_ACTION_TTL
+        db.commit()
+        return loan
+
+    transaction.customer_action = "approval"
+    transaction.action_expires_at = datetime.utcnow() + CUSTOMER_ACTION_TTL
+    db.commit()
 
     status_result = await moolre.payment_status(
         external_ref=payment_result.get("external_ref") or ext_ref,
         account_number=account_number,
     )
-    return await _finalize_repayment(loan=loan, tx=tx, status_result=status_result, db=db)
+    return await _finalize_repayment(
+        loan=loan,
+        tx=transaction,
+        status_result=status_result,
+        db=db,
+    )

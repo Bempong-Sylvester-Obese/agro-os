@@ -1,22 +1,22 @@
 """AgroOS Backend API — Main Application"""
 
 import logging
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import sentry_sdk
-from alembic import command
 from alembic.config import Config
-from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from alembic import command
+from app.agro_ai.runtime import agro_ai as agro_ai_runtime
 from app.config import get_settings
-from app.database.db import Base, create_session, engine, _init_db
+from app.database.db import Base, _init_db, create_session, engine
 from app.database.seed import seed_golden_path
 from app.middleware.rate_limit import RouteRateLimitMiddleware
-from app.services.auth_service import decode_access_token
 from app.routes import (
     admin,
     agro_ai,
@@ -32,7 +32,7 @@ from app.routes import (
     ussdk_hooks,
     webhooks,
 )
-from app.agro_ai.runtime import agro_ai as agro_ai_runtime
+from app.services.auth_service import decode_access_token
 
 logging.basicConfig(level=logging.INFO)
 
@@ -50,7 +50,9 @@ _PUBLIC_PATHS = frozenset({
     "/webhooks/moolre/payment",
     "/webhooks/moolre/ussd",
     "/ussdk/loan-balance",
+    "/ussdk/loan-request",
     "/ussdk/pay-dues",
+    "/ussdk/pending-payment",
     "/ussdk/wallet-balance",
     "/ussdk/announcements",
     "/docs",

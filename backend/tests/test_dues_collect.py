@@ -1,8 +1,9 @@
-"""Tests for /transactions/dues/collect and /transactions/dues/collect/verify"""
+"""Tests for dashboard dues initiation and farmer-side payment completion."""
 
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
-from app.models.models import Transaction, TransactionStatus
+from app.models.models import Transaction, TransactionStatus, TransactionType
 
 
 def _tp14_result(ext_ref: str) -> dict:
@@ -98,6 +99,8 @@ def test_collect_dues_tp14_verification_required(client, farmer):
     assert data["moolre_code"] == "TP14"
     assert data["transaction_id"]
     assert data["moolre_reference"]
+    assert data["customer_action"] == "otp"
+    assert data["action_expires_at"]
 
     tx_resp = client.get(f"/transactions/{data['transaction_id']}")
     assert tx_resp.status_code == 200
@@ -121,6 +124,58 @@ def test_collect_dues_tr099_pending(client, farmer):
     assert data["status"] == "pending"
     assert data["outcome"] == "push_sent"
     assert data["moolre_code"] == "TR099"
+    assert data["customer_action"] == "approval"
+
+
+def test_dashboard_collect_is_idempotent_while_member_action_is_pending(client, farmer):
+    with patch(
+        "app.routes.transactions.MoolreService.initiate_payment",
+        new_callable=AsyncMock,
+        return_value=_tp14_result("idempotent-ref"),
+    ) as mock_pay:
+        first = client.post(
+            "/transactions/dues/collect",
+            json={"farmer_id": farmer["id"], "amount": 30},
+        )
+        repeated = client.post(
+            "/transactions/dues/collect",
+            json={"farmer_id": farmer["id"], "amount": 30},
+        )
+        changed = client.post(
+            "/transactions/dues/collect",
+            json={"farmer_id": farmer["id"], "amount": 31},
+        )
+
+    assert first.status_code == 200
+    assert repeated.status_code == 200
+    assert repeated.json()["transaction_id"] == first.json()["transaction_id"]
+    assert changed.status_code == 409
+    mock_pay.assert_called_once()
+
+
+def test_expired_customer_action_becomes_terminal_on_dashboard_read(
+    client, farmer, cooperative, db
+):
+    tx = Transaction(
+        farmer_id=farmer["id"],
+        transaction_type=TransactionType.dues,
+        amount=20,
+        status=TransactionStatus.pending,
+        moolre_reference="expired-action-ref",
+        customer_action="otp",
+        action_expires_at=datetime.utcnow() - timedelta(seconds=1),
+    )
+    db.add(tx)
+    db.commit()
+
+    response = client.get(
+        f"/transactions/?cooperative_id={cooperative['id']}"
+    )
+
+    assert response.status_code == 200
+    row = next(item for item in response.json() if item["id"] == tx.id)
+    assert row["status"] == "failed"
+    assert row["customer_action"] == "expired"
 
 
 def test_collect_dues_moolre_failure(client, farmer):
@@ -141,7 +196,7 @@ def test_collect_dues_moolre_failure(client, farmer):
     assert data["outcome"] == "failed"
 
 
-def test_verify_dues_collect_with_otp(client, farmer):
+def test_farmer_resumes_dashboard_dues_otp_from_ussdk(client, farmer, db):
     with patch(
         "app.routes.transactions.MoolreService.initiate_payment",
         new_callable=AsyncMock,
@@ -158,17 +213,37 @@ def test_verify_dues_collect_with_otp(client, farmer):
         mock_pay.return_value = _tr099_result(ext_ref)
         mock_pay.reset_mock()
 
+        list_resp = client.post(
+            "/ussdk/pending-payment",
+            json={
+                "input": {},
+                "props": {
+                    "session": {"msisdn": farmer["phone"]},
+                    "values": {},
+                },
+            },
+        )
+        assert list_resp.json()["payments"][0]["transaction_id"] == tx_id
+
         verify_resp = client.post(
-            "/transactions/dues/collect/verify",
-            json={"transaction_id": tx_id, "otp_code": "123456"},
+            "/ussdk/pending-payment",
+            json={
+                "input": {},
+                "props": {
+                    "session": {"msisdn": farmer["phone"]},
+                    "values": {
+                        "transaction_id": tx_id,
+                        "otp_code": "123456",
+                    },
+                },
+            },
         )
 
     assert verify_resp.status_code == 200
-    data = verify_resp.json()
-    assert data["status"] == "pending"
-    assert data["outcome"] == "push_sent"
-    assert data["moolre_code"] == "TR099"
-    assert data["transaction_id"] == tx_id
+    assert verify_resp.json()["action"] == "end"
+    transaction = db.query(Transaction).filter(Transaction.id == tx_id).one()
+    assert transaction.status == TransactionStatus.pending
+    assert transaction.customer_action == "approval"
 
     mock_pay.assert_called_once()
     call_kwargs = mock_pay.call_args.kwargs
@@ -176,36 +251,51 @@ def test_verify_dues_collect_with_otp(client, farmer):
     assert call_kwargs["external_ref"] == ext_ref
 
 
-def test_verify_dues_collect_not_found(client):
+def test_pending_payment_cannot_be_resumed_by_another_phone(
+    client, farmer, cooperative
+):
+    other = client.post(
+        "/farmers/",
+        json={
+            "name": "Other Member",
+            "phone": "0247778899",
+            "cooperative_id": cooperative["id"],
+        },
+    ).json()
+    with patch(
+        "app.routes.transactions.MoolreService.initiate_payment",
+        new_callable=AsyncMock,
+        return_value=_tp14_result("phone-scope-ref"),
+    ) as mock_pay:
+        collect = client.post(
+            "/transactions/dues/collect",
+            json={"farmer_id": farmer["id"], "amount": 15},
+        )
+        response = client.post(
+            "/ussdk/pending-payment",
+            json={
+                "input": {},
+                "props": {
+                    "session": {"msisdn": other["phone"]},
+                    "values": {
+                        "transaction_id": collect.json()["transaction_id"],
+                        "otp_code": "123456",
+                    },
+                },
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.json()["message"] == "Pending payment not found."
+    mock_pay.assert_called_once()
+
+
+def test_admin_dues_otp_endpoint_is_removed(client):
     resp = client.post(
         "/transactions/dues/collect/verify",
         json={"transaction_id": 999999, "otp_code": "123456"},
     )
     assert resp.status_code == 404
-
-
-def test_verify_dues_collect_not_pending(client, farmer, db):
-    with patch(
-        "app.routes.transactions.MoolreService.initiate_payment",
-        new_callable=AsyncMock,
-    ) as mock_pay:
-        mock_pay.return_value = _tr099_result("completed-ref")
-
-        collect_resp = client.post(
-            "/transactions/dues/collect",
-            json={"farmer_id": farmer["id"], "amount": 10.0},
-        )
-        tx_id = collect_resp.json()["transaction_id"]
-
-    transaction = db.query(Transaction).filter(Transaction.id == tx_id).one()
-    transaction.status = TransactionStatus.completed
-    db.commit()
-
-    verify_resp = client.post(
-        "/transactions/dues/collect/verify",
-        json={"transaction_id": tx_id, "otp_code": "123456"},
-    )
-    assert verify_resp.status_code == 409
 
 
 def test_initiate_payment_tp14_not_success():

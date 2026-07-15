@@ -67,7 +67,7 @@ def _rule_for(request: Request) -> tuple[str, int, int] | None:
         return "webhook", settings.rate_limit_webhook_per_minute, 60
     if path in {"/communications/sms/broadcast", "/communications/sms/dues-reminder"}:
         return "sms", settings.rate_limit_sms_per_minute, 60
-    if path in {"/transactions/dues/collect", "/transactions/dues/collect/verify"}:
+    if path == "/transactions/dues/collect":
         return "dues", settings.rate_limit_dues_per_minute, 60
     return None
 

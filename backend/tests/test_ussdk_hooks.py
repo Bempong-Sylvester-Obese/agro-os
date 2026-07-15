@@ -1,5 +1,6 @@
 """Tests for /ussdk/loan-balance and /ussdk/pay-dues"""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 
@@ -36,6 +37,25 @@ def _hook_payload(msisdn: str, values: dict | None = None) -> dict:
             "values": values or {},
         },
     }
+
+
+def test_ussdk_hooks_fail_closed_without_production_secret(client):
+    with patch(
+        "app.routes.ussdk_hooks.get_settings",
+        return_value=SimpleNamespace(
+            ussdk_hook_secret="",
+            app_env="production",
+        ),
+    ):
+        response = client.post(
+            "/ussdk/loan-request",
+            json=_hook_payload(
+                "0240000000",
+                {"amount": "100", "purpose": "Seed"},
+            ),
+        )
+
+    assert response.status_code == 401
 
 
 def test_pay_dues_unregistered_phone_ends_session(client):
@@ -112,6 +132,81 @@ def test_loan_balance_registered_farmer_no_loans(client, farmer):
     body = resp.json()
     assert body["registered"] is True
     assert body["balance"] == 0
+
+
+def test_farmer_can_request_loan_from_ussdk(client, farmer, db):
+    from app.models.models import Loan
+
+    resp = client.post(
+        "/ussdk/loan-request",
+        json=_hook_payload(
+            farmer["phone"],
+            {"amount": "500", "purpose": "Irrigation pump"},
+        ),
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["action"] == "end"
+    assert body["status"] == "requested"
+    loan = db.query(Loan).filter(Loan.id == body["loan_id"]).one()
+    assert loan.farmer_id == farmer["id"]
+    assert loan.request_channel == "ussdk"
+
+
+def test_ussdk_loan_request_handles_unregistered_and_multiple_memberships(
+    client, farmer
+):
+    unregistered = client.post(
+        "/ussdk/loan-request",
+        json=_hook_payload(
+            "0200000000",
+            {"amount": "100", "purpose": "Seed"},
+        ),
+    )
+    assert unregistered.json()["action"] == "end"
+    assert "not registered" in unregistered.json()["message"].lower()
+
+    second_coop = client.post(
+        "/cooperatives/",
+        json={"name": "Loan Request Cooperative", "currency": "GHS"},
+    ).json()
+    client.post(
+        "/farmers/",
+        json={
+            "name": farmer["name"],
+            "phone": farmer["phone"],
+            "cooperative_id": second_coop["id"],
+        },
+    )
+    choose = client.post(
+        "/ussdk/loan-request",
+        json=_hook_payload(
+            farmer["phone"],
+            {"amount": "100", "purpose": "Seed"},
+        ),
+    )
+    assert choose.json()["requires_cooperative_selection"] is True
+    assert len(choose.json()["cooperatives"]) == 2
+
+
+def test_ussdk_loan_request_validates_input_and_pending_request(client, farmer):
+    invalid = client.post(
+        "/ussdk/loan-request",
+        json=_hook_payload(farmer["phone"], {"amount": "0", "purpose": ""}),
+    )
+    assert invalid.json()["action"] == "retry"
+
+    payload = _hook_payload(
+        farmer["phone"],
+        {"amount": "100", "purpose": "Seed"},
+    )
+    first = client.post("/ussdk/loan-request", json=payload)
+    assert first.json()["status"] == "requested"
+
+    duplicate = client.post("/ussdk/loan-request", json=payload)
+    assert duplicate.json()["action"] == "end"
+    assert "already awaiting review" in duplicate.json()["message"].lower()
 
 
 def test_multiple_memberships_require_cooperative_selection(client, farmer):
