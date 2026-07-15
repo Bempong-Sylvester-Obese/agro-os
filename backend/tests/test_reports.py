@@ -34,6 +34,8 @@ def test_members_export_is_scoped_and_audited(client, db, farmer, cooperative):
     assert audit.resource_id == "members"
     assert audit.cooperative_id == cooperative["id"]
     assert '"row_count": 1' in audit.details
+    assert "Kofi" not in audit.details
+    assert '"search_applied": true' in audit.details
 
 
 def test_payment_export_filters_status_and_date(client, transaction, cooperative):

@@ -1,5 +1,5 @@
 // src/components/dashboard/Production.jsx
-import React, { useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import { Plus, X, Loader2 } from 'lucide-react'
 import { logProduction } from '../../api/production'
 import { exportDashboardReport } from '../../api/reports'
@@ -134,6 +134,12 @@ function LogProductionModal({ farmers, onClose, onSuccess }) {
 export default function Production({ farmers = [], productions = [], cooperativeId, loading, onRefresh }) {
   const [showModal, setShowModal] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
+  const sorted = useMemo(() => [...productions].sort((a, b) => {
+    const aTime = a.harvest_date ? new Date(a.harvest_date).getTime() : 0
+    const bTime = b.harvest_date ? new Date(b.harvest_date).getTime() : 0
+    return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime)
+  }), [productions])
 
   const totalExpected = productions.reduce((sum, p) => sum + (expectedKg(p) ?? 0), 0)
   const totalYield = productions.reduce((sum, p) => sum + (quantityKg(p) ?? 0), 0)
@@ -146,22 +152,29 @@ export default function Production({ farmers = [], productions = [], cooperative
   })
   const topCrop = Object.keys(crops).sort((a, b) => crops[b] - crops[a])[0]
 
-  const sorted = [...productions].sort((a, b) => {
-    const aTime = a.harvest_date ? new Date(a.harvest_date).getTime() : 0
-    const bTime = b.harvest_date ? new Date(b.harvest_date).getTime() : 0
-    return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime)
-  })
-  const farmerName = production => farmers.find(f => Number(f.id) === Number(production.farmer_id))?.name || `Farmer #${production.farmer_id}`
+  const farmerName = useCallback(
+    production => farmers.find(f => Number(f.id) === Number(production.farmer_id))?.name || `Farmer #${production.farmer_id}`,
+    [farmers],
+  )
+  const searchableText = useCallback(
+    production => `${farmerName(production)} ${production.crop_type || ''}`,
+    [farmerName],
+  )
+  const statusValue = useCallback(production => production.harvest_date ? 'harvested' : 'planned', [])
+  const dateValue = useCallback(production => production.created_at, [])
   const table = useDashboardTable({
     rows: sorted,
-    searchableText: production => `${farmerName(production)} ${production.crop_type || ''}`,
-    statusValue: production => production.harvest_date ? 'harvested' : 'planned',
-    dateValue: production => production.created_at,
+    searchableText,
+    statusValue,
+    dateValue,
   })
   const handleExport = async () => {
     setExporting(true)
+    setExportError('')
     try {
       await exportDashboardReport('production', cooperativeId, table.exportFilters)
+    } catch (error) {
+      setExportError(error.message || 'Could not export production. Please try again.')
     } finally {
       setExporting(false)
     }
@@ -197,6 +210,7 @@ export default function Production({ farmers = [], productions = [], cooperative
         ]}
         onExport={handleExport}
         exporting={exporting}
+        exportError={exportError}
       >
         <button className="btn-nav" onClick={() => setShowModal(true)} style={{ fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, background: 'var(--text)', color: '#fff' }}>
           <Plus size={15} /> Log Production

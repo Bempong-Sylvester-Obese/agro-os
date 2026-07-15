@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
 from datetime import timedelta
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
 from app.database.db import get_db
-from app.models.models import AdminAuditLog, User, Cooperative
+from app.models.models import AdminAuditLog, Cooperative, User
 from app.schemas.auth import (
     SignupRequest,
     SignupResponse,
@@ -44,6 +45,7 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
         location=data.location,
         description=description,
         currency="GHS",
+        subscription_plan=data.subscription_plan,
     )
     db.add(new_coop)
     db.flush()  # get the ID without committing yet
@@ -54,8 +56,20 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
         hashed_password=get_password_hash(data.password),
         role="admin",
         cooperative_id=new_coop.id,
+        onboarding_role=data.onboarding_role,
     )
     db.add(new_user)
+    db.flush()
+    db.add(
+        AdminAuditLog(
+            cooperative_id=new_coop.id,
+            actor_id=str(new_user.id),
+            action="workspace.created",
+            resource_type="cooperative",
+            resource_id=str(new_coop.id),
+            details=f"subscription_plan={new_coop.subscription_plan}",
+        )
+    )
     db.commit()
     db.refresh(new_user)
     db.refresh(new_coop)
@@ -77,6 +91,8 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "cooperative_id": new_coop.id,
         "cooperative_name": new_coop.name,
+        "subscription_plan": new_coop.subscription_plan,
+        "onboarding_role": new_user.onboarding_role,
     }
 
 
@@ -103,7 +119,7 @@ def register(
     db.add(
         AdminAuditLog(
             cooperative_id=current_user.cooperative_id,
-            actor_id=current_user.email,
+            actor_id=str(current_user.id),
             action="user.created",
             resource_type="user",
             resource_id=str(new_user.id),
@@ -134,6 +150,15 @@ def update_user(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("admin")),
 ):
+    # Serialize all administrator-count decisions per cooperative.
+    cooperative = (
+        db.query(Cooperative)
+        .filter(Cooperative.id == current_user.cooperative_id)
+        .with_for_update()
+        .first()
+    )
+    if not cooperative:
+        raise HTTPException(status_code=404, detail="Cooperative not found")
     target = (
         db.query(User)
         .filter(
@@ -168,7 +193,7 @@ def update_user(
     db.add(
         AdminAuditLog(
             cooperative_id=current_user.cooperative_id,
-            actor_id=current_user.email,
+            actor_id=str(current_user.id),
             action="user.updated",
             resource_type="user",
             resource_id=str(target.id),

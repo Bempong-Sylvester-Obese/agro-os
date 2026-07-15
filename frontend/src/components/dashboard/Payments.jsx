@@ -1,5 +1,5 @@
 // src/components/dashboard/Payments.jsx
-import React, { useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import { Plus, X, Loader2, RefreshCw, ReceiptText } from 'lucide-react'
 import { collectDues, fetchTransactionReceipt, reconcileTransaction, verifyDuesCollect } from '../../api/transactions'
 import { exportDashboardReport } from '../../api/reports'
@@ -178,6 +178,7 @@ export default function Payments({ farmers = [], transactions = [], cooperativeI
   const [exporting, setExporting] = useState(false)
   const [processingTransaction, setProcessingTransaction] = useState(null)
   const [operationError, setOperationError] = useState('')
+  const [exportError, setExportError] = useState('')
 
   const completed = transactions.filter(t => t.status === 'completed')
   const totalCollected = completed.reduce((s, t) => s + t.amount, 0)
@@ -189,18 +190,33 @@ export default function Payments({ farmers = [], transactions = [], cooperativeI
   const ussdPct = totalCollected > 0 ? Math.round((ussdAmount / totalCollected) * 100) : 0
   const momoPct = totalCollected > 0 ? Math.round((momoAmount / totalCollected) * 100) : 0
 
-  const sorted = [...transactions].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-  const farmerName = transaction => farmers.find(f => f.id === transaction.farmer_id)?.name || `Farmer #${transaction.farmer_id}`
+  const sorted = useMemo(
+    () => [...transactions].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
+    [transactions],
+  )
+  const farmerName = useCallback(
+    transaction => farmers.find(f => f.id === transaction.farmer_id)?.name || `Farmer #${transaction.farmer_id}`,
+    [farmers],
+  )
+  const searchableText = useCallback(
+    transaction => `${farmerName(transaction)} ${transaction.id} ${transaction.channel || ''}`,
+    [farmerName],
+  )
+  const statusValue = useCallback(transaction => transaction.status, [])
+  const dateValue = useCallback(transaction => transaction.created_at, [])
   const table = useDashboardTable({
     rows: sorted,
-    searchableText: transaction => `${farmerName(transaction)} ${transaction.id} ${transaction.channel || ''}`,
-    statusValue: transaction => transaction.status,
-    dateValue: transaction => transaction.created_at,
+    searchableText,
+    statusValue,
+    dateValue,
   })
   const handleExport = async () => {
     setExporting(true)
+    setExportError('')
     try {
       await exportDashboardReport('payments', cooperativeId, table.exportFilters)
+    } catch (error) {
+      setExportError(error.message || 'Could not export payments. Please try again.')
     } finally {
       setExporting(false)
     }
@@ -260,6 +276,7 @@ export default function Payments({ farmers = [], transactions = [], cooperativeI
         ]}
         onExport={handleExport}
         exporting={exporting}
+        exportError={exportError}
       >
         <button className="btn-nav" disabled={dataStale} onClick={() => setShowModal(true)} style={{ fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, background: 'var(--text)', color: '#fff' }}>
           <Plus size={15} /> Collect Dues

@@ -1,6 +1,7 @@
 """Administrator-only operational controls."""
 
 import json
+import uuid
 from datetime import datetime, timedelta
 
 import jwt
@@ -12,7 +13,12 @@ from app.config import get_settings
 from app.database.db import get_db
 from app.database.demo_constants import DEMO_COOPERATIVE_NAME
 from app.database.purge_demo import reset_demo_workspace
-from app.models.models import AdminAuditLog, Cooperative, User
+from app.models.models import (
+    AdminActionConfirmation,
+    AdminAuditLog,
+    Cooperative,
+    User,
+)
 from app.services.auth_service import ALGORITHM, require_roles
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -39,10 +45,20 @@ def list_admin_audit(
         .limit(min(max(limit, 1), 200))
         .all()
     )
+    numeric_actor_ids = {
+        int(row.actor_id) for row in rows if row.actor_id and row.actor_id.isdigit()
+    }
+    actor_emails = {
+        user.id: user.email
+        for user in db.query(User).filter(User.id.in_(numeric_actor_ids)).all()
+    }
     return [
         {
             "id": row.id,
             "actor_id": row.actor_id,
+            "actor_label": actor_emails.get(int(row.actor_id))
+            if row.actor_id and row.actor_id.isdigit()
+            else row.actor_id,
             "action": row.action,
             "resource_type": row.resource_type,
             "resource_id": row.resource_id,
@@ -104,13 +120,37 @@ def preview_demo_reset(
     if current_user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     cooperative = _demo_cooperative(current_user, db)
-    preview = reset_demo_workspace(db, dry_run=True)
+    preview = reset_demo_workspace(
+        db,
+        dry_run=True,
+        cooperative_id=cooperative.id,
+    )
+    now = datetime.utcnow()
+    db.query(AdminActionConfirmation).filter(
+        AdminActionConfirmation.cooperative_id == cooperative.id,
+        AdminActionConfirmation.user_id == current_user.id,
+        AdminActionConfirmation.action == "demo_reset",
+        AdminActionConfirmation.used_at.is_(None),
+    ).update({AdminActionConfirmation.used_at: now}, synchronize_session=False)
+    token_id = str(uuid.uuid4())
+    expires_at = now + timedelta(minutes=5)
+    db.add(
+        AdminActionConfirmation(
+            token_id=token_id,
+            cooperative_id=cooperative.id,
+            user_id=current_user.id,
+            action="demo_reset",
+            expires_at=expires_at,
+        )
+    )
+    db.commit()
     token = jwt.encode(
         {
             "type": "demo_reset",
-            "sub": current_user.email,
+            "sub": str(current_user.id),
             "cooperative_id": cooperative.id,
-            "exp": datetime.utcnow() + timedelta(minutes=5),
+            "jti": token_id,
+            "exp": expires_at,
         },
         get_settings().secret_key,
         algorithm=ALGORITHM,
@@ -144,16 +184,44 @@ def confirm_demo_reset(
         raise HTTPException(status_code=400, detail="Reset confirmation expired or invalid") from exc
     if (
         payload.get("type") != "demo_reset"
-        or payload.get("sub") != current_user.email
+        or payload.get("sub") != str(current_user.id)
         or payload.get("cooperative_id") != cooperative.id
     ):
         raise HTTPException(status_code=403, detail="Reset confirmation does not match this workspace")
 
-    result = reset_demo_workspace(db, dry_run=False)
+    token_id = payload.get("jti")
+    if not isinstance(token_id, str) or not token_id:
+        raise HTTPException(status_code=400, detail="Reset confirmation expired or invalid")
+    confirmation = (
+        db.query(AdminActionConfirmation)
+        .filter(AdminActionConfirmation.token_id == token_id)
+        .with_for_update()
+        .first()
+    )
+    if not confirmation:
+        raise HTTPException(status_code=400, detail="Reset confirmation expired or invalid")
+    if (
+        confirmation.action != "demo_reset"
+        or confirmation.user_id != current_user.id
+        or confirmation.cooperative_id != cooperative.id
+    ):
+        raise HTTPException(status_code=403, detail="Reset confirmation does not match this workspace")
+    if confirmation.used_at is not None:
+        raise HTTPException(status_code=409, detail="Reset confirmation has already been used")
+    if confirmation.expires_at <= datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Reset confirmation expired or invalid")
+
+    confirmation.used_at = datetime.utcnow()
+    result = reset_demo_workspace(
+        db,
+        dry_run=False,
+        commit=False,
+        cooperative_id=cooperative.id,
+    )
     db.add(
         AdminAuditLog(
             cooperative_id=cooperative.id,
-            actor_id=current_user.email,
+            actor_id=str(current_user.id),
             action="demo_workspace.reset",
             resource_type="cooperative",
             resource_id=str(cooperative.id),

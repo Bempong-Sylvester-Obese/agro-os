@@ -52,7 +52,7 @@ export default function PricingPage() {
 
   function choosePlan(plan) {
     if (plan.key === 'enterprise') {
-      navigate('/book-demo?plan=enterprise&topic=Enterprise%20implementation')
+      navigate('/book-demo?plan=enterprise&topic=Enterprise+implementation')
       window.scrollTo({ top: 0, behavior: 'instant' })
       return
     }

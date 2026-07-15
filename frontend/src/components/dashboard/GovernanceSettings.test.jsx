@@ -50,4 +50,16 @@ describe('GovernanceSettings', () => {
     expect(await screen.findByText('Only cooperative administrators can manage team access.')).toBeTruthy()
     expect(screen.queryByRole('button', { name: /Deactivate/ })).toBeNull()
   })
+
+  it('clears a stale restricted state after a non-403 failure', async () => {
+    fetchCooperativeUsers.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }))
+    render(<GovernanceSettings />)
+    expect(await screen.findByText('Only cooperative administrators can manage team access.')).toBeTruthy()
+
+    fetchCooperativeUsers.mockRejectedValue(Object.assign(new Error('Service unavailable'), { status: 503 }))
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+
+    expect(await screen.findByRole('alert')).toBeTruthy()
+    expect(screen.queryByText('Only cooperative administrators can manage team access.')).toBeNull()
+  })
 })

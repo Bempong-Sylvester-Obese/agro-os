@@ -1,5 +1,5 @@
 // src/components/dashboard/Scores.jsx
-import React, { useState, useEffect } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchFarmerTrustScore, recalculateTrustScore } from '../../api/farmers'
 import { exportDashboardReport } from '../../api/reports'
 import { RefreshCw, Loader2 } from 'lucide-react'
@@ -156,20 +156,33 @@ function ScoreDetail({ farmer }) {
 export default function Scores({ farmers = [], cooperativeId, loading }) {
   const [selectedId, setSelectedId] = useState(null)
   const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
 
   // Default selection: highest scoring farmer
-  const sorted = [...farmers].sort((a, b) => b.trust_score - a.trust_score)
+  const sorted = useMemo(
+    () => [...farmers].sort((a, b) => b.trust_score - a.trust_score),
+    [farmers],
+  )
+  const searchableText = useCallback(
+    farmer => `${farmer.name} ${farmer.phone || ''} ${farmer.location || ''} ${farmer.crop_type || ''}`,
+    [],
+  )
+  const statusValue = useCallback(farmer => farmer.trust_score >= 68 ? 'eligible' : 'review', [])
+  const dateValue = useCallback(farmer => farmer.updated_at, [])
   const table = useDashboardTable({
     rows: sorted,
-    searchableText: farmer => `${farmer.name} ${farmer.phone || ''} ${farmer.location || ''} ${farmer.crop_type || ''}`,
-    statusValue: farmer => farmer.trust_score >= 68 ? 'eligible' : 'review',
-    dateValue: farmer => farmer.updated_at,
+    searchableText,
+    statusValue,
+    dateValue,
   })
   const selectedFarmer = table.filteredRows.find(f => f.id === selectedId) || table.filteredRows[0] || null
   const handleExport = async () => {
     setExporting(true)
+    setExportError('')
     try {
       await exportDashboardReport('scores', cooperativeId, table.exportFilters)
+    } catch (error) {
+      setExportError(error.message || 'Could not export scores. Please try again.')
     } finally {
       setExporting(false)
     }
@@ -203,6 +216,7 @@ export default function Scores({ farmers = [], cooperativeId, loading }) {
         ]}
         onExport={handleExport}
         exporting={exporting}
+        exportError={exportError}
       />
 
       <div className="score-layout">

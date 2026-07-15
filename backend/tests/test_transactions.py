@@ -57,6 +57,16 @@ def test_transaction_receipt_and_reconciliation(client, db, transaction):
     assert reconciled.json()["provider_status"] == "completed"
     assert reconciled.json()["transaction"]["status"] == "completed"
 
+    for provider_status in ("pending", "failed"):
+        with patch(
+            "app.routes.transactions.MoolreService.payment_status",
+            new_callable=AsyncMock,
+            return_value={"success": True, "status": provider_status, "raw": {}},
+        ):
+            repeated = client.post(f"/transactions/{tx.id}/reconcile")
+        assert repeated.status_code == 200
+        assert repeated.json()["transaction"]["status"] == "completed"
+
 
 def test_get_transaction_not_found(client):
     resp = client.get("/transactions/999999")

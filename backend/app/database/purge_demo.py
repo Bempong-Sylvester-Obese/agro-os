@@ -111,9 +111,18 @@ def purge_demo_cooperative(db: Session, *, dry_run: bool = False) -> dict:
     return {"deleted": True, **counts}
 
 
-def reset_demo_workspace(db: Session, *, dry_run: bool = False) -> dict:
+def reset_demo_workspace(
+    db: Session,
+    *,
+    dry_run: bool = False,
+    commit: bool = True,
+    cooperative_id: int | None = None,
+) -> dict:
     """Clear demo operational data while preserving its cooperative and users."""
-    coop = db.query(Cooperative).filter(Cooperative.name == DEMO_COOPERATIVE_NAME).first()
+    query = db.query(Cooperative).filter(Cooperative.name == DEMO_COOPERATIVE_NAME)
+    if cooperative_id is not None:
+        query = query.filter(Cooperative.id == cooperative_id)
+    coop = query.first()
     if not coop:
         return {"reset": False, "reason": "demo cooperative not found"}
 
@@ -215,6 +224,9 @@ def reset_demo_workspace(db: Session, *, dry_run: bool = False) -> dict:
                 db.query(Farmer).filter(Farmer.id == profile_id).delete(
                     synchronize_session=False
                 )
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     logger.info("Reset demo workspace %s (%s)", coop.name, coop.id)
     return {"reset": True, **counts}

@@ -32,6 +32,9 @@ describe('marketing refresh', () => {
       </MemoryRouter>,
     )
 
+    expect(screen.getByRole('link', { name: /Contact enterprise sales/i }).getAttribute('href')).toBe(
+      '/book-demo?plan=enterprise&topic=Enterprise+implementation',
+    )
     fireEvent.click(screen.getAllByRole('button', { name: /Create free workspace/i })[0])
     expect(screen.getByTestId('location').textContent).toBe('/subscribe/starter')
   })
@@ -55,7 +58,8 @@ describe('marketing refresh', () => {
     expect(menu.textContent).not.toContain('*920#')
 
     fireEvent.click(screen.getByRole('button', { name: /Discuss enterprise rollout/i }))
-    expect(screen.getByTestId('location').textContent).toContain('/book-demo?enterprise=true')
-    expect(screen.getByTestId('location').textContent).toContain('topic=Solutions+consultation')
+    expect(screen.getByTestId('location').textContent).toBe(
+      '/book-demo?plan=enterprise&topic=Enterprise+implementation',
+    )
   })
 })

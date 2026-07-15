@@ -1,5 +1,5 @@
 // src/components/dashboard/Members.jsx
-import React, { useState } from 'react'
+import React, { useCallback, useState } from 'react'
 import { Edit3, UserPlus, X, Loader2 } from 'lucide-react'
 import { createFarmer, deactivateFarmer, updateFarmer } from '../../api/farmers'
 import { exportDashboardReport } from '../../api/reports'
@@ -253,11 +253,18 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
   const [editing, setEditing] = useState(null)
   const [success, setSuccess] = useState(null)
   const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
+  const searchableText = useCallback(
+    farmer => `${farmer.name} ${farmer.phone} ${farmer.location || ''} ${farmer.crop_type || ''}`,
+    [],
+  )
+  const statusValue = useCallback(farmer => farmer.membership_status, [])
+  const dateValue = useCallback(farmer => farmer.created_at, [])
   const table = useDashboardTable({
     rows: farmers,
-    searchableText: farmer => `${farmer.name} ${farmer.phone} ${farmer.location || ''} ${farmer.crop_type || ''}`,
-    statusValue: farmer => farmer.membership_status,
-    dateValue: farmer => farmer.created_at,
+    searchableText,
+    statusValue,
+    dateValue,
   })
 
   const handleSuccess = (membership) => {
@@ -278,8 +285,11 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
 
   const handleExport = async () => {
     setExporting(true)
+    setExportError('')
     try {
       await exportDashboardReport('members', cooperativeId, table.exportFilters)
+    } catch (error) {
+      setExportError(error.message || 'Could not export members. Please try again.')
     } finally {
       setExporting(false)
     }
@@ -321,6 +331,7 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
         ]}
         onExport={handleExport}
         exporting={exporting}
+        exportError={exportError}
       >
         <button
           className="btn-nav"

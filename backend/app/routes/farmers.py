@@ -9,14 +9,13 @@ from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.models.models import (
     AdminAuditLog,
-    CooperativeAttendance,
     Cooperative,
+    CooperativeAttendance,
     CooperativeMembership,
     Farmer,
     MembershipStatus,
     User,
 )
-from app.services.auth_service import enforce_cooperative_scope, get_current_user, require_roles
 from app.schemas.schemas import (
     AttendanceCreate,
     AttendanceResponse,
@@ -24,6 +23,11 @@ from app.schemas.schemas import (
     FarmerResponse,
     FarmerUpdate,
     TrustScoreResponse,
+)
+from app.services.auth_service import (
+    enforce_cooperative_scope,
+    get_current_user,
+    require_roles,
 )
 from app.services.trust_score_service import TrustScoreService
 from app.utils.phone import normalize_ghana_phone
@@ -107,7 +111,7 @@ def create_farmer(
             db.add(
                 AdminAuditLog(
                     cooperative_id=cooperative_id,
-                    actor_id=current_user.email,
+                    actor_id=str(current_user.id),
                     action="member.created",
                     resource_type="membership",
                     resource_id=str(membership.id),
@@ -209,7 +213,7 @@ def update_farmer(
         db.add(
             AdminAuditLog(
                 cooperative_id=membership.cooperative_id,
-                actor_id=current_user.email,
+                actor_id=str(current_user.id),
                 action="member.updated",
                 resource_type="membership",
                 resource_id=str(membership.id),
@@ -234,7 +238,7 @@ def deactivate_farmer(
         db.add(
             AdminAuditLog(
                 cooperative_id=farmer.cooperative_id,
-                actor_id=current_user.email,
+                actor_id=str(current_user.id),
                 action="member.deactivated",
                 resource_type="membership",
                 resource_id=str(farmer.id),

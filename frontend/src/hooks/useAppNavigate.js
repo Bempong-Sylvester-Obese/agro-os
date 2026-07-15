@@ -34,10 +34,12 @@ export function useAppNavigate() {
       return
     }
 
-    if (target === 'bookDemo' && (enterprise || topic)) {
+    if (target === 'bookDemo' && (enterprise || plan === 'enterprise' || topic)) {
       const params = new URLSearchParams()
-      if (enterprise) params.set('enterprise', 'true')
-      if (topic) params.set('topic', topic)
+      const isEnterprise = enterprise || plan === 'enterprise'
+      if (isEnterprise) params.set('plan', 'enterprise')
+      if (isEnterprise) params.set('topic', 'Enterprise implementation')
+      else if (topic) params.set('topic', topic)
       navigate(`/book-demo?${params.toString()}`)
       window.scrollTo({ top: 0, behavior: 'instant' })
       return

@@ -51,7 +51,7 @@ export default function Activity() {
               <div>
                 <strong>{readableAction(entry.action)}</strong>
                 <p>
-                  {entry.actor_id}
+                  {entry.actor_label || entry.actor_id}
                   {entry.resource_type ? ` · ${entry.resource_type} #${entry.resource_id}` : ''}
                 </p>
                 {entry.details && <small>{entry.details}</small>}

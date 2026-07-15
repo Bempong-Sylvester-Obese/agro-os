@@ -2,15 +2,11 @@ from __future__ import annotations
 
 import json
 
-from fastapi.testclient import TestClient
-
 from app.agro_ai.audit import PredictionAuditLogger
 from app.agro_ai.evaluation import train_and_evaluate
 from app.agro_ai.model import AgroAiCreditModel, save_model_artifact
-from app.agro_ai.synthetic_data import DEMO_FARMERS
 from app.agro_ai.runtime import create_agro_ai_model, prediction_audit
-from app.agro_ai.train import DEFAULT_MODEL_PATH
-from main import app
+from app.agro_ai.synthetic_data import DEMO_FARMERS
 
 
 def test_train_and_evaluate_returns_enterprise_metrics() -> None:
@@ -131,7 +127,7 @@ def test_predict_endpoint_returns_score_and_audits(tmp_path, client, cooperative
                 "requested_credit_amount": 3000,
                 "farmer_id": DEMO_FARMERS[1]["farmer_id"],
                 "cooperative_id": str(cooperative["id"]),
-                "actor_id": "admin-demo",
+                "actor_id": "spoofed-client-actor",
                 "features": DEMO_FARMERS[1]["features"],
             },
         )
@@ -146,7 +142,7 @@ def test_predict_endpoint_returns_score_and_audits(tmp_path, client, cooperative
         saved = json.loads(audit_path.read_text(encoding="utf-8"))
         assert saved["context"]["source"] == "ad_hoc_prediction"
         assert saved["context"]["cooperative_id"] == str(cooperative["id"])
-        assert saved["context"]["actor_id"] == "admin-demo"
+        assert saved["context"]["actor_id"] is None
         assert saved["requested_credit_amount"] == 3000
     finally:
         prediction_audit.path = original_audit_path

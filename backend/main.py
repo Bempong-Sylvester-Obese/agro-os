@@ -25,6 +25,7 @@ from app.routes import (
     cooperatives,
     farmers,
     loans,
+    marketing,
     production,
     reports,
     transactions,
@@ -45,6 +46,7 @@ _PUBLIC_PATHS = frozenset({
     "/health/ready",
     "/auth/login",
     "/auth/signup",
+    "/marketing/demo-bookings",
     "/webhooks/moolre/payment",
     "/webhooks/moolre/ussd",
     "/ussdk/loan-balance",
@@ -160,6 +162,7 @@ app.include_router(cooperatives.router)
 app.include_router(farmers.router)
 app.include_router(transactions.router)
 app.include_router(loans.router)
+app.include_router(marketing.router)
 app.include_router(production.router)
 app.include_router(reports.router)
 app.include_router(communications.router)

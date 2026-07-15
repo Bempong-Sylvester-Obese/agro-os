@@ -49,7 +49,7 @@ export default function Footer() {
         <div>
           <div className="footer-col-title">Company</div>
           <a href="/subscribe/starter" className="footer-link" onClick={go('subscription', { plan: 'starter' })}>Create free workspace</a>
-          <a href="/book-demo?enterprise=true" className="footer-link" onClick={go('bookDemo', { enterprise: true, topic: 'Enterprise enquiry' })}>Contact enterprise sales</a>
+          <a href="/book-demo?plan=enterprise&amp;topic=Enterprise+implementation" className="footer-link" onClick={go('bookDemo', { plan: 'enterprise', topic: 'Enterprise implementation' })}>Contact enterprise sales</a>
         </div>
 
         <div>

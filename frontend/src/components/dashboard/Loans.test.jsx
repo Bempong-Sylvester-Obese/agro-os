@@ -87,4 +87,17 @@ describe('Loans operations', () => {
     expect(screen.getByRole('alert').textContent).toContain('Enter a cancellation reason')
     expect(loansApi.cancelLoan).not.toHaveBeenCalled()
   })
+
+  it('fetches payout status once per unknown loan while allowing explicit reconciliation', async () => {
+    const approvedLoan = loan({ status: 'approved' })
+    const { rerender } = render(<Loans farmers={farmers} loans={[approvedLoan]} loading={false} />)
+
+    await waitFor(() => expect(loansApi.fetchDisbursementStatus).toHaveBeenCalledTimes(1))
+    rerender(<Loans farmers={farmers} loans={[approvedLoan]} loading={false} dataStale />)
+    expect(loansApi.fetchDisbursementStatus).toHaveBeenCalledTimes(1)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Reconcile payout' }))
+
+    await waitFor(() => expect(loansApi.fetchDisbursementStatus).toHaveBeenCalledTimes(2))
+  })
 })

@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react'
+import React, { useEffect, useId, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { login, signup, storeAuthToken, userFromAuthToken, userFromSignupResponse, warmAuthBackend } from '../api/auth'
 import { Sprout, ArrowLeft, ArrowRight, Building2, Users, MapPin, Mail, Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
@@ -236,6 +236,8 @@ export default function AuthPage({ onAuth }) {
         cooperativeName,
         location: location || undefined,
         memberCount: memberCount || undefined,
+        subscriptionPlan: subscriptionIntent?.plan || 'starter',
+        onboardingRole: subscriptionIntent?.role || 'Cooperative administrator',
       })
       storeAuthToken(data.access_token)
       if (subscriptionIntent) window.sessionStorage.removeItem('agroos-subscription-intent')

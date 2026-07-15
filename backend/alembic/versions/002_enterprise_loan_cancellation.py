@@ -25,6 +25,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_column("loans", "cancellation_reason")
-    op.drop_column("loans", "cancelled_at")
-    op.drop_column("loans", "cancelled_by")
+    # This adoption migration may have skipped pre-existing columns created by
+    # startup metadata. Their ownership cannot be reconstructed safely, and the
+    # PostgreSQL enum value is irreversible, so downgrade is intentionally a no-op.
+    pass

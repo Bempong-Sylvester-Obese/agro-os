@@ -38,7 +38,7 @@ export default function SolutionsPage({ user }) {
               <button className="btn-lg" type="button" onClick={() => setPage('subscription', { plan: 'starter' })}>
                 Create free workspace
               </button>
-              <button className="btn-out-lg" type="button" onClick={() => setPage('bookDemo', { enterprise: true, topic: 'Solutions consultation' })}>
+              <button className="btn-out-lg" type="button" onClick={() => setPage('bookDemo', { plan: 'enterprise', topic: 'Enterprise implementation' })}>
                 Discuss enterprise rollout
               </button>
             </div>
@@ -157,7 +157,7 @@ export default function SolutionsPage({ user }) {
           primaryLabel="See pricing"
           secondaryLabel="Talk to enterprise sales"
           onPrimary={() => setPage('pricing')}
-          onSecondary={() => setPage('bookDemo', { enterprise: true, topic: 'Enterprise solutions' })}
+          onSecondary={() => setPage('bookDemo', { plan: 'enterprise', topic: 'Enterprise implementation' })}
         />
       </main>
 

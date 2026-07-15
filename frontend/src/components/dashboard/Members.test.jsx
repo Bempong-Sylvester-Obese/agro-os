@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import Members from './Members'
 import * as farmersApi from '../../api/farmers'
+import { exportDashboardReport } from '../../api/reports'
 
 vi.mock('../../api/farmers', () => ({
   createFarmer: vi.fn(),
@@ -52,5 +53,14 @@ describe('Members administration', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Deactivate' }))
 
     await waitFor(() => expect(farmersApi.deactivateFarmer).toHaveBeenCalledWith(4))
+  })
+
+  it('announces export failures to the user', async () => {
+    exportDashboardReport.mockRejectedValue(new Error('Report service unavailable'))
+    render(<Members farmers={[member]} cooperativeId={2} onMemberAdded={vi.fn()} loading={false} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Export filtered Members as CSV' }))
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Report service unavailable')
   })
 })

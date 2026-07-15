@@ -61,6 +61,16 @@ def _safe_cell(value) -> str:
     return f"'{text}" if text.startswith(("=", "+", "-", "@")) else text
 
 
+def _audit_filters(q, status, start_date, end_date) -> dict:
+    """Return useful export metadata without persisting search terms."""
+    return {
+        "search_applied": bool(q and q.strip()),
+        "status": status.value if hasattr(status, "value") else status,
+        "start_date": start_date,
+        "end_date": end_date,
+    }
+
+
 def _csv_response(
     *,
     report: str,
@@ -79,7 +89,7 @@ def _csv_response(
     db.add(
         AdminAuditLog(
             cooperative_id=cooperative_id,
-            actor_id=current_user.email if current_user else "local-development",
+            actor_id=str(current_user.id) if current_user else "system:local-development",
             action="report.export",
             resource_type="report",
             resource_id=report,
@@ -134,7 +144,7 @@ def export_members(
         cooperative_id=scope,
         current_user=current_user,
         db=db,
-        filters={"q": q, "status": status.value if status else None, "start_date": start_date, "end_date": end_date},
+        filters=_audit_filters(q, status, start_date, end_date),
     )
 
 
@@ -151,6 +161,9 @@ def export_payments(
     scope = _scope(current_user, cooperative_id)
     query = (
         db.query(Transaction)
+        .options(
+            joinedload(Transaction.farmer).joinedload(CooperativeMembership.farmer)
+        )
         .join(CooperativeMembership, Transaction.farmer_id == CooperativeMembership.id)
         .join(Farmer)
         .filter(CooperativeMembership.cooperative_id == scope)
@@ -173,7 +186,7 @@ def export_payments(
         cooperative_id=scope,
         current_user=current_user,
         db=db,
-        filters={"q": q, "status": status.value if status else None, "start_date": start_date, "end_date": end_date},
+        filters=_audit_filters(q, status, start_date, end_date),
     )
 
 
@@ -190,6 +203,7 @@ def export_loans(
     scope = _scope(current_user, cooperative_id)
     query = (
         db.query(Loan)
+        .options(joinedload(Loan.farmer).joinedload(CooperativeMembership.farmer))
         .join(CooperativeMembership, Loan.farmer_id == CooperativeMembership.id)
         .join(Farmer)
         .filter(CooperativeMembership.cooperative_id == scope)
@@ -232,7 +246,7 @@ def export_loans(
         cooperative_id=scope,
         current_user=current_user,
         db=db,
-        filters={"q": q, "status": status.value if status else None, "start_date": start_date, "end_date": end_date},
+        filters=_audit_filters(q, status, start_date, end_date),
     )
 
 
@@ -249,6 +263,9 @@ def export_production(
     scope = _scope(current_user, cooperative_id)
     query = (
         db.query(Production)
+        .options(
+            joinedload(Production.farmer).joinedload(CooperativeMembership.farmer)
+        )
         .join(CooperativeMembership, Production.farmer_id == CooperativeMembership.id)
         .join(Farmer)
         .filter(CooperativeMembership.cooperative_id == scope)
@@ -273,7 +290,7 @@ def export_production(
         cooperative_id=scope,
         current_user=current_user,
         db=db,
-        filters={"q": q, "status": status, "start_date": start_date, "end_date": end_date},
+        filters=_audit_filters(q, status, start_date, end_date),
     )
 
 
@@ -325,5 +342,5 @@ def export_scores(
         cooperative_id=scope,
         current_user=current_user,
         db=db,
-        filters={"q": q, "status": status, "start_date": start_date, "end_date": end_date},
+        filters=_audit_filters(q, status, start_date, end_date),
     )

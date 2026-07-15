@@ -22,4 +22,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_column("users", "is_active")
+    # This column may have been adopted from startup metadata; retain it rather
+    # than risk removing schema and data not created by this revision.
+    pass

@@ -271,7 +271,7 @@ export default function HomePage({ user }) {
             {[
               ['Starter', 'Free', 'Up to 50 members', 'Create free workspace', () => setPage('subscription', { plan: 'starter' })],
               ['Growth', 'GHS 299 / month', 'Up to 500 members', 'Review Growth', () => setPage('subscription', { plan: 'growth' })],
-              ['Enterprise', 'Custom', 'Multi-team or programme rollout', 'Talk to enterprise sales', () => setPage('bookDemo', { enterprise: true, topic: 'Enterprise plan' })],
+              ['Enterprise', 'Custom', 'Multi-team or programme rollout', 'Talk to enterprise sales', () => setPage('bookDemo', { plan: 'enterprise', topic: 'Enterprise implementation' })],
             ].map(([name, price, detail, label, action], index) => (
               <article key={name} className={`home-plan-card${index === 1 ? ' home-plan-card--featured' : ''}`}>
                 <ReceiptText size={20} />
@@ -297,7 +297,7 @@ export default function HomePage({ user }) {
         primaryLabel={user ? 'Go to dashboard' : 'Start with Starter'}
         secondaryLabel="Discuss enterprise rollout"
         onPrimary={() => (user ? setPage('dashboard') : setPage('subscription', { plan: 'starter' }))}
-        onSecondary={() => setPage('bookDemo', { enterprise: true, topic: 'Enterprise rollout' })}
+        onSecondary={() => setPage('bookDemo', { plan: 'enterprise', topic: 'Enterprise implementation' })}
       />
       </main>
 

@@ -1,5 +1,5 @@
 // src/components/dashboard/Loans.jsx
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Plus, X, Loader2, Check, XCircle, Send, RefreshCw, Banknote, Ban } from 'lucide-react'
 import {
   createLoan,
@@ -262,6 +262,8 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
   const [payoutStatuses, setPayoutStatuses] = useState({})
   const [reconciling, setReconciling] = useState(null)
   const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
+  const requestedPayoutIds = useRef(new Set())
 
   const reconcileLoan = useCallback(async (loanId, { quiet = false } = {}) => {
     if (!quiet) {
@@ -283,8 +285,12 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
 
   useEffect(() => {
     let active = true
-    const eligible = loans.filter(loan => !['rejected', 'cancelled', 'repaid'].includes(loan.status))
-    Promise.all(eligible.map(async loan => {
+    const unknownEligible = loans.filter(loan => (
+      !['rejected', 'cancelled', 'repaid'].includes(loan.status)
+      && !requestedPayoutIds.current.has(loan.id)
+    ))
+    unknownEligible.forEach(loan => requestedPayoutIds.current.add(loan.id))
+    Promise.all(unknownEligible.map(async loan => {
       try {
         const status = await fetchDisbursementStatus(loan.id)
         return [loan.id, status]
@@ -301,13 +307,25 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
     return () => { active = false }
   }, [loans])
 
-  const sorted = [...loans].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-  const farmerName = loan => farmers.find(farmer => farmer.id === loan.farmer_id)?.name || `Farmer #${loan.farmer_id}`
+  const sorted = useMemo(
+    () => [...loans].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
+    [loans],
+  )
+  const farmerName = useCallback(
+    loan => farmers.find(farmer => farmer.id === loan.farmer_id)?.name || `Farmer #${loan.farmer_id}`,
+    [farmers],
+  )
+  const searchableText = useCallback(
+    loan => `${farmerName(loan)} ${loan.id} ${loan.purpose || ''} ${loan.moolre_transfer_ref || ''}`,
+    [farmerName],
+  )
+  const statusValue = useCallback(loan => loan.status, [])
+  const dateValue = useCallback(loan => loan.created_at, [])
   const table = useDashboardTable({
     rows: sorted,
-    searchableText: loan => `${farmerName(loan)} ${loan.id} ${loan.purpose || ''} ${loan.moolre_transfer_ref || ''}`,
-    statusValue: loan => loan.status,
-    dateValue: loan => loan.created_at,
+    searchableText,
+    statusValue,
+    dateValue,
   })
 
   if (loading) {
@@ -394,8 +412,11 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
   }
   const handleExport = async () => {
     setExporting(true)
+    setExportError('')
     try {
       await exportDashboardReport('loans', cooperativeId, table.exportFilters)
+    } catch (error) {
+      setExportError(error.message || 'Could not export loans. Please try again.')
     } finally {
       setExporting(false)
     }
@@ -452,6 +473,7 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
         ]}
         onExport={handleExport}
         exporting={exporting}
+        exportError={exportError}
       >
         <button className="btn-nav" disabled={dataStale} onClick={() => setShowModal(true)} style={{ fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, background: 'var(--text)', color: '#fff' }}>
           <Plus size={15} /> Log Loan Request

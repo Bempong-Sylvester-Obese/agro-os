@@ -11,14 +11,15 @@ from app.dependencies.cooperative_scope import resolve_cooperative_scope
 from app.models.models import (
     AdminAuditLog,
     Cooperative,
-    CooperativeMembership as Farmer,
     PaymentWebhookEvent,
     Transaction,
     TransactionStatus,
     TransactionType,
     User,
 )
-from app.services.auth_service import enforce_cooperative_scope, get_current_user, require_roles
+from app.models.models import (
+    CooperativeMembership as Farmer,
+)
 from app.schemas.schemas import (
     DuesCollectRequest,
     DuesCollectResponse,
@@ -29,6 +30,11 @@ from app.schemas.schemas import (
     TransactionCreate,
     TransactionResponse,
     TransactionStatusUpdate,
+)
+from app.services.auth_service import (
+    enforce_cooperative_scope,
+    get_current_user,
+    require_roles,
 )
 from app.services.moolre_service import MoolreService
 
@@ -309,39 +315,55 @@ async def reconcile_transaction(
     if not tx.moolre_reference and not tx.moolre_transfer_ref:
         raise HTTPException(status_code=409, detail="Transaction has no provider reference")
 
+    cooperative_id = tx.farmer.cooperative_id
+    transaction_type = tx.transaction_type
+    moolre_reference = tx.moolre_reference
+    moolre_transfer_ref = tx.moolre_transfer_ref
     cooperative = db.query(Cooperative).filter(
-        Cooperative.id == tx.farmer.cooperative_id
+        Cooperative.id == cooperative_id
     ).first()
     moolre = MoolreService()
-    if tx.transaction_type == TransactionType.payout and tx.moolre_transfer_ref:
+    if transaction_type == TransactionType.payout and moolre_transfer_ref:
         result = await moolre.transfer_status(
-            reference=tx.moolre_transfer_ref,
+            reference=moolre_transfer_ref,
             account_number=moolre.resolve_account_number(None),
             id_type="2",
         )
     else:
         result = await moolre.payment_status(
-            external_ref=tx.moolre_reference,
+            external_ref=moolre_reference,
             account_number=moolre.resolve_account_number(
                 cooperative.moolre_account_number if cooperative else None
             ),
         )
     provider_status = result.get("status", "pending")
-    if provider_status == "completed":
+    db.expire_all()
+    tx = (
+        db.query(Transaction)
+        .filter(Transaction.id == transaction_id)
+        .with_for_update()
+        .one()
+    )
+    previous_status = tx.status
+    if tx.status == TransactionStatus.completed:
+        pass
+    elif provider_status == "completed":
         tx.status = TransactionStatus.completed
-    elif provider_status == "failed":
+    elif tx.status == TransactionStatus.pending and provider_status == "failed":
         tx.status = TransactionStatus.failed
-    else:
-        tx.status = TransactionStatus.pending
     if current_user:
         db.add(
             AdminAuditLog(
-                cooperative_id=tx.farmer.cooperative_id,
-                actor_id=current_user.email,
+                cooperative_id=cooperative_id,
+                actor_id=str(current_user.id),
                 action="payment.reconciled",
                 resource_type="transaction",
                 resource_id=str(tx.id),
-                details=f"provider_status={provider_status}",
+                details=(
+                    f"provider_status={provider_status};"
+                    f"previous_status={previous_status.value};"
+                    f"applied_status={tx.status.value}"
+                ),
             )
         )
     db.commit()

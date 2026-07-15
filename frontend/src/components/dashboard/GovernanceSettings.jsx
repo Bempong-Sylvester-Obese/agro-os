@@ -31,6 +31,7 @@ export default function GovernanceSettings() {
     } else if ([401, 403].includes(usersResult.reason?.status)) {
       setRestricted(true)
     } else {
+      setRestricted(false)
       setError(usersResult.reason?.message || 'Could not load cooperative users.')
     }
     if (healthResult.status === 'fulfilled') setHealth(healthResult.value)

@@ -36,7 +36,7 @@ export function useDashboardTable({
   }, [dateValue, endDate, rows, search, searchableText, startDate, status, statusValue])
 
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize))
-  useEffect(() => setPage(1), [search, status, startDate, endDate, rows])
+  useEffect(() => setPage(1), [search, status, startDate, endDate])
   useEffect(() => setPage(current => Math.min(current, pageCount)), [pageCount])
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -81,11 +81,13 @@ export function DashboardTableToolbar({
   statuses = [],
   onExport,
   exporting = false,
+  exportError = '',
   children,
 }) {
   return (
-    <div className="dashboard-table-toolbar" aria-label={`${label} table controls`}>
-      <div className="dashboard-table-filters">
+    <>
+      <div className="dashboard-table-toolbar" aria-label={`${label} table controls`}>
+        <div className="dashboard-table-filters">
         <label className="dashboard-table-search">
           <span className="sr-only">Search {label}</span>
           <Search size={16} aria-hidden="true" />
@@ -115,21 +117,23 @@ export function DashboardTableToolbar({
           <span>To</span>
           <input type="date" value={table.endDate} onChange={event => table.setEndDate(event.target.value)} />
         </label>
+        </div>
+        <div className="dashboard-table-actions">
+          <button
+            type="button"
+            className="dashboard-export-btn"
+            onClick={onExport}
+            disabled={exporting}
+            aria-label={`Export filtered ${label} as CSV`}
+          >
+            <Download size={15} aria-hidden="true" />
+            {exporting ? 'Exporting…' : 'Export CSV'}
+          </button>
+          {children}
+        </div>
       </div>
-      <div className="dashboard-table-actions">
-        <button
-          type="button"
-          className="dashboard-export-btn"
-          onClick={onExport}
-          disabled={exporting}
-          aria-label={`Export filtered ${label} as CSV`}
-        >
-          <Download size={15} aria-hidden="true" />
-          {exporting ? 'Exporting…' : 'Export CSV'}
-        </button>
-        {children}
-      </div>
-    </div>
+      {exportError && <div className="dashboard-inline-error" role="alert">{exportError}</div>}
+    </>
   )
 }
 

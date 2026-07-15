@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -36,7 +36,6 @@ class PredictionRequest(BaseModel):
     requested_credit_amount: int = Field(default=3000, ge=0)
     farmer_id: str | None = None
     cooperative_id: str | None = None
-    actor_id: str | None = None
 
 
 @router.get("/api/farmers")
@@ -151,7 +150,7 @@ def predict_creditworthiness(
             "cooperative_id": (
                 str(scoped_id)
             ),
-            "actor_id": str(current_user.id) if current_user is not None else payload.actor_id,
+            "actor_id": str(current_user.id) if current_user is not None else None,
         },
         db=db,
     )

@@ -10,7 +10,7 @@ const rows = Array.from({ length: 12 }, (_, index) => ({
   created_at: `2026-07-${String(index + 1).padStart(2, '0')}T10:00:00Z`,
 }))
 
-function Harness({ onExport = () => {} }) {
+function Harness({ onExport = () => {}, unrelatedValue = '' }) {
   const table = useDashboardTable({
     rows,
     searchableText: row => row.name,
@@ -28,6 +28,7 @@ function Harness({ onExport = () => {} }) {
         ]}
         onExport={() => onExport(table.exportFilters)}
       />
+      <div data-testid="unrelated">{unrelatedValue}</div>
       <div data-testid="rows">{table.pageRows.map(row => row.name).join(',')}</div>
       <DashboardPagination label="Members" table={table} />
     </>
@@ -69,5 +70,16 @@ describe('DashboardTableTools', () => {
     expect(screen.getByRole('searchbox', { name: 'Search Members' }).value).toBe('Special')
     expect(screen.getByRole('combobox', { name: 'Filter Members by status' }).value).toBe('inactive')
     expect(screen.getByTestId('rows').textContent).toBe('Special Farmer')
+  })
+
+  it('keeps the current page after an unrelated rerender', () => {
+    const { rerender } = render(<Harness unrelatedValue="before" />)
+    fireEvent.click(screen.getByRole('button', { name: 'Next Members page' }))
+    expect(screen.getByText('Showing 11–12 of 12')).toBeTruthy()
+
+    rerender(<Harness unrelatedValue="after" />)
+
+    expect(screen.getByTestId('unrelated').textContent).toBe('after')
+    expect(screen.getByText('Showing 11–12 of 12')).toBeTruthy()
   })
 })

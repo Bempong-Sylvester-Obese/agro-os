@@ -23,7 +23,12 @@ def upgrade() -> None:
         sa.Column("resource_type", sa.String(), nullable=True),
         sa.Column("resource_id", sa.String(), nullable=True),
         sa.Column("details", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(), nullable=True),
+        sa.Column(
+            "created_at",
+            sa.DateTime(),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
         sa.ForeignKeyConstraint(["cooperative_id"], ["cooperatives.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -34,8 +39,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_admin_audit_logs_created_at", table_name="admin_audit_logs")
-    op.drop_index("ix_admin_audit_logs_action", table_name="admin_audit_logs")
-    op.drop_index("ix_admin_audit_logs_cooperative_id", table_name="admin_audit_logs")
-    op.drop_index("ix_admin_audit_logs_id", table_name="admin_audit_logs")
-    op.drop_table("admin_audit_logs")
+    # Startup metadata may have created this table before Alembic adopted it.
+    # Dropping it would risk deleting audit history not owned by this revision.
+    pass

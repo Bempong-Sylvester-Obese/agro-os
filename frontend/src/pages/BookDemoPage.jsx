@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import {
   ArrowRight,
   Building2,
@@ -18,6 +18,7 @@ import { useSearchParams } from 'react-router-dom'
 import Footer from '../components/Footer'
 import { Reveal } from '../components/Motion'
 import { useAppNavigate } from '../hooks/useAppNavigate'
+import { createDemoBooking } from '../api/demoBookings'
 
 const TIMES = ['09:00', '10:00', '11:00', '12:00', '14:00', '15:00', '16:00']
 const TOPICS = [
@@ -57,7 +58,7 @@ function calendarStamp(date) {
 export default function BookDemoPage() {
   const setPage = useAppNavigate()
   const [searchParams] = useSearchParams()
-  const enterpriseEnquiry = searchParams.get('plan') === 'enterprise'
+  const enterpriseEnquiry = searchParams.get('plan') === 'enterprise' || searchParams.get('enterprise') === 'true'
   const requestedTopic = searchParams.get('topic')
   const [minimumDate] = useState(() => {
     const date = new Date()
@@ -91,7 +92,7 @@ export default function BookDemoPage() {
     setError('')
   }
 
-  function submitRequest(event) {
+  async function submitRequest(event) {
     event.preventDefault()
     if (submitting) return
     if (!form.name.trim() || !form.email.trim() || !form.cooperative.trim()) {
@@ -112,20 +113,27 @@ export default function BookDemoPage() {
     }
 
     setSubmitting(true)
-    const reference = `AGO-${selectedDate.replaceAll('-', '').slice(2)}-${selectedTime.replace(':', '')}`
-    const request = { ...form, selectedDate, selectedTime, reference }
-
-    window.setTimeout(() => {
-      setConfirmation(request)
-      setSubmitting(false)
+    setError('')
+    try {
+      const booking = await createDemoBooking({
+        ...form,
+        selected_date: selectedDate,
+        selected_time: selectedTime,
+        is_enterprise: enterpriseEnquiry,
+      })
+      setConfirmation(booking)
       window.scrollTo({ top: 0, behavior: 'smooth' })
-    }, 500)
+    } catch (err) {
+      setError(err.message || 'We could not save your request. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   function downloadCalendarInvite() {
     if (!confirmation) return
-    const [year, month, day] = confirmation.selectedDate.split('-').map(Number)
-    const [hour, minute] = confirmation.selectedTime.split(':').map(Number)
+    const [year, month, day] = confirmation.selected_date.split('-').map(Number)
+    const [hour, minute] = confirmation.selected_time.split(':').map(Number)
     const start = new Date(Date.UTC(year, month - 1, day, hour, minute))
     const finish = new Date(start.getTime() + 30 * 60 * 1000)
     const description = `AgroOS platform consultation for ${confirmation.cooperative}. Focus: ${confirmation.topic}.`
@@ -147,7 +155,7 @@ export default function BookDemoPage() {
     const url = window.URL.createObjectURL(new window.Blob([invite], { type: 'text/calendar;charset=utf-8' }))
     const link = document.createElement('a')
     link.href = url
-    link.download = `agroos-demo-${confirmation.selectedDate}.ics`
+    link.download = `agroos-demo-${confirmation.selected_date}.ics`
     link.click()
     window.URL.revokeObjectURL(url)
   }
@@ -170,11 +178,11 @@ export default function BookDemoPage() {
             <div className="demo-confirmation">
               <div>
                 <span>Date</span>
-                <strong>{formatDate(confirmation.selectedDate, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</strong>
+                <strong>{formatDate(confirmation.selected_date, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</strong>
               </div>
               <div>
                 <span>Time</span>
-                <strong>{formatTime(confirmation.selectedTime)} GMT</strong>
+                <strong>{formatTime(confirmation.selected_time)} GMT</strong>
               </div>
               <div>
                 <span>Reference</span>

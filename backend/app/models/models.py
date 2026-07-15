@@ -15,11 +15,11 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    func,
 )
 from sqlalchemy.orm import relationship
 
 from app.database.db import Base
-
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -74,6 +74,7 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     role = Column(String, default="admin")
     is_active = Column(Boolean, default=True, nullable=False)
+    onboarding_role = Column(String, nullable=True)
     cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -97,6 +98,7 @@ class Cooperative(Base):
     description = Column(Text, nullable=True)
     location = Column(String, nullable=True)
     currency = Column(String, default="GHS")
+    subscription_plan = Column(String, default="starter", nullable=False)
     # Moolre wallet that holds cooperative funds
     moolre_account_number = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -449,4 +451,45 @@ class AdminAuditLog(Base):
     resource_type = Column(String, nullable=True)
     resource_id = Column(String, nullable=True)
     details = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        server_default=func.now(),
+        nullable=False,
+        index=True,
+    )
+
+
+class AdminActionConfirmation(Base):
+    """Single-use confirmation for a sensitive administrator action."""
+
+    __tablename__ = "admin_action_confirmations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    token_id = Column(String, unique=True, nullable=False, index=True)
+    cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    action = Column(String, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, server_default=func.now(), nullable=False)
+
+
+class DemoBooking(Base):
+    """Persisted marketing consultation request."""
+
+    __tablename__ = "demo_bookings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    reference = Column(String, unique=True, nullable=False, index=True)
+    name = Column(String, nullable=False)
+    email = Column(String, nullable=False, index=True)
+    phone = Column(String, nullable=True)
+    cooperative = Column(String, nullable=False)
+    size = Column(String, nullable=False)
+    topic = Column(String, nullable=False)
+    notes = Column(Text, nullable=True)
+    selected_date = Column(Date, nullable=False, index=True)
+    selected_time = Column(String, nullable=False)
+    is_enterprise = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, server_default=func.now(), nullable=False)

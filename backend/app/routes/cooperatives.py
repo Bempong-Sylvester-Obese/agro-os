@@ -3,12 +3,20 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.constants import MAX_PAGE_SIZE
 from app.config import get_settings
+from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.models.models import AdminAuditLog, Cooperative, User
-from app.schemas.schemas import CooperativeCreate, CooperativeResponse, CooperativeUpdate
-from app.services.auth_service import enforce_cooperative_scope, get_current_user, require_roles
+from app.schemas.schemas import (
+    CooperativeCreate,
+    CooperativeResponse,
+    CooperativeUpdate,
+)
+from app.services.auth_service import (
+    enforce_cooperative_scope,
+    get_current_user,
+    require_roles,
+)
 
 router = APIRouter(prefix="/cooperatives", tags=["cooperatives"])
 
@@ -77,7 +85,7 @@ def update_cooperative(
         db.add(
             AdminAuditLog(
                 cooperative_id=coop.id,
-                actor_id=current_user.email,
+                actor_id=str(current_user.id),
                 action="settings.updated",
                 resource_type="cooperative",
                 resource_id=str(coop.id),

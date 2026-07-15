@@ -1,5 +1,7 @@
 /** Shimmer skeleton primitives for dashboard loading states. */
 
+import React from 'react'
+
 export function Skeleton({ width = '100%', height = 14, radius = 6, style = {}, className = '' }) {
   return (
     <span

@@ -1,5 +1,7 @@
-from pydantic import BaseModel, EmailStr
 from typing import Literal, Optional
+
+from pydantic import BaseModel, EmailStr, Field
+
 
 class UserCreate(BaseModel):
     email: EmailStr
@@ -15,6 +17,7 @@ class UserResponse(BaseModel):
     email: EmailStr
     role: str
     is_active: bool = True
+    onboarding_role: str | None = None
     cooperative_id: int | None = None
 
     class Config:
@@ -37,9 +40,13 @@ class SignupRequest(BaseModel):
     cooperative_name: str
     location: Optional[str] = None
     member_count: Optional[int] = None  # stored as cooperative description hint
+    subscription_plan: Literal["starter", "growth"] = "starter"
+    onboarding_role: str | None = Field(default=None, max_length=80)
 
 class SignupResponse(BaseModel):
     access_token: str
     token_type: str
     cooperative_id: int
     cooperative_name: str
+    subscription_plan: Literal["starter", "growth"]
+    onboarding_role: str | None = None

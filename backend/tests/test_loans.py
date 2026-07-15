@@ -3,7 +3,7 @@
 from contextlib import contextmanager
 from unittest.mock import AsyncMock, patch
 
-from app.models.models import Transaction, TransactionStatus, TransactionType
+from app.models.models import Loan, Transaction, TransactionStatus, TransactionType
 from app.routes.loans import _disburse_external_ref
 from app.services.moolre_service import MoolreService
 
@@ -250,6 +250,32 @@ def test_reconcile_failed_disbursement_enables_cancel_and_retry(client, farmer):
     assert resp.json()["payout_status"] == "failed"
     assert resp.json()["can_cancel"] is True
     assert resp.json()["can_retry"] is True
+
+
+def test_disbursement_status_preserves_completed_payout(client, db, farmer):
+    loan_id = client.post(
+        "/loans/",
+        json={"farmer_id": farmer["id"], "amount": 250.0},
+    ).json()["id"]
+    client.post(f"/loans/{loan_id}/approve", json={"approved_by": "Admin"})
+    db.add(
+        Transaction(
+            farmer_id=farmer["id"],
+            transaction_type=TransactionType.payout,
+            amount=250.0,
+            status=TransactionStatus.completed,
+            moolre_transfer_ref="COMPLETED-PAYOUT",
+            description=f"Loan disbursement #{loan_id}",
+        )
+    )
+    db.commit()
+
+    response = client.get(f"/loans/{loan_id}/disbursement-status")
+
+    assert response.status_code == 200
+    assert response.json()["loan_status"] == "disbursed"
+    assert response.json()["payout_status"] == "completed"
+    assert db.query(Loan).filter(Loan.id == loan_id).one().status.value == "disbursed"
 
 
 def test_disburse_loan(client, farmer):
