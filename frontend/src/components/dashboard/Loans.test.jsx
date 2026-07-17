@@ -54,11 +54,17 @@ describe('Loans operations', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
     expect(loansApi.approveLoan).not.toHaveBeenCalled()
 
-    const dialog = screen.getByRole('dialog', { name: 'Approve loan?' })
+    const dialog = screen.getByRole('dialog', { name: 'Approve loan' })
     expect(dialog.getAttribute('aria-modal')).toBe('true')
-    fireEvent.change(screen.getByLabelText('Repayment due date'), {
-      target: { value: '2026-09-01' },
-    })
+    const repaymentInput = screen.getByLabelText('Repayment due date')
+    expect(repaymentInput.getAttribute('min')).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+
+    fireEvent.change(repaymentInput, { target: { value: '2020-01-01' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Approve loan' }))
+    expect(screen.getByRole('alert').textContent).toContain('future repayment due date')
+    expect(loansApi.approveLoan).not.toHaveBeenCalled()
+
+    fireEvent.change(repaymentInput, { target: { value: '2026-09-01' } })
     fireEvent.click(screen.getByRole('button', { name: 'Approve loan' }))
 
     await waitFor(() => expect(loansApi.approveLoan).toHaveBeenCalledWith(12, '2026-09-01'))
@@ -92,7 +98,7 @@ describe('Loans operations', () => {
     expect(screen.queryByRole('button', { name: /collect repayment/i })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Send reminder' }))
     fireEvent.click(
-      screen.getByRole('dialog', { name: 'Send repayment reminder?' })
+      screen.getByRole('dialog', { name: 'Send repayment reminder' })
         .querySelector('button[type="submit"]'),
     )
 
@@ -119,7 +125,7 @@ describe('Loans operations', () => {
     expect(screen.queryByRole('button', { name: 'Disburse' })).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
-    expect(screen.getByRole('dialog', { name: 'Cancel loan?' })).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: 'Cancel loan' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Cancel loan' }))
     expect(screen.getByRole('alert').textContent).toContain('Enter a cancellation reason')
     expect(loansApi.cancelLoan).not.toHaveBeenCalled()

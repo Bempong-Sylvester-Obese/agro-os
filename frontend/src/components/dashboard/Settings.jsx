@@ -6,6 +6,7 @@ import { updateCooperative } from '../../api/cooperatives'
 import { formatTransportError } from '../../api/config'
 import { SettingsSkeleton } from './DashboardSkeleton'
 import GovernanceSettings from './GovernanceSettings'
+import DashboardModal, { ModalField } from './DashboardModal'
 
 const RESET_COUNT_LABELS = {
   memberships: 'Farmer memberships',
@@ -53,13 +54,9 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
 
   useEffect(() => {
     if (!resetDialogOpen) return undefined
-    resetInputRef.current?.focus()
-    const handleKeyDown = (event) => {
-      if (event.key === 'Escape' && !resetting) setResetDialogOpen(false)
-    }
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [resetDialogOpen, resetting])
+    const focusFrame = requestAnimationFrame(() => resetInputRef.current?.focus())
+    return () => cancelAnimationFrame(focusFrame)
+  }, [resetDialogOpen])
 
   if (loading) return <SettingsSkeleton />
 
@@ -270,84 +267,67 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
       </section>
 
       {resetDialogOpen && resetPreview && (
-        <div
-          style={{
-            position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15, 23, 42, 0.55)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
-          }}
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !resetting) setResetDialogOpen(false)
-          }}
+        <DashboardModal
+          title="Confirm demo data reset"
+          subtitle={`These records will be permanently removed. This preview expires in ${resetPreview.expires_in_seconds} seconds.`}
+          onClose={() => setResetDialogOpen(false)}
+          label="Confirm demo data reset"
+          wide
+          closeOnBackdrop={!resetting}
+          closeDisabled={resetting}
+          as="form"
+          bodyProps={{ onSubmit: handleConfirmReset }}
         >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="demo-reset-dialog-title"
-            aria-describedby="demo-reset-dialog-description"
-            style={{
-              background: '#fff', width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto',
-              borderRadius: 12, boxShadow: '0 24px 64px rgba(15, 23, 42, 0.28)', padding: 28,
-            }}
-          >
-            <h2 id="demo-reset-dialog-title" className="serif" style={{ margin: 0, fontSize: 21, color: '#991B1B' }}>
-              Confirm demo data reset
-            </h2>
-            <p id="demo-reset-dialog-description" style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--muted)' }}>
-              The following records will be permanently removed. The preview and confirmation token expire in
-              {` ${resetPreview.expires_in_seconds} seconds`}.
-            </p>
-
-            <dl style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '8px 20px', margin: '18px 0' }}>
+          <div className="dashboard-modal-body">
+            <dl className="dashboard-modal-count-list">
               {Object.entries(RESET_COUNT_LABELS).map(([key, label]) => (
-                <div key={key} style={{ display: 'contents' }}>
-                  <dt style={{ fontSize: 13, color: 'var(--muted)' }}>{label}</dt>
-                  <dd style={{ margin: 0, fontSize: 13, fontWeight: 700 }}>{resetPreview[key] ?? 0}</dd>
-                </div>
+                <React.Fragment key={key}>
+                  <dt>{label}</dt>
+                  <dd>{resetPreview[key] ?? 0}</dd>
+                </React.Fragment>
               ))}
             </dl>
 
-            <form onSubmit={handleConfirmReset}>
-              <label htmlFor="demo-reset-confirmation" style={labelStyle}>
-                Type <strong>{resetPreview.confirmation_phrase}</strong> to confirm
-              </label>
+            <ModalField
+              htmlFor="demo-reset-confirmation"
+              label={<>Type <strong>{resetPreview.confirmation_phrase}</strong> to confirm</>}
+            >
               <input
                 ref={resetInputRef}
                 id="demo-reset-confirmation"
-                style={inputStyle}
+                className="dashboard-modal-input"
                 type="text"
                 value={resetPhrase}
                 onChange={(event) => setResetPhrase(event.target.value)}
                 autoComplete="off"
                 disabled={resetting}
               />
-              {resetError && (
-                <div role="alert" style={{ color: '#991B1B', fontSize: 13, marginTop: 12 }}>
-                  {resetError}
-                </div>
-              )}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 24 }}>
-                <button
-                  type="button"
-                  onClick={() => setResetDialogOpen(false)}
-                  disabled={resetting}
-                  style={{ padding: '10px 16px', borderRadius: 8, border: '1px solid var(--border)', background: '#fff' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={resetting || resetPhrase !== resetPreview.confirmation_phrase}
-                  style={{
-                    padding: '10px 16px', borderRadius: 8, border: 0, background: '#B91C1C', color: '#fff',
-                    fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 8,
-                  }}
-                >
-                  {resetting ? <><Loader2 size={16} className="spin" /> Resetting...</> : 'Reset demo data'}
-                </button>
-              </div>
-            </form>
+            </ModalField>
+
+            {resetError && (
+              <div role="alert" className="dashboard-form-error">{resetError}</div>
+            )}
+
+            <div className="dashboard-modal-actions">
+              <button
+                type="button"
+                className="dashboard-modal-btn-secondary"
+                onClick={() => setResetDialogOpen(false)}
+                disabled={resetting}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn-lg"
+                disabled={resetting || resetPhrase !== resetPreview.confirmation_phrase}
+                style={{ background: '#B91C1C' }}
+              >
+                {resetting ? <><Loader2 size={16} className="spin" /> Resetting…</> : 'Reset demo data'}
+              </button>
+            </div>
           </div>
-        </div>
+        </DashboardModal>
       )}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } } .spin { animation: spin 1s linear infinite; }`}</style>
     </div>

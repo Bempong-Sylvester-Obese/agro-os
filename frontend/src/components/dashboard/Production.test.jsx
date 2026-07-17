@@ -44,7 +44,7 @@ describe('unified production dashboard', () => {
     fireEvent.change(screen.getByLabelText('Production type'), { target: { value: 'animal' } })
     expect(screen.getByLabelText('Animal product')).toBeTruthy()
     fireEvent.change(screen.getByLabelText('Animal product'), { target: { value: 'Eggs' } })
-    fireEvent.change(screen.getByLabelText('Activity / output'), { target: { value: 'Egg collection' } })
+    fireEvent.change(screen.getByLabelText('Activity'), { target: { value: 'Egg collection' } })
     fireEvent.change(screen.getByLabelText('Expected output'), { target: { value: '30' } })
     fireEvent.change(screen.getByLabelText('Actual output'), { target: { value: '24' } })
     fireEvent.change(screen.getByLabelText('Unit'), { target: { value: 'crates' } })
@@ -71,6 +71,12 @@ describe('unified production dashboard', () => {
 
     expect(screen.queryByLabelText('Production type')).toBeNull()
     expect(screen.getByLabelText('Crop product')).toBeTruthy()
+  })
+
+  it('renders recorded and planned status filters', () => {
+    render(<Production farmers={farmers} productions={[]} cooperativeId={1} loading={false} />)
+    expect(screen.getByRole('option', { name: 'Recorded' })).toBeTruthy()
+    expect(screen.getByRole('option', { name: 'Planned' })).toBeTruthy()
   })
 
   it('keeps unit totals separate and displays legacy crop records', () => {
