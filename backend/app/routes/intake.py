@@ -13,6 +13,7 @@ from app.models.models import (
     CooperativeMembership,
     IntakeStatus,
     ProduceIntake,
+    ProductionFocus,
     User,
 )
 from app.schemas.market import IntakeCreate, IntakeResponse, IntakeReview
@@ -52,6 +53,11 @@ def create_intake(
     )
     if not membership:
         raise HTTPException(status_code=404, detail="Membership not found")
+    if membership.production_focus == ProductionFocus.animal:
+        raise HTTPException(
+            status_code=409,
+            detail="Produce intake is crop-only and unavailable to animal-only members",
+        )
     intake = ProduceIntake(
         cooperative_id=cooperative_id,
         membership_id=payload.membership_id,

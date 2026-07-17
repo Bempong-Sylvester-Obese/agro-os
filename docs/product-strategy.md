@@ -13,15 +13,15 @@ The first users are cooperative administrators who manage large groups of farmer
 Example cooperative segments:
 
 - Large cocoa cooperatives handling high-volume member records and payouts.
-- Mid-sized farmer unions managing loans, crop production, and dues.
+- Livestock, poultry, and mixed-producer groups managing loans, output, and dues.
 - Certified producer groups that need traceability, compliance records, and direct market visibility.
 
 ## Core Modules
 
-- Member Management: farmer profiles, location, crop type, acreage, cooperative standing, and membership status.
+- Member Management: farmer profiles, location, crop/animal/mixed focus, production scale, cooperative standing, and membership status.
 - Finance Hub: cooperative-defined dues obligations and reminders, farmer-initiated payments, loan disbursement, and transaction tracking.
 - Communication: SMS announcements for dues reminders, meetings, weather alerts, and payment notifications.
-- Production Tracking: expected harvest, actual harvest, crop type, acreage, and yield history.
+- Production Tracking: unit-aware expected and actual output for crop and animal activities.
 - AgroCredit: trust score generation from alternative cooperative data.
 - USSD Access: feature-phone access for farmers without smartphones or reliable internet.
 
@@ -47,7 +47,7 @@ The first MVP should use a transparent scoring formula before introducing a trai
 Primary inputs:
 
 - Dues payment consistency: high importance because it reflects financial discipline.
-- Historical crop yields: high importance because it indicates production capacity and repayment potential.
+- Historical production completion and output: high importance because they indicate production capacity and repayment potential.
 - Cooperative attendance: medium importance because it signals engagement and access to training.
 
 ## USSD Menu Concept
@@ -76,6 +76,10 @@ Select option: _
 
 AgroOS replaces the spreadsheet handoff between collection centres, finance
 officers, and cooperative leadership:
+
+This commerce workflow remains crop-only in the current release. Unified animal
+and mixed production records contribute to member operations and scoring, but
+animal intake, aggregation, buyer sales, and settlement are not yet supported.
 
 1. Staff weigh, grade, and accept each farmer delivery.
 2. Accepted deliveries are grouped into a traceable aggregation batch.

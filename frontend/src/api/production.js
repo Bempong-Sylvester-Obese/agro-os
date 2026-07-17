@@ -1,22 +1,33 @@
 import { API_URL, apiFetch, authHeaders, fetchJson } from './config'
 
-export async function fetchProductions(cooperativeId = null) {
-  const qs = cooperativeId ? `?cooperative_id=${cooperativeId}&limit=100` : '?limit=100'
+export async function fetchProductions(cooperativeId = null, productionKind = null) {
+  const params = new URLSearchParams({ limit: '100' })
+  if (cooperativeId) params.set('cooperative_id', cooperativeId)
+  if (productionKind) params.set('production_kind', productionKind)
+  const qs = `?${params.toString()}`
   return fetchJson(`${API_URL}/production/${qs}`, {
     headers: authHeaders(),
   })
 }
 
-export async function logProduction(farmerId, cropType, expectedKg, quantityKg, harvestDate) {
+export function buildProductionPayload(values) {
+  return {
+    farmer_id: parseInt(values.farmerId, 10),
+    production_kind: values.productionKind,
+    product_name: values.productName.trim(),
+    activity: values.activity,
+    unit: values.unit,
+    expected_quantity: parseFloat(values.expectedQuantity),
+    quantity: parseFloat(values.quantity),
+    production_date: values.productionDate,
+  }
+}
+
+export async function logProduction(values) {
   const res = await apiFetch(`${API_URL}/production/`, {
     method: 'POST',
     headers: authHeaders(true),
-    body: JSON.stringify({
-      farmer_id: parseInt(farmerId, 10),
-      crop_type: cropType,
-      expected_kg: parseFloat(expectedKg),
-      quantity_kg: parseFloat(quantityKg),
-    }),
+    body: JSON.stringify(buildProductionPayload(values)),
   })
 
   if (!res.ok) {
@@ -24,20 +35,5 @@ export async function logProduction(farmerId, cropType, expectedKg, quantityKg, 
     throw new Error(data.detail || 'Failed to log production')
   }
 
-  const record = await res.json()
-
-  if (harvestDate) {
-    const updateRes = await apiFetch(`${API_URL}/production/${record.id}`, {
-      method: 'PUT',
-      headers: authHeaders(true),
-      body: JSON.stringify({ harvest_date: harvestDate }),
-    })
-    if (!updateRes.ok) {
-      const data = await updateRes.json().catch(() => ({}))
-      throw new Error(data.detail || 'Production saved but harvest date could not be set')
-    }
-    return updateRes.json()
-  }
-
-  return record
+  return res.json()
 }

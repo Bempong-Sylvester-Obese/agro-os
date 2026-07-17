@@ -132,6 +132,32 @@ def _calculate(client, cooperative_id: int, sale_id: int):
     return response.json()
 
 
+def test_crop_intake_rejects_animal_only_member(client, cooperative):
+    member = client.post(
+        "/farmers/",
+        json={
+            "name": "Animal Only",
+            "phone": "+233551000088",
+            "cooperative_id": cooperative["id"],
+            "production_focus": "animal",
+            "animal_type": "Cattle",
+        },
+    ).json()
+
+    response = client.post(
+        "/intakes/",
+        json={
+            "cooperative_id": cooperative["id"],
+            "membership_id": member["id"],
+            "crop_type": "Maize",
+            "quantity_kg": "10.000",
+        },
+    )
+
+    assert response.status_code == 409
+    assert "crop-only" in response.json()["detail"]
+
+
 def test_states_verified_funds_gate_and_exact_arithmetic(
     client, cooperative, farmer
 ):

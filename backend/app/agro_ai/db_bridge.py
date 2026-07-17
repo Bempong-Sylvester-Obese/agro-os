@@ -11,6 +11,8 @@ from app.agro_ai.model import AgroAiCreditModel
 from app.agro_ai.synthetic_data import DEMO_FARMERS
 from app.models.models import (
     CooperativeMembership as Farmer,
+)
+from app.models.models import (
     Transaction,
     TransactionStatus,
     TransactionType,
@@ -36,6 +38,20 @@ def _dues_status(farmer: Farmer, db: Session) -> str:
     return "Paid"
 
 
+def _production_label(farmer: Farmer) -> str:
+    """Return a unified production label through the legacy `crop` field."""
+    raw_focus = getattr(farmer, "production_focus", "")
+    focus = str(getattr(raw_focus, "value", raw_focus) or "").lower()
+    crop = farmer.crop_type
+    animal = getattr(farmer, "animal_type", None)
+    if focus == "animal":
+        return animal or "Animal production"
+    if focus == "mixed":
+        products = [value for value in (crop, animal) if value]
+        return " + ".join(products) or "Mixed production"
+    return crop or animal or "Mixed production"
+
+
 def farmer_to_assessment_input(farmer: Farmer, db: Session) -> dict[str, Any]:
     features = extract_features_from_farmer(farmer, db)
     return {
@@ -44,7 +60,9 @@ def farmer_to_assessment_input(farmer: Farmer, db: Session) -> dict[str, Any]:
         "name": farmer.name,
         "phone": farmer.phone,
         "region": farmer.location or "Ghana",
-        "crop": farmer.crop_type or "Mixed",
+        # `crop` is retained because the v1 assessment response contract is
+        # consumed by the current dashboard; its value now describes any focus.
+        "crop": _production_label(farmer),
         "dues_status": _dues_status(farmer, db),
         "requested_credit_amount": 3500,
         "previous_score": int(round(farmer.trust_score or 0)),

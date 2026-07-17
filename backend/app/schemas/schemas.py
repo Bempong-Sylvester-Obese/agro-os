@@ -3,11 +3,13 @@
 from datetime import date, datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.models.models import (
     LoanStatus,
     MembershipStatus,
+    ProductionFocus,
+    ProductionKind,
     TransactionStatus,
     TransactionType,
 )
@@ -57,7 +59,10 @@ class FarmerBase(BaseModel):
     email: Optional[str] = None
     location: Optional[str] = None
     crop_type: Optional[str] = None
-    acreage: Optional[float] = None
+    acreage: Optional[float] = Field(default=None, ge=0)
+    production_focus: ProductionFocus = ProductionFocus.crop
+    animal_type: Optional[str] = None
+    animal_scale: Optional[float] = Field(default=None, ge=0)
     cooperative_id: int
 
 
@@ -71,7 +76,10 @@ class FarmerUpdate(BaseModel):
     email: Optional[str] = None
     location: Optional[str] = None
     crop_type: Optional[str] = None
-    acreage: Optional[float] = None
+    acreage: Optional[float] = Field(default=None, ge=0)
+    production_focus: Optional[ProductionFocus] = None
+    animal_type: Optional[str] = None
+    animal_scale: Optional[float] = Field(default=None, ge=0)
     membership_status: Optional[MembershipStatus] = None
     cooperative_id: Optional[int] = None
 
@@ -276,13 +284,64 @@ class LoanReminderResponse(BaseModel):
 
 class ProductionBase(BaseModel):
     farmer_id: int
-    crop_type: str
+    production_kind: ProductionKind = ProductionKind.crop
+    product_name: Optional[str] = None
+    activity: Optional[str] = None
+    unit: str = Field(default="kg", min_length=1, max_length=50)
+    expected_quantity: Optional[float] = Field(default=None, ge=0)
+    quantity: Optional[float] = Field(default=None, ge=0)
+    production_date: Optional[datetime] = None
+    crop_type: Optional[str] = None
     season: Optional[str] = None
-    expected_kg: Optional[float] = None
+    expected_kg: Optional[float] = Field(default=None, ge=0)
     planted_date: Optional[datetime] = None
-    quantity_kg: Optional[float] = None
+    quantity_kg: Optional[float] = Field(default=None, ge=0)
     quality_grade: Optional[str] = None
     notes: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def map_legacy_crop_fields(cls, value):
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        kind = data.get("production_kind", ProductionKind.crop)
+        kind_value = kind.value if isinstance(kind, ProductionKind) else kind
+        product_name = data.get("product_name") or data.get("crop_type")
+        if not product_name:
+            raise ValueError(
+                "product_name is required (legacy crop_type is also accepted)"
+            )
+        data["product_name"] = product_name
+        if kind_value == ProductionKind.crop.value:
+            crop_type = data.get("crop_type")
+            if crop_type and crop_type != product_name:
+                raise ValueError(
+                    "crop_type and product_name must match for crop production"
+                )
+            data["crop_type"] = product_name
+        elif data.get("crop_type"):
+            raise ValueError("crop_type is only valid for crop production")
+        if not data.get("unit"):
+            data["unit"] = "kg"
+        if (
+            data.get("expected_quantity") is None
+            and data.get("expected_kg") is not None
+        ):
+            data["expected_quantity"] = data["expected_kg"]
+        if data.get("quantity") is None and data.get("quantity_kg") is not None:
+            data["quantity"] = data["quantity_kg"]
+        if str(data["unit"]).lower() == "kg":
+            if (
+                data.get("expected_kg") is None
+                and data.get("expected_quantity") is not None
+            ):
+                data["expected_kg"] = data["expected_quantity"]
+            if data.get("quantity_kg") is None and data.get("quantity") is not None:
+                data["quantity_kg"] = data["quantity"]
+        if data.get("production_date") is None and data.get("planted_date") is not None:
+            data["production_date"] = data["planted_date"]
+        return data
 
 
 class ProductionCreate(ProductionBase):
@@ -290,10 +349,20 @@ class ProductionCreate(ProductionBase):
 
 
 class ProductionUpdate(BaseModel):
+    production_kind: Optional[ProductionKind] = None
+    product_name: Optional[str] = None
+    activity: Optional[str] = None
+    unit: Optional[str] = Field(default=None, min_length=1, max_length=50)
+    expected_quantity: Optional[float] = Field(default=None, ge=0)
+    quantity: Optional[float] = Field(default=None, ge=0)
+    production_date: Optional[datetime] = None
+    crop_type: Optional[str] = None
+    planted_date: Optional[datetime] = None
     harvest_date: Optional[datetime] = None
-    quantity_kg: Optional[float] = None
+    quantity_kg: Optional[float] = Field(default=None, ge=0)
     quality_grade: Optional[str] = None
-    expected_kg: Optional[float] = None
+    expected_kg: Optional[float] = Field(default=None, ge=0)
+    season: Optional[str] = None
     notes: Optional[str] = None
 
 
@@ -310,6 +379,9 @@ class ProductionResponse(ProductionBase):
 class ProductionSummary(BaseModel):
     farmer_id: int
     total_productions: int
+    completed_productions: int
+    totals_by_unit: dict[str, float]
+    production_completion_rate: float
     total_kg_harvested: float
     harvest_completion_rate: float  # % of productions that have a harvest date
 

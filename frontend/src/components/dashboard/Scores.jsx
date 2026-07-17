@@ -5,6 +5,7 @@ import { exportDashboardReport } from '../../api/reports'
 import { RefreshCw, Loader2 } from 'lucide-react'
 import { ScoresSkeleton, Skeleton } from './DashboardSkeleton'
 import { DashboardPagination, DashboardTableToolbar, useDashboardTable } from './DashboardTableTools'
+import { memberProductionDescription, productionFocus, productionFocusLabel } from '../../utils/production'
 
 const scoreTier = (score) => {
   if (score >= 82) return 'sh'
@@ -76,8 +77,7 @@ function ScoreDetail({ farmer }) {
           <div className="pt-id">#{farmer.id} · {farmer.location || 'Unknown location'}</div>
           <div className="score-detail-name serif">{farmer.name}</div>
           <div className="score-detail-sub">
-            {farmer.crop_type || 'No crop type'} farmer
-            {farmer.acreage ? ` · ${farmer.acreage} acres` : ''}
+            {productionFocusLabel(productionFocus(farmer))} production · {memberProductionDescription(farmer)}
           </div>
         </div>
         <span className={`score-bdg score-bdg-lg ${scoreTier(score)}`}>{score || '—'}</span>
@@ -164,7 +164,7 @@ export default function Scores({ farmers = [], cooperativeId, loading }) {
     [farmers],
   )
   const searchableText = useCallback(
-    farmer => `${farmer.name} ${farmer.phone || ''} ${farmer.location || ''} ${farmer.crop_type || ''}`,
+    farmer => `${farmer.name} ${farmer.phone || ''} ${farmer.location || ''} ${productionFocusLabel(productionFocus(farmer))} ${memberProductionDescription(farmer)}`,
     [],
   )
   const statusValue = useCallback(farmer => farmer.trust_score >= 68 ? 'eligible' : 'review', [])
@@ -228,7 +228,7 @@ export default function Scores({ farmers = [], cooperativeId, loading }) {
           </div>
           <div className="table-scroll">
             <div className="sc-head">
-              {['Member', 'Crop', 'Status', 'Score'].map(h => (
+              {['Member', 'Production', 'Status', 'Score'].map(h => (
                 <span key={h} className="pt-lbl">{h}</span>
               ))}
             </div>
@@ -246,7 +246,10 @@ export default function Scores({ farmers = [], cooperativeId, loading }) {
                     <div className="pt-name">{farmer.name}</div>
                     <div className="pt-id">{farmer.location || '—'}</div>
                   </div>
-                  <span className="pt-m" style={{ fontSize: 11 }}>{farmer.crop_type || '—'}</span>
+                  <span className="pt-m" style={{ fontSize: 11 }}>
+                    {productionFocusLabel(productionFocus(farmer))}
+                    <span style={{ display: 'block' }}>{memberProductionDescription(farmer)}</span>
+                  </span>
                   <span className={`bdg ${eligible ? 'bdg-green' : 'bdg-amber'}`}>
                     {eligible ? 'Eligible' : 'Review'}
                   </span>
