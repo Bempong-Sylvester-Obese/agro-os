@@ -38,8 +38,8 @@ export function useAppNavigate() {
       const params = new URLSearchParams()
       const isEnterprise = enterprise || plan === 'enterprise'
       if (isEnterprise) params.set('plan', 'enterprise')
-      if (topic) params.set('topic', topic)
-      else if (isEnterprise) params.set('topic', 'Enterprise implementation')
+      if (isEnterprise) params.set('topic', 'Enterprise implementation')
+      else if (topic) params.set('topic', topic)
       navigate(`/book-demo?${params.toString()}`)
       window.scrollTo({ top: 0, behavior: 'instant' })
       return

@@ -23,7 +23,6 @@ export const MARKETING_PATHS = {
   pricing: '/pricing',
   bookDemo: '/book-demo',
   compliance: '/compliance',
-  investors: '/investors',
 }
 
 export function dashboardPath(section = 'overview') {
