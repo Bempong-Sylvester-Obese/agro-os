@@ -69,10 +69,11 @@ describe('Investor relations page', () => {
     )
 
     const cta = screen.getByRole('link', { name: 'Request investor briefing' })
-    expect(cta.getAttribute('href')).toBe('/book-demo?plan=enterprise&topic=Investor+relations')
+    expect(cta.getAttribute('href')).toBe('/book-demo?plan=enterprise&topic=Enterprise+implementation')
     fireEvent.click(cta)
     expect(screen.getByTestId('location').textContent).toBe(
-      '/book-demo?plan=enterprise&topic=Investor+relations',
+      '/book-demo?plan=enterprise&topic=Enterprise+implementation',
     )
   })
 })
+

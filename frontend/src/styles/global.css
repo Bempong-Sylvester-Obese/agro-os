@@ -909,6 +909,16 @@ button:focus-visible,
 }
 .ir-subnav-link:hover { color: var(--text); border-bottom-color: rgba(26, 71, 49, .25); }
 .ir-content { max-width: 820px; }
+#overview,
+#why-agroos,
+#financials,
+#news-events,
+#governance,
+#resources,
+#contact {
+  scroll-margin-top: 128px;
+}
+
 .ir-disclaimer {
   background: var(--sage);
   border: 1px solid rgba(0, 0, 0, .08);
@@ -931,7 +941,7 @@ button:focus-visible,
   padding: 20px 22px;
 }
 .ir-pillar-title {
-  font-family: 'Fraunces', serif;
+  font-family: Fraunces, serif;
   font-size: 18px;
   font-weight: 700;
   margin: 0 0 8px;
@@ -1068,7 +1078,7 @@ button:focus-visible,
   margin-bottom: 8px;
 }
 .ir-contact-name {
-  font-family: 'Fraunces', serif;
+  font-family: Fraunces, serif;
   font-size: 22px;
   font-weight: 700;
   margin-bottom: 8px;
@@ -1447,6 +1457,15 @@ button:focus-visible,
   .ir-subnav { top: 56px; }
   .ir-subnav-inner { padding-inline: 16px; }
   .ir-archive { display: block; overflow-x: auto; }
+  #overview,
+  #why-agroos,
+  #financials,
+  #news-events,
+  #governance,
+  #resources,
+  #contact {
+    scroll-margin-top: 112px;
+  }
 
   /* Solutions / Pricing Overrides */
   .pricing-grid {

@@ -269,11 +269,11 @@ export default function InvestorRelationsPage() {
             </div>
             <div className="ir-contact-actions">
               <a
-                href="/book-demo?plan=enterprise&topic=Investor+relations"
+                href="/book-demo?plan=enterprise&topic=Enterprise+implementation"
                 className="btn-lg"
                 onClick={(event) => {
                   event.preventDefault()
-                  setPage('bookDemo', { plan: 'enterprise', topic: 'Investor relations' })
+                  setPage('bookDemo', { plan: 'enterprise', topic: 'Enterprise implementation' })
                 }}
               >
                 Request investor briefing
