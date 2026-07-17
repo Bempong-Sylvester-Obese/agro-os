@@ -8,8 +8,11 @@ def test_unified_production_columns_have_migration_compatible_defaults():
     production_columns = Production.__table__.c
 
     assert membership_columns.production_focus.server_default.arg == "crop"
+    assert membership_columns.production_focus.nullable is False
     assert production_columns.production_kind.server_default.arg == "crop"
+    assert production_columns.production_kind.nullable is False
     assert production_columns.unit.server_default.arg == "kg"
+    assert production_columns.unit.nullable is False
     assert production_columns.crop_type.nullable is True
 
 
@@ -160,6 +163,76 @@ def test_crop_member_rejects_animal_production(client, farmer):
         },
     )
     assert response.status_code == 422
+
+
+def test_rejects_kg_aliases_for_non_kg_units(client, cooperative):
+    member = client.post(
+        "/farmers/",
+        json={
+            "name": "Kwame Unit",
+            "phone": "+233551000068",
+            "cooperative_id": cooperative["id"],
+            "production_focus": "animal",
+            "animal_type": "Cattle",
+        },
+    ).json()
+    response = client.post(
+        "/production/",
+        json={
+            "farmer_id": member["id"],
+            "production_kind": "animal",
+            "product_name": "Milk",
+            "unit": "litres",
+            "expected_kg": 40,
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_update_clears_stale_crop_and_kg_aliases_for_animal(client, cooperative):
+    member = client.post(
+        "/farmers/",
+        json={
+            "name": "Ama Switch",
+            "phone": "+233551000069",
+            "cooperative_id": cooperative["id"],
+            "production_focus": "mixed",
+            "crop_type": "Maize",
+            "animal_type": "Goats",
+        },
+    ).json()
+    created = client.post(
+        "/production/",
+        json={
+            "farmer_id": member["id"],
+            "crop_type": "Maize",
+            "expected_kg": 100,
+            "quantity_kg": 90,
+        },
+    )
+    assert created.status_code == 201, created.text
+    prod_id = created.json()["id"]
+
+    updated = client.put(
+        f"/production/{prod_id}",
+        json={
+            "production_kind": "animal",
+            "product_name": "Goats",
+            "activity": "sales",
+            "unit": "head",
+            "expected_quantity": 5,
+            "quantity": 4,
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    data = updated.json()
+    assert data["production_kind"] == "animal"
+    assert data["crop_type"] is None
+    assert data["expected_kg"] is None
+    assert data["quantity_kg"] is None
+    assert data["expected_quantity"] == 5
+    assert data["quantity"] == 4
+    assert data["unit"] == "head"
 
 
 def test_get_production(client, farmer):

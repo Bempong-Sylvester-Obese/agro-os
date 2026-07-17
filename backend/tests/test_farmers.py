@@ -156,15 +156,71 @@ def test_create_update_and_filter_animal_farmer(client, cooperative):
 
 
 def test_farmer_rejects_invalid_focus_and_scale(client, cooperative):
-    payload = {
-        "name": "Invalid Member",
-        "phone": "+233551000078",
-        "cooperative_id": cooperative["id"],
-        "production_focus": "livestock",
-        "animal_scale": -1,
-    }
-    response = client.post("/farmers/", json=payload)
-    assert response.status_code == 422
+    invalid_focus = client.post(
+        "/farmers/",
+        json={
+            "name": "Invalid Focus",
+            "phone": "+233551000078",
+            "cooperative_id": cooperative["id"],
+            "production_focus": "livestock",
+        },
+    )
+    assert invalid_focus.status_code == 422
+
+    invalid_scale = client.post(
+        "/farmers/",
+        json={
+            "name": "Invalid Scale",
+            "phone": "+233551000079",
+            "cooperative_id": cooperative["id"],
+            "production_focus": "animal",
+            "animal_type": "Goats",
+            "animal_scale": -1,
+        },
+    )
+    assert invalid_scale.status_code == 422
+
+
+def test_farmer_focus_change_clears_incompatible_fields(client, cooperative):
+    created = client.post(
+        "/farmers/",
+        json={
+            "name": "Focus Flip",
+            "phone": "+233551000080",
+            "cooperative_id": cooperative["id"],
+            "production_focus": "mixed",
+            "crop_type": "Maize",
+            "acreage": 2,
+            "animal_type": "Goats",
+            "animal_scale": 10,
+        },
+    )
+    assert created.status_code == 201, created.text
+    farmer_id = created.json()["id"]
+
+    to_animal = client.put(
+        f"/farmers/{farmer_id}",
+        json={"production_focus": "animal"},
+    )
+    assert to_animal.status_code == 200, to_animal.text
+    animal_data = to_animal.json()
+    assert animal_data["crop_type"] is None
+    assert animal_data["acreage"] is None
+    assert animal_data["animal_type"] == "Goats"
+
+    to_crop = client.put(
+        f"/farmers/{farmer_id}",
+        json={
+            "production_focus": "crop",
+            "crop_type": "Cassava",
+            "acreage": 1.5,
+        },
+    )
+    assert to_crop.status_code == 200, to_crop.text
+    crop_data = to_crop.json()
+    assert crop_data["animal_type"] is None
+    assert crop_data["animal_scale"] is None
+    assert crop_data["crop_type"] == "Cassava"
 
 
 def test_deactivate_farmer(client, farmer):

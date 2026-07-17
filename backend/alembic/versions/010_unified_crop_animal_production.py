@@ -162,6 +162,14 @@ def downgrade() -> None:
         "ix_cooperative_memberships_production_focus",
         table_name="cooperative_memberships",
     )
+    # Animal rows may have NULL crop_type; restore a value before NOT NULL.
+    op.execute(
+        """
+        UPDATE productions
+        SET crop_type = COALESCE(crop_type, product_name, 'unknown')
+        WHERE crop_type IS NULL
+        """
+    )
     with op.batch_alter_table("productions") as batch:
         batch.drop_constraint("ck_production_kind", type_="check")
         batch.alter_column(

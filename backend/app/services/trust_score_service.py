@@ -147,21 +147,13 @@ class TrustScoreService:
             base = min(100.0, base + 5)
 
         # Reward a completed record with actual output in any supported unit.
-        with_output = [
-            record
-            for record in completed
-            if (
-                getattr(record, "quantity", None)
-                if getattr(record, "quantity", None) is not None
-                else record.quantity_kg
-            )
-            and (
-                getattr(record, "quantity", None)
-                if getattr(record, "quantity", None) is not None
-                else record.quantity_kg
-            )
-            > 0
-        ]
+        with_output = []
+        for record in completed:
+            quantity = getattr(record, "quantity", None)
+            if quantity is None:
+                quantity = record.quantity_kg
+            if quantity is not None and quantity > 0:
+                with_output.append(record)
         if with_output:
             base = min(100.0, base + 5)
 

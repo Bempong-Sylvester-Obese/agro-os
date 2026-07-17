@@ -225,6 +225,14 @@ def update_farmer(
         if field in values:
             setattr(membership, field, values[field])
 
+    focus = membership.production_focus or ProductionFocus.crop
+    if focus == ProductionFocus.crop:
+        membership.animal_type = None
+        membership.animal_scale = None
+    elif focus == ProductionFocus.animal:
+        membership.crop_type = None
+        membership.acreage = None
+
     if current_user:
         db.add(
             AdminAuditLog(

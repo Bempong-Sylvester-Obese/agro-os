@@ -327,11 +327,18 @@ def export_production(
             if column is not None:
                 search_columns.append(column)
         query = query.filter(or_(*(column.ilike(term) for column in search_columns)))
-    completion_column = getattr(Production, "production_date", Production.harvest_date)
     if status in {"completed", "harvested"}:
-        query = query.filter(completion_column.is_not(None))
+        query = query.filter(
+            or_(
+                Production.production_date.is_not(None),
+                Production.harvest_date.is_not(None),
+            )
+        )
     elif status == "planned":
-        query = query.filter(completion_column.is_(None))
+        query = query.filter(
+            Production.production_date.is_(None),
+            Production.harvest_date.is_(None),
+        )
     records = query.order_by(Production.created_at.desc()).all()
     rows = [
         [

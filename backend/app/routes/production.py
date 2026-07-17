@@ -208,6 +208,7 @@ def update_production(
     kind = values.get("production_kind", record.production_kind)
     _validate_member_kind(farmer, kind)
     unit = values.get("unit", record.unit or "kg")
+    unit_value = str(unit).lower()
     if kind == ProductionKind.crop:
         product_name = values.get("product_name") or values.get("crop_type")
         if product_name:
@@ -217,11 +218,18 @@ def update_production(
         raise HTTPException(
             status_code=422, detail="crop_type is only valid for crop production"
         )
+    if unit_value != "kg" and (
+        "expected_kg" in values or "quantity_kg" in values
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="expected_kg and quantity_kg are only valid when unit is kg",
+        )
     if "expected_kg" in values and "expected_quantity" not in values:
         values["expected_quantity"] = values["expected_kg"]
     if "quantity_kg" in values and "quantity" not in values:
         values["quantity"] = values["quantity_kg"]
-    if str(unit).lower() == "kg":
+    if unit_value == "kg":
         if "expected_quantity" in values and "expected_kg" not in values:
             values["expected_kg"] = values["expected_quantity"]
         if "quantity" in values and "quantity_kg" not in values:
@@ -231,6 +239,13 @@ def update_production(
 
     for field, value in values.items():
         setattr(record, field, value)
+
+    # Clear stale subtype / unit aliases against the final persisted state.
+    if record.production_kind != ProductionKind.crop:
+        record.crop_type = None
+    if str(record.unit or "kg").lower() != "kg":
+        record.expected_kg = None
+        record.quantity_kg = None
 
     db.commit()
     db.refresh(record)

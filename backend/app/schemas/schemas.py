@@ -324,18 +324,34 @@ class ProductionBase(BaseModel):
             raise ValueError("crop_type is only valid for crop production")
         if not data.get("unit"):
             data["unit"] = "kg"
-        if (
-            data.get("expected_quantity") is None
-            and data.get("expected_kg") is not None
-        ):
-            data["expected_quantity"] = data["expected_kg"]
-        if data.get("quantity") is None and data.get("quantity_kg") is not None:
-            data["quantity"] = data["quantity_kg"]
-        if str(data["unit"]).lower() == "kg":
+        unit = str(data["unit"]).lower()
+        expected_quantity = data.get("expected_quantity")
+        expected_kg = data.get("expected_kg")
+        quantity = data.get("quantity")
+        quantity_kg = data.get("quantity_kg")
+        if unit != "kg":
+            if expected_kg is not None or quantity_kg is not None:
+                raise ValueError(
+                    "expected_kg and quantity_kg are only valid when unit is kg"
+                )
+        else:
             if (
-                data.get("expected_kg") is None
-                and data.get("expected_quantity") is not None
+                expected_quantity is not None
+                and expected_kg is not None
+                and expected_quantity != expected_kg
             ):
+                raise ValueError("expected_quantity and expected_kg must match")
+            if (
+                quantity is not None
+                and quantity_kg is not None
+                and quantity != quantity_kg
+            ):
+                raise ValueError("quantity and quantity_kg must match")
+            if expected_quantity is None and expected_kg is not None:
+                data["expected_quantity"] = expected_kg
+            if quantity is None and quantity_kg is not None:
+                data["quantity"] = quantity_kg
+            if data.get("expected_kg") is None and data.get("expected_quantity") is not None:
                 data["expected_kg"] = data["expected_quantity"]
             if data.get("quantity_kg") is None and data.get("quantity") is not None:
                 data["quantity_kg"] = data["quantity"]
@@ -364,6 +380,36 @@ class ProductionUpdate(BaseModel):
     expected_kg: Optional[float] = Field(default=None, ge=0)
     season: Optional[str] = None
     notes: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_mismatched_kg_aliases(cls, value):
+        if not isinstance(value, dict):
+            return value
+        data = dict(value)
+        unit = data.get("unit")
+        if unit is not None and str(unit).lower() != "kg":
+            if data.get("expected_kg") is not None or data.get("quantity_kg") is not None:
+                raise ValueError(
+                    "expected_kg and quantity_kg are only valid when unit is kg"
+                )
+        expected_quantity = data.get("expected_quantity")
+        expected_kg = data.get("expected_kg")
+        quantity = data.get("quantity")
+        quantity_kg = data.get("quantity_kg")
+        if (
+            expected_quantity is not None
+            and expected_kg is not None
+            and expected_quantity != expected_kg
+        ):
+            raise ValueError("expected_quantity and expected_kg must match")
+        if (
+            quantity is not None
+            and quantity_kg is not None
+            and quantity != quantity_kg
+        ):
+            raise ValueError("quantity and quantity_kg must match")
+        return data
 
 
 class ProductionResponse(ProductionBase):
