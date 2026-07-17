@@ -44,15 +44,15 @@ describe('Members administration', () => {
     render(<Members farmers={[member]} cooperativeId={2} onMemberAdded={vi.fn()} loading={false} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Add member' }))
-    fireEvent.change(screen.getByLabelText('Production focus *'), { target: { value: 'animal' } })
+    fireEvent.change(screen.getByLabelText('Production focus'), { target: { value: 'animal' } })
 
     expect(screen.queryByLabelText(/Crop type/)).toBeNull()
     expect(screen.getByLabelText(/Animal type/)).toBeTruthy()
-    fireEvent.change(screen.getByLabelText('Full name *'), { target: { value: 'Kojo Owusu' } })
-    fireEvent.change(screen.getByLabelText('Phone number *'), { target: { value: '0240000000' } })
+    fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Kojo Owusu' } })
+    fireEvent.change(screen.getByLabelText('Phone number'), { target: { value: '0240000000' } })
     fireEvent.change(screen.getByLabelText(/Animal type/), { target: { value: 'Poultry' } })
     fireEvent.change(screen.getByLabelText(/Number of animals/), { target: { value: '250' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Add member →' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save member' }))
 
     await waitFor(() => expect(farmersApi.createFarmer).toHaveBeenCalledWith(expect.objectContaining({
       cooperative_id: 2,
@@ -67,7 +67,7 @@ describe('Members administration', () => {
     render(<Members farmers={[member]} cooperativeId={2} onMemberAdded={vi.fn()} loading={false} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Add member' }))
-    fireEvent.change(screen.getByLabelText('Production focus *'), { target: { value: 'mixed' } })
+    fireEvent.change(screen.getByLabelText('Production focus'), { target: { value: 'mixed' } })
 
     expect(screen.getByLabelText(/Crop type/)).toBeTruthy()
     expect(screen.getByLabelText(/Animal type/)).toBeTruthy()
@@ -79,7 +79,7 @@ describe('Members administration', () => {
     render(<Members farmers={[member]} cooperativeId={2} onMemberAdded={onMemberAdded} loading={false} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Edit Ama Mensah' }))
-    expect(screen.getByRole('dialog', { name: 'Member details' })).toBeTruthy()
+    expect(screen.getByRole('dialog', { name: 'Edit member' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Suspend' }))
 
     await waitFor(() => expect(farmersApi.updateFarmer).toHaveBeenCalledWith(4, { membership_status: 'suspended' }))

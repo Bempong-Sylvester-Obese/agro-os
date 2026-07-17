@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react'
-import { Loader2, Plus, X } from 'lucide-react'
+import { Loader2, Plus } from 'lucide-react'
 import { logProduction } from '../../api/production'
 import { exportDashboardReport } from '../../api/reports'
 import {
@@ -19,8 +19,8 @@ import {
   totalsByUnit,
 } from '../../utils/production'
 import { TableSectionSkeleton } from './DashboardSkeleton'
+import DashboardModal, { ModalField } from './DashboardModal'
 import { DashboardPagination, DashboardTableToolbar, useDashboardTable } from './DashboardTableTools'
-import { useModal } from '../../hooks/useModal'
 import { ModalPresence } from '../Motion'
 
 function formatProductionDate(record) {
@@ -32,7 +32,6 @@ function formatProductionDate(record) {
 }
 
 function LogProductionModal({ farmers, onClose, onSuccess }) {
-  const { onBackdropClick, dialogProps, titleId, closeButtonProps } = useModal(onClose, { label: 'production dialog' })
   const [form, setForm] = useState({
     farmerId: '',
     productionKind: '',
@@ -50,6 +49,7 @@ function LogProductionModal({ farmers, onClose, onSuccess }) {
   const selectedFocus = selectedFarmer ? productionFocus(selectedFarmer) : null
   const kind = selectedFocus === 'mixed' ? form.productionKind : selectedFocus
   const activities = kind ? PRODUCTION_ACTIVITIES[kind] : []
+  const kindLabel = kind === 'animal' ? 'Animal' : 'Crop'
 
   const update = (key, value) => setForm(previous => ({ ...previous, [key]: value }))
 
@@ -69,7 +69,7 @@ function LogProductionModal({ farmers, onClose, onSuccess }) {
   const handleSubmit = async event => {
     event.preventDefault()
     if (!form.farmerId || !kind || !form.productName.trim() || !form.activity || !form.unit || !form.expectedQuantity || !form.quantity || !form.productionDate) {
-      setError('Please fill in all fields.')
+      setError('Fill in every field before saving this production log.')
       return
     }
     setLoading(true)
@@ -84,110 +84,172 @@ function LogProductionModal({ farmers, onClose, onSuccess }) {
     }
   }
 
-  const input = {
-    width: '100%',
-    padding: '10px 12px',
-    border: '1.5px solid var(--border)',
-    borderRadius: 8,
-    fontSize: 14,
-    fontFamily: "'DM Sans', sans-serif",
-    outline: 'none',
-    background: '#fff',
-    color: 'var(--text)',
-    boxSizing: 'border-box',
-    marginTop: 6,
-  }
-  const kindLabel = kind === 'animal' ? 'Animal' : 'Crop'
-
   return (
-    <div className="dashboard-modal-overlay" onClick={onBackdropClick}>
-      <div className="dashboard-modal" {...dialogProps} style={{ maxWidth: 500 }}>
-        <div className="dashboard-modal-head">
-          <div>
-            <div id={titleId} className="serif">Log production</div>
-            <div className="pt-id">Record a member&apos;s crop or animal output</div>
-          </div>
-          <button {...closeButtonProps} onClick={onClose} className="dashboard-icon-close"><X size={20} /></button>
-        </div>
-        <form onSubmit={handleSubmit} className="dashboard-modal-body">
-          {error && <div role="alert" className="dashboard-form-error">{error}</div>}
-          <div style={{ marginBottom: 16 }}>
-            <label htmlFor="production-member" style={{ fontSize: 13, fontWeight: 600 }}>Member</label>
-            <select id="production-member" style={input} value={form.farmerId} onChange={selectFarmer} required disabled={loading}>
-              <option value="">Select a member...</option>
-              {activeFarmers.map(farmer => (
-                <option key={farmer.id} value={farmer.id}>{farmer.name} ({farmer.phone})</option>
+    <DashboardModal
+      title="Log production"
+      subtitle="Record crop harvest or animal output for one cooperative member."
+      onClose={onClose}
+      label="production dialog"
+      as="form"
+      bodyProps={{ onSubmit: handleSubmit }}
+    >
+      <div className="dashboard-modal-body">
+        {error && <div role="alert" className="dashboard-form-error">{error}</div>}
+
+        <ModalField htmlFor="production-member" label="Member">
+          <select
+            id="production-member"
+            className="dashboard-modal-select"
+            value={form.farmerId}
+            onChange={selectFarmer}
+            required
+            disabled={loading}
+          >
+            <option value="">Select a member…</option>
+            {activeFarmers.map(farmer => (
+              <option key={farmer.id} value={farmer.id}>
+                {farmer.name} ({farmer.phone})
+              </option>
+            ))}
+          </select>
+        </ModalField>
+
+        {selectedFocus === 'mixed' && (
+          <ModalField
+            htmlFor="production-kind"
+            label="Production type"
+            hint="This member grows crops and keeps animals. Choose which output you are logging."
+          >
+            <select
+              id="production-kind"
+              className="dashboard-modal-select"
+              value={form.productionKind}
+              onChange={event => {
+                setForm(previous => ({
+                  ...previous,
+                  productionKind: event.target.value,
+                  productName: '',
+                  activity: '',
+                }))
+              }}
+              required
+              disabled={loading}
+            >
+              <option value="">Select crop or animal…</option>
+              {PRODUCTION_KIND_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
-          </div>
+          </ModalField>
+        )}
 
-          {selectedFocus === 'mixed' && (
-            <div style={{ marginBottom: 16 }}>
-              <label htmlFor="production-kind" style={{ fontSize: 13, fontWeight: 600 }}>Production type</label>
-              <select id="production-kind" style={input} value={form.productionKind} onChange={event => {
-                setForm(previous => ({ ...previous, productionKind: event.target.value, productName: '', activity: '' }))
-              }} required disabled={loading}>
-                <option value="">Select crop or animal...</option>
-                {PRODUCTION_KIND_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
+        {kind && (
+          <>
+            <div className="modal-row">
+              <ModalField
+                htmlFor="production-product"
+                label={`${kindLabel} product`}
+                hint={kind === 'animal' ? 'Species or product, such as eggs or milk.' : 'Crop name, such as maize or cocoa.'}
+              >
+                <input
+                  id="production-product"
+                  className="dashboard-modal-input"
+                  value={form.productName}
+                  onChange={event => update('productName', event.target.value)}
+                  placeholder={kind === 'animal' ? 'e.g. Eggs, Milk, Cattle' : 'e.g. Maize, Cocoa, Rice'}
+                  required
+                  disabled={loading}
+                />
+              </ModalField>
+              <ModalField htmlFor="production-activity" label="Activity">
+                <select
+                  id="production-activity"
+                  className="dashboard-modal-select"
+                  value={form.activity}
+                  onChange={event => update('activity', event.target.value)}
+                  required
+                  disabled={loading}
+                >
+                  <option value="">Select activity…</option>
+                  {activities.map(activity => (
+                    <option key={activity} value={activity}>{activity}</option>
+                  ))}
+                </select>
+              </ModalField>
             </div>
-          )}
 
-          {kind && (
-            <>
-              <div className="modal-row" style={{ marginBottom: 16 }}>
-                <div>
-                  <label htmlFor="production-product" style={{ fontSize: 13, fontWeight: 600 }}>{kindLabel} product</label>
-                  <input
-                    id="production-product"
-                    style={input}
-                    value={form.productName}
-                    onChange={event => update('productName', event.target.value)}
-                    placeholder={kind === 'animal' ? 'e.g. Cattle, Milk, Eggs' : 'e.g. Maize, Cocoa, Rice'}
-                    required
-                    disabled={loading}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="production-activity" style={{ fontSize: 13, fontWeight: 600 }}>Activity / output</label>
-                  <select id="production-activity" style={input} value={form.activity} onChange={event => update('activity', event.target.value)} required disabled={loading}>
-                    <option value="">Select activity...</option>
-                    {activities.map(activity => <option key={activity} value={activity}>{activity}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="modal-row" style={{ marginBottom: 16 }}>
-                <div>
-                  <label htmlFor="production-expected" style={{ fontSize: 13, fontWeight: 600 }}>Expected output</label>
-                  <input id="production-expected" style={input} type="number" min="0" step="any" value={form.expectedQuantity} onChange={event => update('expectedQuantity', event.target.value)} required disabled={loading} />
-                </div>
-                <div>
-                  <label htmlFor="production-quantity" style={{ fontSize: 13, fontWeight: 600 }}>Actual output</label>
-                  <input id="production-quantity" style={input} type="number" min="0" step="any" value={form.quantity} onChange={event => update('quantity', event.target.value)} required disabled={loading} />
-                </div>
-              </div>
-              <div className="modal-row" style={{ marginBottom: 24 }}>
-                <div>
-                  <label htmlFor="production-unit" style={{ fontSize: 13, fontWeight: 600 }}>Unit</label>
-                  <select id="production-unit" style={input} value={form.unit} onChange={event => update('unit', event.target.value)} required disabled={loading}>
-                    {PRODUCTION_UNITS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="production-date" style={{ fontSize: 13, fontWeight: 600 }}>Production date</label>
-                  <input id="production-date" style={input} type="date" value={form.productionDate} onChange={event => update('productionDate', event.target.value)} required disabled={loading} />
-                </div>
-              </div>
-            </>
-          )}
+            <div className="modal-row">
+              <ModalField htmlFor="production-expected" label="Expected output">
+                <input
+                  id="production-expected"
+                  className="dashboard-modal-input"
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={form.expectedQuantity}
+                  onChange={event => update('expectedQuantity', event.target.value)}
+                  required
+                  disabled={loading}
+                />
+              </ModalField>
+              <ModalField htmlFor="production-quantity" label="Actual output">
+                <input
+                  id="production-quantity"
+                  className="dashboard-modal-input"
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={form.quantity}
+                  onChange={event => update('quantity', event.target.value)}
+                  required
+                  disabled={loading}
+                />
+              </ModalField>
+            </div>
 
-          <button type="submit" className="btn-lg" disabled={loading || !kind} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-            {loading ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Submitting...</> : 'Save production log'}
+            <div className="modal-row">
+              <ModalField htmlFor="production-unit" label="Unit">
+                <select
+                  id="production-unit"
+                  className="dashboard-modal-select"
+                  value={form.unit}
+                  onChange={event => update('unit', event.target.value)}
+                  required
+                  disabled={loading}
+                >
+                  {PRODUCTION_UNITS.map(option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </ModalField>
+              <ModalField htmlFor="production-date" label="Production date">
+                <input
+                  id="production-date"
+                  className="dashboard-modal-input"
+                  type="date"
+                  value={form.productionDate}
+                  onChange={event => update('productionDate', event.target.value)}
+                  required
+                  disabled={loading}
+                />
+              </ModalField>
+            </div>
+          </>
+        )}
+
+        <div className="dashboard-modal-actions">
+          <button type="button" className="dashboard-modal-btn-secondary" onClick={onClose} disabled={loading}>
+            Cancel
           </button>
-        </form>
+          <button type="submit" className="btn-lg" disabled={loading || !kind}>
+            {loading
+              ? <><Loader2 size={16} className="spin" /> Saving…</>
+              : 'Save production log'}
+          </button>
+        </div>
       </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
+      <style>{`.spin { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </DashboardModal>
   )
 }
 
@@ -248,24 +310,24 @@ export default function Production({ farmers = [], productions = [], cooperative
       <DashboardTableToolbar
         label="Production"
         table={table}
-        statuses={[
+        statusOptions={[
           { value: 'recorded', label: 'Recorded' },
           { value: 'planned', label: 'Planned' },
         ]}
-        onExport={handleExport}
         exporting={exporting}
-        exportError={exportError}
+        onExport={handleExport}
       >
         <button className="btn-nav" onClick={() => setShowModal(true)} style={{ fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, background: 'var(--text)', color: '#fff' }}>
           <Plus size={15} /> Log production
         </button>
       </DashboardTableToolbar>
+      {exportError && <div role="alert" className="dashboard-inline-error">{exportError}</div>}
 
       <div className="pay-stats">
         {[
           ['Actual output', formatUnitTotals(actualTotals), 'Totals shown separately by unit'],
           ['Expected output', formatUnitTotals(expectedTotals), 'No incompatible units combined'],
-          ['Most logged product', topProduct || '—', topProduct ? `${productCounts[topProduct]} record${productCounts[topProduct] === 1 ? '' : 's'}` : 'No data yet'],
+          ['Most logged product', topProduct || '—', topProduct ? `${productCounts[topProduct]} record${productCounts[topProduct] === 1 ? '' : 's'}` : 'No logs yet'],
         ].map(([label, value, sub]) => (
           <div key={label} className="stat-card">
             <div className="stat-lbl">{label}</div>
@@ -278,31 +340,36 @@ export default function Production({ farmers = [], productions = [], cooperative
       <div className="admin-card">
         <div className="admin-card-head">
           <span className="admin-card-title serif">Production logs</span>
-          <span className="admin-card-action">{productions.length} record{productions.length === 1 ? '' : 's'}</span>
+          <span className="admin-card-action">{table.filteredRows.length} record{table.filteredRows.length === 1 ? '' : 's'}</span>
         </div>
-        {table.filteredRows.length === 0 ? (
-          <div style={{ padding: '32px 20px', color: 'var(--muted)', fontSize: 14 }}>
-            {productions.length === 0 ? 'No production records found. Log crop or animal output to get started.' : 'No production records match the current filters.'}
-          </div>
-        ) : (
-          <div className="table-scroll">
-            <div className="pay-head" style={{ gridTemplateColumns: '1.5fr .7fr 1fr 1fr 1fr 1fr' }}>
-              {['Member', 'Type', 'Product / activity', 'Expected', 'Actual', 'Date'].map(label => <span key={label} className="pt-lbl">{label}</span>)}
-            </div>
-            {table.pageRows.map(record => (
-              <div key={record.id} className="pay-row" style={{ gridTemplateColumns: '1.5fr .7fr 1fr 1fr 1fr 1fr', alignItems: 'center' }}>
-                <div><div className="pt-name">{farmerName(record)}</div><div className="pt-id">#{record.id}</div></div>
-                <span className="bdg bdg-green" style={{ textTransform: 'capitalize' }}>{productionKind(record)}</span>
-                <span className="pt-m">{productionProduct(record)}<span style={{ display: 'block', fontSize: 11 }}>{productionActivity(record)}</span></span>
-                <span className="pt-m">{formatProductionQuantity(productionExpected(record), productionUnit(record))}</span>
-                <span className="pt-v">{formatProductionQuantity(productionQuantity(record), productionUnit(record))}</span>
-                <span className="pt-m">{formatProductionDate(record)}</span>
-              </div>
+        <div className="table-scroll">
+          <div className="pay-head" style={{ gridTemplateColumns: '1.5fr .7fr 1fr 1fr 1fr 1fr' }}>
+            {['Member', 'Type', 'Product / activity', 'Expected', 'Actual', 'Date'].map(heading => (
+              <span key={heading} className="pt-lbl">{heading}</span>
             ))}
           </div>
-        )}
+          {table.pageRows.length === 0 ? (
+            <div className="empty-state">{productions.length === 0 ? 'No production records found. Log crop or animal output to get started.' : 'No production records match the current filters.'}</div>
+          ) : table.pageRows.map(record => (
+            <div key={record.id} className="pay-row" style={{ gridTemplateColumns: '1.5fr .7fr 1fr 1fr 1fr 1fr', alignItems: 'center' }}>
+              <div>
+                <div className="pt-name">{farmerName(record)}</div>
+                <div className="pt-id">#{record.farmer_id}</div>
+              </div>
+              <span className="bdg bdg-green" style={{ textTransform: 'capitalize' }}>{productionKind(record)}</span>
+              <span className="pt-m">
+                {productionProduct(record)}
+                <span style={{ display: 'block', fontSize: 11 }}>{productionActivity(record)}</span>
+              </span>
+              <span className="pt-m">{formatProductionQuantity(productionExpected(record), productionUnit(record))}</span>
+              <span className="pt-v">{formatProductionQuantity(productionQuantity(record), productionUnit(record))}</span>
+              <span className="pt-m">{formatProductionDate(record)}</span>
+            </div>
+          ))}
+        </div>
         <DashboardPagination label="Production" table={table} />
       </div>
+      <style>{`.spin { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </>
   )
 }

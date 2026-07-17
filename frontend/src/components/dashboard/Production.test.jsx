@@ -44,7 +44,7 @@ describe('unified production dashboard', () => {
     fireEvent.change(screen.getByLabelText('Production type'), { target: { value: 'animal' } })
     expect(screen.getByLabelText('Animal product')).toBeTruthy()
     fireEvent.change(screen.getByLabelText('Animal product'), { target: { value: 'Eggs' } })
-    fireEvent.change(screen.getByLabelText('Activity / output'), { target: { value: 'Egg collection' } })
+    fireEvent.change(screen.getByLabelText('Activity'), { target: { value: 'Egg collection' } })
     fireEvent.change(screen.getByLabelText('Expected output'), { target: { value: '30' } })
     fireEvent.change(screen.getByLabelText('Actual output'), { target: { value: '24' } })
     fireEvent.change(screen.getByLabelText('Unit'), { target: { value: 'crates' } })

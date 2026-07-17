@@ -1,6 +1,6 @@
 // src/components/dashboard/Loans.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { X, Loader2, Check, XCircle, Send, RefreshCw, Bell, Ban } from 'lucide-react'
+import { Loader2, Check, XCircle, Send, RefreshCw, Bell, Ban } from 'lucide-react'
 import {
   approveLoan,
   rejectLoan,
@@ -10,7 +10,7 @@ import {
   sendLoanReminder,
 } from '../../api/loans'
 import { TableSectionSkeleton } from './DashboardSkeleton'
-import { useModal } from '../../hooks/useModal'
+import DashboardModal, { ModalField } from './DashboardModal'
 import { ModalPresence } from '../Motion'
 import { exportDashboardReport } from '../../api/reports'
 import { DashboardPagination, DashboardTableToolbar, useDashboardTable } from './DashboardTableTools'
@@ -28,28 +28,15 @@ function fmtRepaymentDate(raw) {
 }
 
 const ACTION_COPY = {
-  approve: ['Approve loan?', 'This loan will become eligible for disbursement.', 'Approve loan'],
-  reject: ['Reject loan?', 'Give the farmer a clear reason. AgroOS will send it by SMS.', 'Reject and notify'],
-  cancel: ['Cancel loan?', 'Provide a reason for cancelling this loan.', 'Cancel loan'],
-  disburse: ['Disburse loan?', 'This starts a payout to the member. Confirm the amount and member before continuing.', 'Start disbursement'],
-  retry: ['Retry payout?', 'This retries the failed payout using the existing loan details.', 'Retry payout'],
-  reminder: ['Send repayment reminder?', 'This sends an SMS reminder only. The member initiates repayment through AgroOS USSD.', 'Send reminder'],
-}
-
-const actionButtonStyle = {
-  border: 0,
-  borderRadius: 8,
-  padding: '9px 14px',
-  cursor: 'pointer',
-  fontSize: 13,
-  fontWeight: 700,
+  approve: ['Approve loan', 'Confirm this request so the loan becomes eligible for disbursement.', 'Approve loan'],
+  reject: ['Reject loan', 'Give the farmer a clear reason. AgroOS will send it by SMS.', 'Reject and notify'],
+  cancel: ['Cancel loan', 'Provide a reason for cancelling this loan.', 'Cancel loan'],
+  disburse: ['Disburse loan', 'Start a payout to the member. Confirm the amount before continuing.', 'Start disbursement'],
+  retry: ['Retry payout', 'Retry the failed payout using the existing loan details.', 'Retry payout'],
+  reminder: ['Send repayment reminder', 'Send an SMS reminder only. The member repays through AgroOS USSD.', 'Send reminder'],
 }
 
 function ConfirmationModal({ action, processing, error, onClose, onConfirm }) {
-  const { onBackdropClick, dialogProps, titleId, closeButtonProps } = useModal(onClose, {
-    closeOnBackdrop: !processing,
-    label: `${action.type} loan dialog`,
-  })
   const [reason, setReason] = useState('')
   const [repaymentDate, setRepaymentDate] = useState('')
   const [validationError, setValidationError] = useState('')
@@ -74,64 +61,75 @@ function ConfirmationModal({ action, processing, error, onClose, onConfirm }) {
   }
 
   return (
-    <div className="dashboard-modal-overlay" onClick={onBackdropClick} style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)', backdropFilter: 'blur(4px)',
-      zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-    }}>
-      <form className="dashboard-modal" {...dialogProps} onSubmit={submit} style={{
-        background: '#fff', borderRadius: 16, width: '100%', maxWidth: 430,
-        boxShadow: '0 32px 80px rgba(0,0,0,0.22)', padding: 24,
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-          <div>
-            <h2 id={titleId} className="serif" style={{ fontSize: 20, margin: 0 }}>{title}</h2>
-            <p style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.5, margin: '8px 0 0' }}>{description}</p>
-          </div>
-          <button {...closeButtonProps} disabled={processing} onClick={onClose} style={{ background: 'none', border: 0, color: 'var(--muted)', cursor: 'pointer', height: 28 }}>
-            <X size={20} />
-          </button>
-        </div>
-        <div style={{ background: 'var(--sage)', borderRadius: 10, padding: 12, marginTop: 18, fontSize: 13 }}>
+    <DashboardModal
+      title={title}
+      subtitle={description}
+      onClose={onClose}
+      label={`${action.type} loan dialog`}
+      closeOnBackdrop={!processing}
+      closeDisabled={processing}
+      as="form"
+      bodyProps={{ onSubmit: submit }}
+    >
+      <div className="dashboard-modal-body">
+        <div className="dashboard-modal-summary">
           <strong>Loan #{action.loan.id}</strong> · {fmtGHS(action.loan.amount)}
         </div>
+
         {['cancel', 'reject'].includes(action.type) && (
-          <div style={{ marginTop: 16 }}>
-            <label htmlFor="loan-decision-reason" style={{ fontSize: 13, fontWeight: 700 }}>
-              {action.type === 'reject' ? 'Reason sent to farmer' : 'Cancellation reason'}
-            </label>
+          <ModalField
+            htmlFor="loan-decision-reason"
+            label={action.type === 'reject' ? 'Reason sent to farmer' : 'Cancellation reason'}
+          >
             <textarea
               id="loan-decision-reason"
+              className="dashboard-modal-textarea"
               value={reason}
               onChange={(event) => { setReason(event.target.value); setValidationError('') }}
               disabled={processing}
               rows={3}
-              style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 6, padding: 10, border: '1px solid var(--border)', borderRadius: 8, resize: 'vertical', font: 'inherit' }}
             />
-          </div>
+          </ModalField>
         )}
+
         {action.type === 'approve' && (
-          <div style={{ marginTop: 16 }}>
-            <label htmlFor="loan-repayment-date" style={{ fontSize: 13, fontWeight: 700 }}>Repayment due date</label>
+          <ModalField htmlFor="loan-repayment-date" label="Repayment due date">
             <input
               id="loan-repayment-date"
+              className="dashboard-modal-input"
               type="date"
               value={repaymentDate}
               onChange={(event) => { setRepaymentDate(event.target.value); setValidationError('') }}
               disabled={processing}
               required
-              style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 6, padding: 10, border: '1px solid var(--border)', borderRadius: 8, font: 'inherit' }}
             />
-          </div>
+          </ModalField>
         )}
-        {(validationError || error) && <div role="alert" style={{ color: '#991B1B', fontSize: 13, marginTop: 14 }}>{validationError || error}</div>}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 22 }}>
-          <button type="button" disabled={processing} onClick={onClose} style={{ ...actionButtonStyle, background: '#fff', border: '1px solid var(--border)', color: 'var(--text)' }}>Go back</button>
-          <button type="submit" disabled={processing} style={{ ...actionButtonStyle, background: destructive ? '#991B1B' : 'var(--text)', color: '#fff' }}>
+
+        {(validationError || error) && (
+          <div role="alert" className="dashboard-form-error">{validationError || error}</div>
+        )}
+
+        <div className="dashboard-modal-actions">
+          <button
+            type="button"
+            className="dashboard-modal-btn-secondary"
+            disabled={processing}
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="btn-lg"
+            disabled={processing}
+            style={destructive ? { background: '#991B1B' } : undefined}
+          >
             {processing ? 'Working…' : confirmLabel}
           </button>
         </div>
-      </form>
-    </div>
+      </div>
+    </DashboardModal>
   )
 }
 
