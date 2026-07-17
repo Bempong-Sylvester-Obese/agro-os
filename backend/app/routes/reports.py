@@ -65,8 +65,20 @@ def _apply_dates(query, column, start_date: date | None, end_date: date | None):
 
 
 def _safe_cell(value) -> str:
+    value = getattr(value, "value", value)
+    if isinstance(value, float) and value.is_integer():
+        value = int(value)
     text = "" if value is None else str(value)
     return f"'{text}" if text.startswith(("=", "+", "-", "@")) else text
+
+
+def _production_value(record: Production, generic_name: str, legacy_name: str):
+    value = getattr(record, generic_name, None)
+    return value if value is not None else getattr(record, legacy_name, None)
+
+
+def _production_date(record: Production):
+    return _production_value(record, "production_date", "harvest_date")
 
 
 def _audit_filters(q, status, start_date, end_date) -> dict:
@@ -142,12 +154,40 @@ def export_members(
         query = query.filter(CooperativeMembership.membership_status == status)
     members = query.order_by(Farmer.name).all()
     rows = [
-        [m.id, m.name, m.phone, m.email, m.location, m.crop_type, m.acreage, m.membership_status.value, m.trust_score, m.created_at]
+        [
+            m.id,
+            m.name,
+            m.phone,
+            m.email,
+            m.location,
+            getattr(m, "production_focus", None),
+            getattr(m, "animal_type", None),
+            getattr(m, "animal_scale", None),
+            m.crop_type,
+            m.acreage,
+            m.membership_status.value,
+            m.trust_score,
+            m.created_at,
+        ]
         for m in members
     ]
     return _csv_response(
         report="members",
-        headers=["Member ID", "Name", "Phone", "Email", "Location", "Crop", "Acreage", "Status", "Trust Score", "Joined"],
+        headers=[
+            "Member ID",
+            "Name",
+            "Phone",
+            "Email",
+            "Location",
+            "Production Focus",
+            "Animal Type",
+            "Animal Scale",
+            "Crop",
+            "Acreage",
+            "Status",
+            "Trust Score",
+            "Joined",
+        ],
         rows=rows,
         cooperative_id=scope,
         current_user=current_user,
@@ -262,7 +302,7 @@ def export_loans(
 def export_production(
     cooperative_id: int | None = None,
     q: str | None = None,
-    status: str | None = Query(default=None, pattern="^(planned|harvested)$"),
+    status: str | None = Query(default=None, pattern="^(planned|completed|harvested)$"),
     start_date: date | None = None,
     end_date: date | None = None,
     db: Session = Depends(get_db),
@@ -281,19 +321,59 @@ def export_production(
     query = _apply_dates(query, Production.created_at, start_date, end_date)
     if q:
         term = f"%{q.strip()}%"
-        query = query.filter(or_(Farmer.name.ilike(term), Production.crop_type.ilike(term)))
-    if status == "harvested":
-        query = query.filter(Production.harvest_date.is_not(None))
+        search_columns = [Farmer.name, Production.crop_type]
+        for name in ("product_name", "activity"):
+            column = getattr(Production, name, None)
+            if column is not None:
+                search_columns.append(column)
+        query = query.filter(or_(*(column.ilike(term) for column in search_columns)))
+    completion_column = getattr(Production, "production_date", Production.harvest_date)
+    if status in {"completed", "harvested"}:
+        query = query.filter(completion_column.is_not(None))
     elif status == "planned":
-        query = query.filter(Production.harvest_date.is_(None))
+        query = query.filter(completion_column.is_(None))
     records = query.order_by(Production.created_at.desc()).all()
     rows = [
-        [record.id, record.farmer.name, record.crop_type, record.expected_kg, record.quantity_kg, record.harvest_date, record.created_at]
+        [
+            record.id,
+            record.farmer.name,
+            getattr(record, "production_kind", None),
+            getattr(record, "product_name", None),
+            getattr(record, "activity", None),
+            _production_value(record, "expected_quantity", "expected_kg"),
+            _production_value(record, "quantity", "quantity_kg"),
+            getattr(record, "unit", None) or "kg",
+            _production_date(record),
+            record.crop_type,
+            record.expected_kg,
+            record.quantity_kg,
+            record.harvest_date,
+            record.season,
+            record.quality_grade,
+            record.created_at,
+        ]
         for record in records
     ]
     return _csv_response(
         report="production",
-        headers=["Production ID", "Member", "Crop", "Expected (kg)", "Harvest (kg)", "Harvest Date", "Logged Date"],
+        headers=[
+            "Production ID",
+            "Member",
+            "Production Kind",
+            "Product",
+            "Activity",
+            "Expected Quantity",
+            "Actual Quantity",
+            "Unit",
+            "Production Date",
+            "Crop",
+            "Expected (kg)",
+            "Harvest (kg)",
+            "Harvest Date",
+            "Season",
+            "Quality Grade",
+            "Logged Date",
+        ],
         rows=rows,
         cooperative_id=scope,
         current_user=current_user,
@@ -336,6 +416,9 @@ def export_scores(
         [
             member.id,
             member.name,
+            getattr(member, "production_focus", None),
+            getattr(member, "animal_type", None),
+            getattr(member, "animal_scale", None),
             member.crop_type,
             member.trust_score,
             "eligible" if member.trust_score >= 68 else "review",
@@ -345,7 +428,17 @@ def export_scores(
     ]
     return _csv_response(
         report="scores",
-        headers=["Member ID", "Member", "Crop", "Trust Score", "Decision", "Calculated At"],
+        headers=[
+            "Member ID",
+            "Member",
+            "Production Focus",
+            "Animal Type",
+            "Animal Scale",
+            "Crop",
+            "Trust Score",
+            "Decision",
+            "Calculated At",
+        ],
         rows=rows,
         cooperative_id=scope,
         current_user=current_user,

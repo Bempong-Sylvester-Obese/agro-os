@@ -16,14 +16,15 @@ AgroOS currently has **two independent scoring engines** running in parallel:
 | | Trust Score | Agro-AI Score |
 |---|---|---|
 | **Engine** | Rules-based weighted formula | Random Forest ML model |
-| **Data source** | Real DB records (transactions, loans, production, attendance) | Synthetic `DEMO_FARMERS` dataset |
+| **Data source** | Real DB records (transactions, loans, production, attendance) | DB records when present; synthetic fallback otherwise |
 | **Endpoint** | `GET /farmers/{id}/trust-score` | `GET /api/farmers`, `/api/agro-ai/*` |
 | **Shown on dashboard?** | ❌ Not currently displayed | ✅ Shown on dashboard |
 | **Updated by webhooks?** | ✅ Yes — Moolre payment webhook triggers recalculation | ❌ No |
 | **Used by USSD?** | ❌ No — Option 5 completes pending payments | ❌ No |
 
-These two systems **do not share data**. They produce different scores for
-the same farmer and are not interchangeable.
+These systems use different formulas and remain non-interchangeable. For a DB
+member they now draw from the same operational history, but only the Trust
+Score is persisted and recalculated by payment webhooks.
 
 ---
 
@@ -36,7 +37,7 @@ from verified database records:
 
 - **Transaction history** — payment regularity, dues compliance
 - **Loan repayment** — on-time repayment rate
-- **Production records** — farm output consistency
+- **Production records** — crop or animal completion and output consistency
 - **Attendance** — cooperative meeting participation
 
 ### When it updates
@@ -69,8 +70,17 @@ Agro-AI is AgroOS's experimental ML scoring layer, implemented in
 creditworthiness or risk tier for a farmer.
 
 ### Data source
-Agro-AI currently runs on **`DEMO_FARMERS`** — a synthetic dataset hardcoded
-for hackathon purposes. It does **not** read from the live database.
+Agro-AI assessments are built from cooperative-scoped DB members and their
+payment, production, attendance, and loan records. If demo fallback is allowed
+and a requested member is not in the DB, the API can use `DEMO_FARMERS`.
+Training data remains synthetic, so this is still a demonstration model rather
+than a production credit model.
+
+Unified expected/actual production quantities feed the existing
+`yield_performance` feature, and animal scale is normalized into the existing
+`acreage` slot. This intentionally preserves the exact
+`agro-ai-features-v1` names and order so deployed v1 artifacts remain loadable.
+The legacy names describe artifact inputs, not a crop-only product limitation.
 
 ### Where it is used
 - **Web dashboard** — the score shown on the farmer profile card is the
@@ -86,9 +96,10 @@ transactions in real time.
 ### Demo narration (Agro-AI path)
 > *"The dashboard shows an Agro-AI score — this is our Random Forest model's
 > creditworthiness prediction. In this demo build it runs on a representative
-> synthetic dataset so judges can see the ML layer in action. In production,
-> this model will train on verified DB records — the same data the Trust Score
-> engine already uses."*
+> synthetic training set so judges can see the ML layer in action. Live
+> assessments normalize verified cooperative records into that model's stable
+> v1 feature contract. Production use still requires training and validation
+> against real repayment outcomes."*
 
 ---
 
@@ -134,12 +145,12 @@ and optionally enhanced by the ML model. The path is:
 
 ### Phase 1 (Current — Hackathon)
 - Trust Score: rules-based, DB-backed, webhook-triggered ✅
-- Agro-AI: ML-based, synthetic data, dashboard display ✅
-- No integration between the two
+- Agro-AI: ML-based, synthetic-trained, DB-backed inference with demo fallback ✅
+- Independent formulas and update lifecycles
 
 ### Phase 2 (Post-Hackathon MVP)
-- Feed real DB records into Agro-AI training pipeline
-- Replace `DEMO_FARMERS` synthetic data with live farmer data
+- Feed real repayment outcomes into the Agro-AI training pipeline
+- Retain synthetic records only as an explicit demo fallback
 - Expose unified score on dashboard (currently shows Agro-AI only)
 
 ### Phase 3 (Production)

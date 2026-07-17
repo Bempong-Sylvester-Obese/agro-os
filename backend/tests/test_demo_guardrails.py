@@ -13,6 +13,7 @@ from app.models.models import (
     AdminAuditLog,
     Cooperative,
     CooperativeMembership,
+    Production,
     User,
 )
 from app.services.auth_service import create_access_token, get_password_hash
@@ -44,6 +45,40 @@ def test_seed_skips_when_demo_flag_disabled(db, monkeypatch):
     result = seed_golden_path(db)
     get_settings.cache_clear()
     assert result["seeded"] is False
+
+
+def test_golden_seed_includes_unified_production_examples(db, monkeypatch):
+    monkeypatch.setenv("SEED_DEMO_DATA", "true")
+    get_settings.cache_clear()
+
+    result = seed_golden_path(db)
+
+    assert result["seeded"] is True
+    memberships = (
+        db.query(CooperativeMembership)
+        .filter(CooperativeMembership.cooperative_id == result["cooperative_id"])
+        .all()
+    )
+    productions = (
+        db.query(Production)
+        .join(CooperativeMembership)
+        .filter(CooperativeMembership.cooperative_id == result["cooperative_id"])
+        .all()
+    )
+    assert len(memberships) >= 5
+    assert len(productions) >= 4
+    if hasattr(CooperativeMembership, "production_focus"):
+        focuses = {
+            getattr(member.production_focus, "value", member.production_focus)
+            for member in memberships
+        }
+        kinds = {
+            getattr(record.production_kind, "value", record.production_kind)
+            for record in productions
+        }
+        assert focuses >= {"animal", "mixed"}
+        assert kinds >= {"crop", "animal"}
+    get_settings.cache_clear()
 
 
 def test_purge_demo_dry_run_reports_demo_cooperative(db, monkeypatch):

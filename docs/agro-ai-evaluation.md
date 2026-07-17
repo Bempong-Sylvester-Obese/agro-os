@@ -58,7 +58,7 @@ Real evaluation should use Supabase-backed facts:
 
 - farmer profile and cooperative membership history
 - payment consistency and Moolre transaction history
-- harvest and yield records
+- crop or animal production completion and expected/actual output records
 - prior loan repayment events
 - outstanding balances and savings behavior
 - final repayment outcome labels

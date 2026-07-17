@@ -33,6 +33,17 @@ class MembershipStatus(str, enum.Enum):
     suspended = "suspended"
 
 
+class ProductionFocus(str, enum.Enum):
+    crop = "crop"
+    animal = "animal"
+    mixed = "mixed"
+
+
+class ProductionKind(str, enum.Enum):
+    crop = "crop"
+    animal = "animal"
+
+
 class TransactionType(str, enum.Enum):
     dues = "dues"
     loan = "loan"
@@ -204,6 +215,15 @@ class CooperativeMembership(Base):
     )
     crop_type = Column(String, nullable=True)
     acreage = Column(Float, nullable=True)
+    production_focus = Column(
+        Enum(ProductionFocus, native_enum=False),
+        default=ProductionFocus.crop,
+        server_default=ProductionFocus.crop.value,
+        nullable=False,
+        index=True,
+    )
+    animal_type = Column(String, nullable=True)
+    animal_scale = Column(Float, nullable=True)
     membership_status = Column(
         Enum(MembershipStatus), default=MembershipStatus.active
     )
@@ -426,7 +446,20 @@ class Production(Base):
         nullable=False,
         index=True,
     )
-    crop_type = Column(String, nullable=False)
+    crop_type = Column(String, nullable=True)
+    production_kind = Column(
+        Enum(ProductionKind, native_enum=False),
+        default=ProductionKind.crop,
+        server_default=ProductionKind.crop.value,
+        nullable=False,
+        index=True,
+    )
+    product_name = Column(String, nullable=True)
+    activity = Column(String, nullable=True)
+    unit = Column(String, default="kg", server_default="kg", nullable=False)
+    expected_quantity = Column(Float, nullable=True)
+    quantity = Column(Float, nullable=True)
+    production_date = Column(DateTime, nullable=True)
     season = Column(String, nullable=True)  # e.g. "2025A"
     expected_kg = Column(Float, nullable=True)
     planted_date = Column(DateTime, nullable=True)

@@ -21,6 +21,7 @@ const member = {
   phone: '0200000000',
   email: 'ama@example.com',
   location: 'Kumasi',
+  production_focus: 'crop',
   crop_type: 'Maize',
   acreage: 4,
   membership_status: 'active',
@@ -31,6 +32,46 @@ const member = {
 describe('Members administration', () => {
   afterEach(cleanup)
   beforeEach(() => vi.clearAllMocks())
+
+  it('shows conditional animal fields and submits an animal profile', async () => {
+    farmersApi.createFarmer.mockResolvedValue({
+      ...member,
+      id: 5,
+      production_focus: 'animal',
+      animal_type: 'Poultry',
+      animal_scale: 250,
+    })
+    render(<Members farmers={[member]} cooperativeId={2} onMemberAdded={vi.fn()} loading={false} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add member' }))
+    fireEvent.change(screen.getByLabelText('Production focus *'), { target: { value: 'animal' } })
+
+    expect(screen.queryByLabelText(/Crop type/)).toBeNull()
+    expect(screen.getByLabelText(/Animal type/)).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('Full name *'), { target: { value: 'Kojo Owusu' } })
+    fireEvent.change(screen.getByLabelText('Phone number *'), { target: { value: '0240000000' } })
+    fireEvent.change(screen.getByLabelText(/Animal type/), { target: { value: 'Poultry' } })
+    fireEvent.change(screen.getByLabelText(/Number of animals/), { target: { value: '250' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add member →' }))
+
+    await waitFor(() => expect(farmersApi.createFarmer).toHaveBeenCalledWith(expect.objectContaining({
+      cooperative_id: 2,
+      production_focus: 'animal',
+      animal_type: 'Poultry',
+      animal_scale: 250,
+    })))
+    expect(farmersApi.createFarmer.mock.calls[0][0]).not.toHaveProperty('crop_type')
+  })
+
+  it('shows both profile sections for mixed production', () => {
+    render(<Members farmers={[member]} cooperativeId={2} onMemberAdded={vi.fn()} loading={false} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add member' }))
+    fireEvent.change(screen.getByLabelText('Production focus *'), { target: { value: 'mixed' } })
+
+    expect(screen.getByLabelText(/Crop type/)).toBeTruthy()
+    expect(screen.getByLabelText(/Animal type/)).toBeTruthy()
+  })
 
   it('suspends a member through the existing update API', async () => {
     farmersApi.updateFarmer.mockResolvedValue({ ...member, membership_status: 'suspended' })

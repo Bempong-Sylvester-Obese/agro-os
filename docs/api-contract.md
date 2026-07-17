@@ -35,7 +35,10 @@ When the database is seeded, Agro-AI assessments are built from DB farmer record
   "name": "Abena Mensah",
   "phone": "+233552341234",
   "location": "Ashanti",
+  "production_focus": "mixed",
   "crop_type": "Maize",
+  "animal_type": "Goats",
+  "animal_scale": 12,
   "cooperative_id": 1,
   "membership_status": "active",
   "trust_score": 58.0,
@@ -84,6 +87,16 @@ signed USSD session. The dashboard never initiates a debit or accepts an OTP.
 | Production tab | GET | `/production/` |
 | SMS tab | GET/POST | `/communications/logs`, `/communications/sms/broadcast` |
 
+Members use `production_focus` (`crop`, `animal`, or `mixed`). Animal and mixed
+members may include `animal_type` and `animal_scale`; legacy `crop_type` and
+`acreage` remain available for crop compatibility.
+
+Production records use `production_kind`, `product_name`, `activity`,
+`expected_quantity`, `quantity`, `unit`, and `production_date`. Legacy
+`crop_type`, `expected_kg`, `quantity_kg`, and harvest fields remain in the
+contract during migration. Expected and actual quantities must be compared
+within the record's own unit; quantities with different units are not summed.
+
 ### USSD & webhooks
 
 | UI | Method | Path |
@@ -114,7 +127,9 @@ Optional env: `VITE_COOPERATIVE_ID`.
 
 ### Cooperative commerce
 
-Commerce records are cooperative-scoped and follow explicit state transitions:
+Commerce records are cooperative-scoped and follow explicit state transitions.
+Unlike production tracking and scoring, this release's intake, aggregation,
+buyer-sale, and settlement workflow remains crop-only:
 
 - Produce intake: record, accept or reject, then assign accepted weight to one
   open aggregation batch.
@@ -144,6 +159,11 @@ Core endpoints:
 - CSV exports under `/reports/intake.csv`, `/reports/aggregation.csv`,
   `/reports/buyers.csv`, `/reports/sales.csv`, `/reports/settlements.csv`, and
   `/reports/payout-exceptions.csv`
+
+The core operational exports are `/reports/members.csv`,
+`/reports/production.csv`, and `/reports/scores.csv`. They include unified
+focus/kind/product/activity/quantity/unit columns while retaining useful legacy
+crop columns.
 
 ### Authentication and cooperative roles
 
@@ -186,6 +206,6 @@ On backend startup in development, `seed_golden_path()` inserts:
 
 - Cooperative: **Kuapa Kokoo Demo Cooperative**
 - Farmer: **Abena Mensah** (pending dues transaction for webhook demo)
-- Supporting farmers, loans, production, and attendance records
+- Supporting crop, animal, and mixed members plus production and attendance records
 
 Set `SEED_DEMO_DATA=true` to force seeding in other environments.

@@ -10,12 +10,12 @@ By bridging the gap between unconnected rural farmers and formal financial ecosy
 
 ## Core Features
 
-* **Member Management (CRM):** Centralized dashboard replacing physical ledgers to track farmer locations, crop types, acreage, and cooperative standing.
+* **Member Management (CRM):** Centralized dashboard replacing physical ledgers to track crop, animal, or mixed production profiles and cooperative standing.
 * **Moolre Finance Hub:** Cooperative-defined dues obligations and reminders, farmer-initiated dues payments, and bulk loan disbursements powered by Moolre.
 * **Cooperative Communications:** SMS broadcasts for dues reminders, meeting notices, and payment confirmations.
-* **AgroCredit AI:** A machine learning engine (Scikit-learn) that synthesizes cooperative data, payment consistency, and historical crop yields to generate a dynamic **Farmer Trust Score**.
+* **AgroCredit AI:** A machine learning engine (Scikit-learn) that synthesizes cooperative data, payment consistency, and historical production output to generate a dynamic **Farmer Trust Score**.
 * **Native USSD Access:** Offline-first interaction allowing farmers to dial a native Moolre Merchant Code to pay dues and check balances without needing internet access or a smartphone.
-* **Production Tracking:** Data logging for expected vs. actual harvests, providing actionable insights for cooperative leaders.
+* **Production Tracking:** Unit-aware expected vs. actual records for crop, animal, and mixed producers.
 
 ---
 
@@ -128,7 +128,9 @@ Reference docs:
 
 ## The AgroCredit AI Engine
 
-For the hackathon MVP, AgroCredit now includes `agro-ai`: a Scikit-learn Random Forest model trained on deterministic synthetic cooperative data. It uses dues consistency, payment timeliness, historical crop yields, cooperative attendance, loan history, outstanding balances, and savings behavior to generate an administrator-friendly credit-worthiness recommendation.
+For the hackathon MVP, AgroCredit includes `agro-ai`: a Scikit-learn Random Forest model trained on deterministic synthetic cooperative data. It uses dues consistency, payment timeliness, production completion and output, cooperative attendance, loan history, outstanding balances, and savings behavior to generate an administrator-friendly credit-worthiness recommendation. The v1 artifact feature names remain unchanged for compatibility; unified output is normalized into those existing inputs.
+
+Production tracking and scoring support crop, animal, and mixed producers. Cooperative commerce—produce intake, aggregation, buyer sales, and farmer settlement—remains crop-only in this release.
 
 When a farmer makes a USSD payment via Moolre, a webhook should trigger the FastAPI backend to record the transaction and recalculate their Trust Score in Supabase.
 

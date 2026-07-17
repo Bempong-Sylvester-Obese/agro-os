@@ -8,13 +8,15 @@ from sqlalchemy.orm import Session
 
 from app.models.models import (
     CooperativeAttendance,
-    CooperativeMembership as Farmer,
     Loan,
     LoanStatus,
     Production,
     Transaction,
     TransactionStatus,
     TransactionType,
+)
+from app.models.models import (
+    CooperativeMembership as Farmer,
 )
 
 
@@ -24,8 +26,51 @@ def _ratio(numerator: float, denominator: float, default: float = 0.5) -> float:
     return max(0.0, min(1.0, numerator / denominator))
 
 
+def _production_amount(record: Production, generic_name: str, legacy_name: str):
+    """Prefer unified production values while accepting legacy crop records."""
+    generic = getattr(record, generic_name, None)
+    return generic if generic is not None else getattr(record, legacy_name, None)
+
+
+def _animal_scale_value(value) -> float | None:
+    """Normalize numeric or labelled animal scale into the v1 acreage slot."""
+    if value is None:
+        return None
+    try:
+        count = float(value)
+        if count <= 20:
+            return 1.5
+        if count <= 100:
+            return 3.5
+        return 6.0
+    except (TypeError, ValueError):
+        scales = {
+            "small": 1.5,
+            "small-scale": 1.5,
+            "medium": 3.5,
+            "medium-scale": 3.5,
+            "large": 6.0,
+            "large-scale": 6.0,
+        }
+        return scales.get(str(value).strip().lower())
+
+
+def _v1_production_scale(farmer: Farmer) -> float:
+    """Map unified crop/animal scale onto the artifact-compatible v1 feature."""
+    acreage = float(farmer.acreage) if farmer.acreage is not None else None
+    animal_scale = _animal_scale_value(getattr(farmer, "animal_scale", None))
+    raw_focus = getattr(farmer, "production_focus", "")
+    focus = str(getattr(raw_focus, "value", raw_focus) or "").lower()
+
+    if focus == "animal" and animal_scale is not None:
+        return animal_scale
+    if focus == "mixed" and animal_scale is not None:
+        return max(acreage or 0.0, animal_scale)
+    return acreage or animal_scale or 2.5
+
+
 def extract_features_from_farmer(farmer: Farmer, db: Session) -> dict[str, float]:
-    """Build Agro-AI features from DB records; defaults when history is sparse."""
+    """Build the exact v1 feature vector from unified operational records."""
 
     dues = (
         db.query(Transaction)
@@ -48,16 +93,23 @@ def extract_features_from_farmer(farmer: Farmer, db: Session) -> dict[str, float
 
     productions = db.query(Production).filter(Production.farmer_id == farmer.id).all()
     if productions:
-        harvested = [record for record in productions if record.quantity_kg]
-        yield_scores = []
+        completed = [
+            record
+            for record in productions
+            if getattr(record, "production_date", None) is not None
+            or record.harvest_date is not None
+        ]
+        output_scores = []
         for record in productions:
-            if record.expected_kg and record.quantity_kg:
-                yield_scores.append(record.quantity_kg / record.expected_kg)
-        if yield_scores:
-            yield_performance = _ratio(sum(yield_scores), len(yield_scores))
+            expected = _production_amount(record, "expected_quantity", "expected_kg")
+            actual = _production_amount(record, "quantity", "quantity_kg")
+            if expected and actual:
+                output_scores.append(actual / expected)
+        if output_scores:
+            yield_performance = _ratio(sum(output_scores), len(output_scores))
         else:
             yield_performance = 0.55
-        if not harvested:
+        if not completed:
             yield_performance = max(yield_performance * 0.7, 0.35)
     else:
         yield_performance = 0.55
@@ -96,7 +148,8 @@ def extract_features_from_farmer(farmer: Farmer, db: Session) -> dict[str, float
         "on_time_payment_rate": round(on_time_payment_rate, 3),
         "yield_performance": round(yield_performance, 3),
         "attendance_rate": round(attendance_rate, 3),
-        "acreage": float(farmer.acreage or 2.5),
+        # Names and order are frozen for agro-ai-features-v1 artifacts.
+        "acreage": _v1_production_scale(farmer),
         "cooperative_tenure_months": tenure_months,
         "prior_loans_repaid": float(prior_loans_repaid),
         "outstanding_balance_ratio": round(outstanding_balance_ratio, 3),

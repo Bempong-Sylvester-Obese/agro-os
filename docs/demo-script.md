@@ -16,6 +16,7 @@ Show how AgroOS helps a farmer cooperative collect dues, reconcile payments, imp
 ## Pre-Demo State
 
 - Abena is an active cooperative member.
+- Supporting records include an animal producer and a mixed crop/animal producer.
 - Her monthly dues are outstanding.
 - Her current Trust Score is below the preferred loan approval threshold.
 - The cooperative dashboard shows pending dues and pending input loan requests.
@@ -119,6 +120,9 @@ Record deliveries from two farmers, including accepted weight and grade, then
 place them in one aggregation batch. Record the buyer sale and buyer-payment
 reference. A second authorized officer verifies that funds were received.
 
+State the product boundary clearly: production tracking and scoring cover crop,
+animal, and mixed members, while this commerce demonstration remains crop-only.
+
 Preview the settlement before approval:
 
 - accepted kilograms and gross entitlement for each farmer;
@@ -133,7 +137,7 @@ from duplicate payment.
 
 ## Closing Message
 
-AgroOS is not just a payment app. It is cooperative infrastructure: member records, payment collection, USSD access, SMS communication, production tracking, and credit scoring working together for farmers who are often excluded from formal financial systems.
+AgroOS is not just a payment app. It is cooperative infrastructure: member records, payment collection, USSD access, SMS communication, unified crop and animal production tracking, and credit scoring working together for producers who are often excluded from formal financial systems.
 
 ## Demo Fallbacks
 

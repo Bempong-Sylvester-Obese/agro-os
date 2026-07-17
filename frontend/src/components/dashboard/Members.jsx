@@ -7,6 +7,12 @@ import { MembersSkeleton } from './DashboardSkeleton'
 import { DashboardPagination, DashboardTableToolbar, useDashboardTable } from './DashboardTableTools'
 import { useModal } from '../../hooks/useModal'
 import { ModalPresence } from '../Motion'
+import {
+  memberProductionDescription,
+  productionFocus,
+  productionFocusLabel,
+  PRODUCTION_FOCUS_OPTIONS,
+} from '../../utils/production'
 
 const STATUS_CLS = {
   active:    'bdg-green',
@@ -20,11 +26,83 @@ const scoreTier = (score) => {
   return 'sl'
 }
 
+const emptyProductionProfile = {
+  production_focus: 'crop',
+  crop_type: '',
+  acreage: '',
+  animal_type: '',
+  animal_scale: '',
+}
+
+function productionProfilePayload(form) {
+  const focus = form.production_focus
+  return {
+    production_focus: focus,
+    ...(focus !== 'animal' && {
+      crop_type: form.crop_type.trim() || null,
+      acreage: form.acreage === '' ? null : Number(form.acreage),
+    }),
+    ...(focus !== 'crop' && {
+      animal_type: form.animal_type.trim() || null,
+      animal_scale: form.animal_scale === '' ? null : Number(form.animal_scale),
+    }),
+  }
+}
+
+function ProductionProfileFields({ form, set, inputClass, inputStyle, labelStyle, idPrefix }) {
+  const showCrop = form.production_focus !== 'animal'
+  const showAnimal = form.production_focus !== 'crop'
+  const inputProps = inputClass ? { className: inputClass } : { style: inputStyle }
+
+  return (
+    <>
+      <div>
+        <label htmlFor={`${idPrefix}-focus`} style={labelStyle}>Production focus *</label>
+        <select
+          id={`${idPrefix}-focus`}
+          {...inputProps}
+          value={form.production_focus}
+          onChange={set('production_focus')}
+          required
+        >
+          {PRODUCTION_FOCUS_OPTIONS.map(option => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+      </div>
+      {showCrop && (
+        <>
+          <div>
+            <label htmlFor={`${idPrefix}-crop`} style={labelStyle}>Crop type <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+            <input id={`${idPrefix}-crop`} {...inputProps} value={form.crop_type} onChange={set('crop_type')} placeholder="e.g. Maize, Cocoa, Rice" />
+          </div>
+          <div>
+            <label htmlFor={`${idPrefix}-acreage`} style={labelStyle}>Farm size (acres) <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+            <input id={`${idPrefix}-acreage`} {...inputProps} type="number" min="0" step="0.1" value={form.acreage} onChange={set('acreage')} placeholder="e.g. 3.5" />
+          </div>
+        </>
+      )}
+      {showAnimal && (
+        <>
+          <div>
+            <label htmlFor={`${idPrefix}-animal`} style={labelStyle}>Animal type <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+            <input id={`${idPrefix}-animal`} {...inputProps} value={form.animal_type} onChange={set('animal_type')} placeholder="e.g. Poultry, Cattle, Goats" />
+          </div>
+          <div>
+            <label htmlFor={`${idPrefix}-scale`} style={labelStyle}>Number of animals <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
+            <input id={`${idPrefix}-scale`} {...inputProps} type="number" min="0" step="1" value={form.animal_scale} onChange={set('animal_scale')} placeholder="e.g. 250" />
+          </div>
+        </>
+      )}
+    </>
+  )
+}
+
 // ── Add Member Modal ──────────────────────────────────────────────────────────
 function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
   const { onBackdropClick, dialogProps, titleId, closeButtonProps } = useModal(onClose, { label: 'add member dialog' })
   const [form, setForm] = useState({
-    name: '', phone: '', email: '', location: '', crop_type: '', acreage: '',
+    name: '', phone: '', email: '', location: '', ...emptyProductionProfile,
   })
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -46,8 +124,7 @@ function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
         cooperative_id: cooperativeId,
         email:        form.email.trim()   || null,
         location:     form.location.trim() || null,
-        crop_type:    form.crop_type.trim() || null,
-        acreage:      form.acreage ? parseFloat(form.acreage) : null,
+        ...productionProfilePayload(form),
       })
       onSuccess(created)
     } catch (err) {
@@ -142,14 +219,7 @@ function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
               <label htmlFor="member-location" style={lbl}>Location <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
               <input id="member-location" style={input} value={form.location} onChange={set('location')} placeholder="e.g. Kumasi, Ashanti" />
             </div>
-            <div>
-              <label htmlFor="member-crop" style={lbl}>Crop type <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
-              <input id="member-crop" style={input} value={form.crop_type} onChange={set('crop_type')} placeholder="e.g. Maize, Cocoa, Rice" />
-            </div>
-            <div>
-              <label htmlFor="member-acreage" style={lbl}>Farm size (acres) <span style={{ color: 'var(--muted)', fontWeight: 400 }}>(optional)</span></label>
-              <input id="member-acreage" style={input} type="number" min="0" step="0.1" value={form.acreage} onChange={set('acreage')} placeholder="e.g. 3.5" />
-            </div>
+            <ProductionProfileFields form={form} set={set} inputStyle={input} labelStyle={lbl} idPrefix="member" />
           </div>
 
           <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
@@ -187,8 +257,11 @@ function EditMemberModal({ farmer, onClose, onSuccess }) {
     phone: farmer.phone || '',
     email: farmer.email || '',
     location: farmer.location || '',
+    production_focus: productionFocus(farmer),
     crop_type: farmer.crop_type || '',
     acreage: farmer.acreage ?? '',
+    animal_type: farmer.animal_type || '',
+    animal_scale: farmer.animal_scale || '',
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
@@ -200,8 +273,11 @@ function EditMemberModal({ farmer, onClose, onSuccess }) {
     try {
       if (action === 'save') {
         await updateFarmer(farmer.id, {
-          ...form,
-          acreage: form.acreage === '' ? null : Number(form.acreage),
+          name: form.name,
+          phone: form.phone,
+          email: form.email,
+          location: form.location,
+          ...productionProfilePayload(form),
         })
       } else if (action === 'suspend') {
         await updateFarmer(farmer.id, { membership_status: 'suspended' })
@@ -233,8 +309,7 @@ function EditMemberModal({ farmer, onClose, onSuccess }) {
             <label>Phone<input className="auth-input" value={form.phone} onChange={set('phone')} required /></label>
             <label>Email<input className="auth-input" type="email" value={form.email} onChange={set('email')} /></label>
             <label>Location<input className="auth-input" value={form.location} onChange={set('location')} /></label>
-            <label>Crop type<input className="auth-input" value={form.crop_type} onChange={set('crop_type')} /></label>
-            <label>Farm size (acres)<input className="auth-input" type="number" min="0" step="0.1" value={form.acreage} onChange={set('acreage')} /></label>
+            <ProductionProfileFields form={form} set={set} inputClass="auth-input" idPrefix="edit-member" />
           </div>
           <div className="member-edit-actions">
             <button type="button" onClick={() => run('deactivate')} disabled={loading || farmer.membership_status === 'inactive'} className="danger-text-btn">Deactivate</button>
@@ -255,7 +330,7 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
   const searchableText = useCallback(
-    farmer => `${farmer.name} ${farmer.phone} ${farmer.location || ''} ${farmer.crop_type || ''}`,
+    farmer => `${farmer.name} ${farmer.phone} ${farmer.location || ''} ${productionFocusLabel(productionFocus(farmer))} ${farmer.crop_type || ''} ${farmer.animal_type || ''} ${farmer.animal_scale || ''}`,
     [],
   )
   const statusValue = useCallback(farmer => farmer.membership_status, [])
@@ -379,7 +454,7 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
           </div>
           <div className="table-scroll">
             <div className="mt-head members-admin-head">
-              {['Member', 'Phone', 'Location', 'Crop', 'Status', 'Trust Score', 'Actions'].map(h => (
+              {['Member', 'Phone', 'Location', 'Production', 'Status', 'Trust Score', 'Actions'].map(h => (
                 <span key={h} className="pt-lbl">{h}</span>
               ))}
             </div>
@@ -397,7 +472,10 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
                   </div>
                   <span className="pt-m" style={{ fontSize: 12 }}>{farmer.phone}</span>
                   <span className="pt-m">{farmer.location || '—'}</span>
-                  <span className="pt-m">{farmer.crop_type || '—'}</span>
+                  <span className="pt-m">
+                    <strong>{productionFocusLabel(productionFocus(farmer))}</strong>
+                    <span style={{ display: 'block', fontSize: 11 }}>{memberProductionDescription(farmer)}</span>
+                  </span>
                   <span className={`bdg ${STATUS_CLS[farmer.membership_status] || 'bdg-amber'}`}>
                     {farmer.membership_status}
                   </span>

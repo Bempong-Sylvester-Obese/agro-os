@@ -5,7 +5,7 @@ Rules-based scoring formula (transparent / explainable for MVP).
 
 Weights (sum = 1.0):
   Payment Compliance  0.40  – dues paid on time
-  Production History  0.25  – harvest completion rate + volume
+  Production History  0.25  – production completion rate + reported output
   Loan Repayment      0.20  – loans repaid vs. disbursed
   Attendance          0.15  – cooperative meetings / training attended
 
@@ -18,7 +18,6 @@ from sqlalchemy.orm import Session
 
 from app.models.models import (
     CooperativeAttendance,
-    CooperativeMembership as Farmer,
     Loan,
     LoanStatus,
     Production,
@@ -26,6 +25,9 @@ from app.models.models import (
     TransactionStatus,
     TransactionType,
     TrustScore,
+)
+from app.models.models import (
+    CooperativeMembership as Farmer,
 )
 
 
@@ -113,8 +115,9 @@ class TrustScoreService:
     @staticmethod
     def _production_history(farmer_id: int, db: Session) -> float:
         """
-        Based on harvest completion rate over the past 12 months.
-        Bonus points for consistent volume and multiple cycles.
+        Based on production completion rate over the past 12 months.
+        A record is complete when it has a generic production date (or the
+        legacy harvest date), with a bonus when actual output is reported.
         Default 50 if no production data.
         """
         one_year_ago = datetime.utcnow() - timedelta(days=365)
@@ -129,18 +132,37 @@ class TrustScoreService:
         if not productions:
             return 50.0
 
-        completed = [p for p in productions if p.harvest_date is not None]
+        completed = [
+            record
+            for record in productions
+            if getattr(record, "production_date", None) is not None
+            or record.harvest_date is not None
+        ]
         base = (len(completed) / len(productions)) * 100
 
-        # Bonus: multiple cycles show active farming
+        # Multiple records show sustained production activity.
         if len(productions) >= 2:
             base = min(100.0, base + 5)
         if len(productions) >= 4:
             base = min(100.0, base + 5)
 
-        # Bonus: actual kg reported
-        with_kg = [p for p in completed if p.quantity_kg and p.quantity_kg > 0]
-        if with_kg:
+        # Reward a completed record with actual output in any supported unit.
+        with_output = [
+            record
+            for record in completed
+            if (
+                getattr(record, "quantity", None)
+                if getattr(record, "quantity", None) is not None
+                else record.quantity_kg
+            )
+            and (
+                getattr(record, "quantity", None)
+                if getattr(record, "quantity", None) is not None
+                else record.quantity_kg
+            )
+            > 0
+        ]
+        if with_output:
             base = min(100.0, base + 5)
 
         return base

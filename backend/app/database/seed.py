@@ -28,6 +28,11 @@ logger = logging.getLogger(__name__)
 COOP_NAME = DEMO_COOPERATIVE_NAME
 
 
+def _model_values(model, values: dict) -> dict:
+    """Keep the seed runnable while unified-model changes land independently."""
+    return {key: value for key, value in values.items() if hasattr(model, key)}
+
+
 def seed_golden_path(db: Session) -> dict:
     """Insert demo records when the database is empty."""
     from app.config import get_settings
@@ -78,6 +83,9 @@ def seed_golden_path(db: Session) -> dict:
             "crop_type": "Cassava",
             "acreage": 3.0,
             "trust_score": 71.0,
+            "production_focus": "mixed",
+            "animal_type": "Goats",
+            "animal_scale": 12,
         },
         {
             "name": "Yaw Frimpong",
@@ -86,6 +94,17 @@ def seed_golden_path(db: Session) -> dict:
             "crop_type": "Rice",
             "acreage": 3.2,
             "trust_score": 76.0,
+        },
+        {
+            "name": "Esi Nyarko",
+            "phone": "+233272345678",
+            "location": "Central",
+            "crop_type": "Poultry",
+            "acreage": None,
+            "trust_score": 74.0,
+            "production_focus": "animal",
+            "animal_type": "Chickens",
+            "animal_scale": 250,
         },
     ]
 
@@ -99,12 +118,20 @@ def seed_golden_path(db: Session) -> dict:
         db.add(profile)
         db.flush()
         membership = CooperativeMembership(
-            farmer_id=profile.id,
-            cooperative_id=coop.id,
-            membership_status=MembershipStatus.active,
-            crop_type=row["crop_type"],
-            acreage=row["acreage"],
-            trust_score=row["trust_score"],
+            **_model_values(
+                CooperativeMembership,
+                {
+                    "farmer_id": profile.id,
+                    "cooperative_id": coop.id,
+                    "membership_status": MembershipStatus.active,
+                    "crop_type": row["crop_type"],
+                    "acreage": row["acreage"],
+                    "trust_score": row["trust_score"],
+                    "production_focus": row.get("production_focus", "crop"),
+                    "animal_type": row.get("animal_type"),
+                    "animal_scale": row.get("animal_scale"),
+                },
+            )
         )
         db.add(membership)
         farmers.append(membership)
@@ -112,6 +139,8 @@ def seed_golden_path(db: Session) -> dict:
 
     abena = farmers[0]
     kofi = farmers[1]
+    ama = farmers[2]
+    esi = farmers[4]
 
     pending_ref = str(uuid.uuid4())
     db.add(
@@ -157,22 +186,84 @@ def seed_golden_path(db: Session) -> dict:
 
     db.add(
         Production(
-            farmer_id=abena.id,
-            crop_type="Maize",
-            season="2026A",
-            expected_kg=1800.0,
-            quantity_kg=920.0,
-            quality_grade="B",
+            **_model_values(
+                Production,
+                {
+                    "farmer_id": abena.id,
+                    "production_kind": "crop",
+                    "product_name": "Maize",
+                    "activity": "harvest",
+                    "unit": "kg",
+                    "expected_quantity": 1800.0,
+                    "quantity": 920.0,
+                    "production_date": datetime.utcnow() - timedelta(days=20),
+                    "crop_type": "Maize",
+                    "season": "2026A",
+                    "expected_kg": 1800.0,
+                    "quantity_kg": 920.0,
+                    "harvest_date": datetime.utcnow() - timedelta(days=20),
+                    "quality_grade": "B",
+                },
+            )
         )
     )
     db.add(
         Production(
-            farmer_id=kofi.id,
-            crop_type="Cocoa",
-            season="2026A",
-            expected_kg=2400.0,
-            quantity_kg=2100.0,
-            quality_grade="A",
+            **_model_values(
+                Production,
+                {
+                    "farmer_id": kofi.id,
+                    "production_kind": "crop",
+                    "product_name": "Cocoa",
+                    "activity": "harvest",
+                    "unit": "kg",
+                    "expected_quantity": 2400.0,
+                    "quantity": 2100.0,
+                    "production_date": datetime.utcnow() - timedelta(days=12),
+                    "crop_type": "Cocoa",
+                    "season": "2026A",
+                    "expected_kg": 2400.0,
+                    "quantity_kg": 2100.0,
+                    "harvest_date": datetime.utcnow() - timedelta(days=12),
+                    "quality_grade": "A",
+                },
+            )
+        )
+    )
+    db.add(
+        Production(
+            **_model_values(
+                Production,
+                {
+                    "farmer_id": ama.id,
+                    "production_kind": "animal",
+                    "product_name": "Goats",
+                    "activity": "offspring",
+                    "unit": "head",
+                    "expected_quantity": 12.0,
+                    "quantity": 10.0,
+                    "production_date": datetime.utcnow() - timedelta(days=8),
+                    "season": "2026A",
+                },
+            )
+        )
+    )
+    db.add(
+        Production(
+            **_model_values(
+                Production,
+                {
+                    "farmer_id": esi.id,
+                    "production_kind": "animal",
+                    "product_name": "Eggs",
+                    "activity": "collection",
+                    "unit": "crates",
+                    "expected_quantity": 80.0,
+                    "quantity": 76.0,
+                    "production_date": datetime.utcnow() - timedelta(days=3),
+                    "season": "2026A",
+                },
+            )
         )
     )
 
