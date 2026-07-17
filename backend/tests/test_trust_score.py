@@ -156,17 +156,27 @@ def test_production_none_harvested(session, seeded):
 
 
 def test_animal_production_uses_generic_completion_and_output(session, seeded):
-    production = Production(farmer_id=seeded.id, crop_type="Poultry")
-    production.production_kind = "animal"
-    production.product_name = "Eggs"
-    production.unit = "crates"
-    production.expected_quantity = 40.0
-    production.quantity = 38.0
-    production.production_date = datetime.utcnow()
-    session.add(production)
+    incomplete = Production(
+        farmer_id=seeded.id,
+        production_kind="animal",
+        product_name="Eggs",
+        unit="crates",
+    )
+    production = Production(
+        farmer_id=seeded.id,
+        production_kind="animal",
+        product_name="Eggs",
+        unit="crates",
+        expected_quantity=40.0,
+        quantity=38.0,
+        production_date=datetime.utcnow(),
+    )
+    session.add_all([incomplete, production])
     session.flush()
 
-    assert TrustScoreService._production_history(seeded.id, session) == 100.0
+    # 50% completion + 5 multi-record bonus + 5 output bonus.
+    # Without generic quantity handling this stays at 55.0.
+    assert TrustScoreService._production_history(seeded.id, session) == 60.0
 
 
 def test_mixed_production_counts_generic_and_legacy_records(session, seeded):

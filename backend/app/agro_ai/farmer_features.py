@@ -103,7 +103,7 @@ def extract_features_from_farmer(farmer: Farmer, db: Session) -> dict[str, float
         for record in productions:
             expected = _production_amount(record, "expected_quantity", "expected_kg")
             actual = _production_amount(record, "quantity", "quantity_kg")
-            if expected and actual:
+            if expected and actual is not None:
                 output_scores.append(actual / expected)
         if output_scores:
             yield_performance = _ratio(sum(output_scores), len(output_scores))

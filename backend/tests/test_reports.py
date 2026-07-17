@@ -77,29 +77,36 @@ def test_production_export_includes_unified_and_legacy_columns(
 ):
     record = Production(
         farmer_id=farmer["id"],
+        production_kind="animal",
+        product_name="Eggs",
+        activity="collection",
+        expected_quantity=80,
+        quantity=76,
+        unit="crates",
+        production_date=datetime.utcnow(),
+    )
+    legacy = Production(
+        farmer_id=farmer["id"],
         crop_type="Poultry",
         expected_kg=80,
         quantity_kg=76,
         harvest_date=datetime.utcnow(),
     )
-    record.production_kind = "animal"
-    record.product_name = "Eggs"
-    record.activity = "collection"
-    record.expected_quantity = 80
-    record.quantity = 76
-    record.unit = "crates"
-    record.production_date = record.harvest_date
-    db.add(record)
+    db.add_all([record, legacy])
     db.flush()
 
-    response = client.get(
+    animal_response = client.get(
+        f"/reports/production.csv?cooperative_id={cooperative['id']}"
+        "&status=completed&q=Eggs"
+    )
+    legacy_response = client.get(
         f"/reports/production.csv?cooperative_id={cooperative['id']}"
         "&status=completed&q=Poultry"
     )
 
-    assert response.status_code == 200
-    rows = _rows(response)
-    assert rows[0][2:9] == [
+    assert animal_response.status_code == 200
+    animal_rows = _rows(animal_response)
+    assert animal_rows[0][2:9] == [
         "Production Kind",
         "Product",
         "Activity",
@@ -108,8 +115,11 @@ def test_production_export_includes_unified_and_legacy_columns(
         "Unit",
         "Production Date",
     ]
-    assert rows[1][2:8] == ["animal", "Eggs", "collection", "80", "76", "crates"]
-    assert rows[1][9:12] == ["Poultry", "80", "76"]
+    assert animal_rows[1][2:8] == ["animal", "Eggs", "collection", "80", "76", "crates"]
+
+    assert legacy_response.status_code == 200
+    legacy_rows = _rows(legacy_response)
+    assert legacy_rows[1][9:12] == ["Poultry", "80", "76"]
 
 
 def test_payment_export_filters_status_and_date(client, transaction, cooperative):
