@@ -89,6 +89,8 @@ function LogProductionModal({ farmers, onClose, onSuccess }) {
       title="Log production"
       subtitle="Record crop harvest or animal output for one cooperative member."
       onClose={onClose}
+      closeDisabled={loading}
+      closeOnBackdrop={!loading}
       label="production dialog"
       as="form"
       bodyProps={{ onSubmit: handleSubmit }}
@@ -310,7 +312,7 @@ export default function Production({ farmers = [], productions = [], cooperative
       <DashboardTableToolbar
         label="Production"
         table={table}
-        statusOptions={[
+        statuses={[
           { value: 'recorded', label: 'Recorded' },
           { value: 'planned', label: 'Planned' },
         ]}

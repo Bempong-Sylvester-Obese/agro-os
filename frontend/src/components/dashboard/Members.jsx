@@ -164,6 +164,8 @@ function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
       title="Add member"
       subtitle="Register a farmer in this cooperative and set their production focus."
       onClose={onClose}
+      closeDisabled={loading}
+      closeOnBackdrop={!loading}
       label="add member dialog"
       wide
       as="form"
@@ -281,6 +283,8 @@ function EditMemberModal({ farmer, onClose, onSuccess }) {
       title="Edit member"
       subtitle={`Update profile details for membership #${farmer.id}.`}
       onClose={onClose}
+      closeDisabled={loading}
+      closeOnBackdrop={!loading}
       label="edit member dialog"
       wide
       as="form"

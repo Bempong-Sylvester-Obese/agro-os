@@ -663,7 +663,10 @@ button:focus-visible,
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
-  padding: 0;
+  min-height: 44px;
+  padding: 12px 0;
+  display: inline-flex;
+  align-items: center;
 }
 .danger-text-btn { color: #9B2424; }
 .warning-text-btn { color: #7A5C10; }

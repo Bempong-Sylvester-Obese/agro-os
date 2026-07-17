@@ -43,11 +43,23 @@ function ConfirmationModal({ action, processing, error, onClose, onConfirm }) {
   const [title, description, confirmLabel] = ACTION_COPY[action.type]
   const destructive = ['reject', 'cancel'].includes(action.type)
 
+  const minRepaymentDate = (() => {
+    const next = new Date()
+    next.setHours(0, 0, 0, 0)
+    next.setDate(next.getDate() + 1)
+    const year = next.getFullYear()
+    const month = String(next.getMonth() + 1).padStart(2, '0')
+    const day = String(next.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  })()
+
   const submit = (event) => {
     event.preventDefault()
-    if (action.type === 'approve' && !repaymentDate) {
-      setValidationError('Choose a future repayment due date.')
-      return
+    if (action.type === 'approve') {
+      if (!repaymentDate || repaymentDate < minRepaymentDate) {
+        setValidationError('Choose a future repayment due date.')
+        return
+      }
     }
     if (['cancel', 'reject'].includes(action.type) && !reason.trim()) {
       setValidationError(
@@ -69,7 +81,7 @@ function ConfirmationModal({ action, processing, error, onClose, onConfirm }) {
       closeOnBackdrop={!processing}
       closeDisabled={processing}
       as="form"
-      bodyProps={{ onSubmit: submit }}
+      bodyProps={{ onSubmit: submit, noValidate: true }}
     >
       <div className="dashboard-modal-body">
         <div className="dashboard-modal-summary">
@@ -98,6 +110,7 @@ function ConfirmationModal({ action, processing, error, onClose, onConfirm }) {
               id="loan-repayment-date"
               className="dashboard-modal-input"
               type="date"
+              min={minRepaymentDate}
               value={repaymentDate}
               onChange={(event) => { setRepaymentDate(event.target.value); setValidationError('') }}
               disabled={processing}

@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react'
+import React, { cloneElement, isValidElement, useCallback, useId } from 'react'
 import { X } from 'lucide-react'
 import { useModal } from '../../hooks/useModal'
 
@@ -26,12 +26,19 @@ export default function DashboardModal({
     closeOnBackdrop: closeOnBackdrop && !closeDisabled,
   })
 
+  const { className: bodyClassName = '', ...restBodyProps } = bodyProps
+  const modalClassName = [
+    'dashboard-modal',
+    wide ? 'dashboard-modal--wide' : '',
+    bodyClassName,
+  ].filter(Boolean).join(' ')
+
   return (
     <div className="dashboard-modal-overlay" onClick={onBackdropClick}>
       <Body
-        className={`dashboard-modal${wide ? ' dashboard-modal--wide' : ''}`}
+        {...restBodyProps}
         {...dialogProps}
-        {...bodyProps}
+        className={modalClassName}
       >
         <div className="dashboard-modal-head">
           <div>
@@ -55,6 +62,14 @@ export default function DashboardModal({
 }
 
 export function ModalField({ htmlFor, label, optional = false, hint, children, className = '' }) {
+  const generatedId = useId()
+  const hintId = hint ? `modal-field-hint-${generatedId.replace(/:/g, '')}` : undefined
+  const control = hint && isValidElement(children)
+    ? cloneElement(children, {
+        'aria-describedby': [children.props['aria-describedby'], hintId].filter(Boolean).join(' ') || undefined,
+      })
+    : children
+
   return (
     <div className={`dashboard-modal-field${className ? ` ${className}` : ''}`}>
       {label ? (
@@ -63,8 +78,8 @@ export function ModalField({ htmlFor, label, optional = false, hint, children, c
           {optional ? <span className="dashboard-modal-optional"> (optional)</span> : null}
         </label>
       ) : null}
-      {children}
-      {hint ? <span className="dashboard-modal-hint">{hint}</span> : null}
+      {control}
+      {hint ? <span id={hintId} className="dashboard-modal-hint">{hint}</span> : null}
     </div>
   )
 }

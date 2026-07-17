@@ -56,9 +56,15 @@ describe('Loans operations', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Approve loan' })
     expect(dialog.getAttribute('aria-modal')).toBe('true')
-    fireEvent.change(screen.getByLabelText('Repayment due date'), {
-      target: { value: '2026-09-01' },
-    })
+    const repaymentInput = screen.getByLabelText('Repayment due date')
+    expect(repaymentInput.getAttribute('min')).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+
+    fireEvent.change(repaymentInput, { target: { value: '2020-01-01' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Approve loan' }))
+    expect(screen.getByRole('alert').textContent).toContain('future repayment due date')
+    expect(loansApi.approveLoan).not.toHaveBeenCalled()
+
+    fireEvent.change(repaymentInput, { target: { value: '2026-09-01' } })
     fireEvent.click(screen.getByRole('button', { name: 'Approve loan' }))
 
     await waitFor(() => expect(loansApi.approveLoan).toHaveBeenCalledWith(12, '2026-09-01'))

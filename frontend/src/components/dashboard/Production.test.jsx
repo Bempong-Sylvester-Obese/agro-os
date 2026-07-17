@@ -73,6 +73,12 @@ describe('unified production dashboard', () => {
     expect(screen.getByLabelText('Crop product')).toBeTruthy()
   })
 
+  it('renders recorded and planned status filters', () => {
+    render(<Production farmers={farmers} productions={[]} cooperativeId={1} loading={false} />)
+    expect(screen.getByRole('option', { name: 'Recorded' })).toBeTruthy()
+    expect(screen.getByRole('option', { name: 'Planned' })).toBeTruthy()
+  })
+
   it('keeps unit totals separate and displays legacy crop records', () => {
     const productions = [
       { id: 1, farmer_id: 1, crop_type: 'Maize', expected_kg: 120, quantity_kg: 100, harvest_date: '2026-07-01' },
