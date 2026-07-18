@@ -1138,6 +1138,7 @@ button:focus-visible,
 .hero::before { content: ''; position: absolute; inset: 0; background: radial-gradient(ellipse 60% 80% at 70% 50%, rgba(82,183,136,.07) 0%, transparent 70%), radial-gradient(ellipse 40% 60% at 90% 20%, rgba(201,168,76,.05) 0%, transparent 60%); pointer-events: none; }
 .hero-grid    { width: 100%; max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
 .hero-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--g); margin-bottom: 20px; }
+.hero-eyebrow strong { font-weight: 700; }
 .hero-h1      { font-family: 'Fraunces', serif; font-size: 54px; font-weight: 900; line-height: 1.05; margin-bottom: 22px; }
 .hero-h1 em   { font-style: italic; color: var(--g); }
 .hero-sub     { font-size: 17px; line-height: 1.75; color: var(--muted); margin-bottom: 36px; max-width: 480px; }

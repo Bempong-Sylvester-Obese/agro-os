@@ -94,14 +94,14 @@ export default function HomePage({ user }) {
       <section className="hero">
         <div className="hero-grid">
           <Reveal>
-            <div className="hero-eyebrow">Digital office for farmer cooperatives</div>
+            <div className="hero-eyebrow"><strong>Digital office for farmer cooperatives</strong></div>
             <h1 className="hero-h1 serif">
               Less paperwork.<br /><em>Better records.</em><br />Stronger farmer cooperatives.
             </h1>
             <p className="hero-sub">
-              AgroOS helps farmer cooperatives replace paperwork and spreadsheets with one simple
-              system for managing members, loans, payments, produce and communication. It works on
-              smartphones and even basic mobile phones through USSD, making it accessible to every farmer.
+              AgroOS gives farmer cooperatives one simple system to manage member records, loans,
+              payments, produce deliveries and communication, replacing paperwork and spreadsheets.
+              It works on smartphones and basic mobile phones through USSD, making it accessible to every farmer.
             </p>
             <div className="hero-ctas">
               {user ? (
