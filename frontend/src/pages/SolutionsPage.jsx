@@ -1,6 +1,6 @@
 // src/pages/SolutionsPage.jsx
 import React from 'react'
-import { ArrowRight, BarChart3, CheckCircle2, CreditCard, Megaphone, ShieldCheck, Smartphone, Users } from 'lucide-react'
+import { ArrowRight, BarChart3, CheckCircle2, CreditCard, Megaphone, MessageSquare, ShieldCheck, Smartphone, Sprout, Star, Users } from 'lucide-react'
 import Footer from '../components/Footer'
 import CTASection from '../components/CTASection'
 import { Reveal } from '../components/Motion'
@@ -10,6 +10,15 @@ const OUTCOMES = [
   [Users, 'Cooperative administrators', 'Keep member, payment, production, and communication records connected instead of split across ledgers and spreadsheets.'],
   [Smartphone, 'Farmers and field teams', 'Reach essential services through web, SMS, and a Moolre USSD session when mobile data is unavailable.'],
   [BarChart3, 'Finance and programme teams', 'Review auditable activity and data-led credit signals before making operational or lending decisions.'],
+]
+
+const PLATFORM_CAPABILITIES = [
+  [Users, 'Member management', 'Profiles, roles, dues status, and full history for every farmer in your cooperative.'],
+  [Sprout, 'Production tracking', 'Log harvests, yields, and crop cycles per member. Build a data trail over seasons.'],
+  [CreditCard, 'Payments & disbursements', 'Collect dues and pay out via MoMo or card with full transaction records and receipts.'],
+  [MessageSquare, 'SMS broadcasts', 'Send announcements to all members or filtered groups in one operation.'],
+  [Star, 'AgroCredit Trust Score', 'Creditworthiness scores built from payment, production, repayment, and attendance data.'],
+  [Smartphone, 'USSD access', 'Check active loan balances, pay dues, and view announcements without mobile data.'],
 ]
 
 export default function SolutionsPage({ user }) {
@@ -28,11 +37,11 @@ export default function SolutionsPage({ user }) {
       <main className="solutions-page">
         <section className="sol-hero">
           <Reveal className="sol-hero-inner">
-            <div className="sol-tag">Connected agricultural operations</div>
-            <h1 className="sol-hero-h1 serif">One operating system.<br />Clear outcomes for every role.</h1>
+            <div className="sol-tag">Operating system for farmer cooperatives</div>
+            <h1 className="sol-hero-h1 serif">Run your cooperative<br />with one connected<br />operating system.</h1>
             <p className="sol-hero-sub">
-              AgroOS connects cooperative administration, farmer access, payments, communications,
-              and data-led credit workflows without assuming every member owns a smartphone.
+              Manage members, production, MoMo payments, communications, and credit decisions
+              from one accountable platform built for Ghanaian agricultural operations.
             </p>
             <div className="sol-hero-actions">
               <button className="btn-lg" type="button" onClick={() => setPage('subscription', { plan: 'starter' })}>
@@ -71,6 +80,28 @@ export default function SolutionsPage({ user }) {
                   <div><strong>{name}</strong><small>{detail}</small></div>
                   <CheckCircle2 size={16} />
                 </div>
+              ))}
+            </div>
+          </Reveal>
+        </section>
+
+        <section className="solution-outcomes">
+          <Reveal className="solution-outcomes-inner">
+            <div className="section-header">
+              <div className="section-kicker">How the platform works</div>
+              <h2 className="sec-title serif">Technical capabilities behind the digital office.</h2>
+              <p className="sec-sub">
+                AgroOS connects cooperative administration, farmer access, payments, communications,
+                and data-led credit workflows without assuming every member owns a smartphone.
+              </p>
+            </div>
+            <div className="solution-outcome-grid">
+              {PLATFORM_CAPABILITIES.map(([Icon, title, text]) => (
+                <article key={title} className="solution-outcome-card">
+                  <Icon size={22} />
+                  <h3 className="serif">{title}</h3>
+                  <p>{text}</p>
+                </article>
               ))}
             </div>
           </Reveal>

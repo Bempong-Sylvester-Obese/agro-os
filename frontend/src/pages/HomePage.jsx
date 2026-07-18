@@ -5,7 +5,7 @@ import DashboardMock from '../components/DashboardMock'
 import CTASection from '../components/CTASection'
 import { Reveal } from '../components/Motion'
 import { useAppNavigate } from '../hooks/useAppNavigate'
-import { Sprout, Smartphone, Users, CreditCard, MessageSquare, Star, Building, MapPin, Tractor, Landmark, Banknote, ArrowRight, ShieldCheck, ReceiptText, WifiOff, Check } from 'lucide-react'
+import { Sprout, Smartphone, Users, CreditCard, MessageSquare, Star, Building, MapPin, Tractor, Landmark, Banknote, ArrowRight, ReceiptText, Check, FileText, Clock, ClipboardCheck } from 'lucide-react'
 
 const MOOLRE_PILLARS = [
   {
@@ -39,18 +39,18 @@ const MOOLRE_PILLARS = [
 ]
 
 const OPERATING_PROOF = [
-  [CreditCard, 'Connected payments', 'Moolre-powered dues collection and loan disbursement with transaction records.'],
-  [WifiOff, 'Works beyond smartphones', 'USSD and SMS keep field operations accessible without mobile data.'],
-  [ShieldCheck, 'Accountable operations', 'Member, payment, production, and credit activity stays visible in one system.'],
+  [FileText, 'Less paperwork', 'Replace scattered paper ledgers and spreadsheets with one simple system.'],
+  [ClipboardCheck, 'Fewer errors, better records', 'Keep member, loan, payment, and produce records accurate and up to date.'],
+  [Clock, 'More time for farmers', 'Faster communication and less admin so staff can focus on supporting members.'],
 ]
 
 const FEATURES = [
-  ['01', <Users size={28} />, 'Member management', 'Profiles, roles, dues status, and full history for every farmer in your cooperative.', 'features'],
-  ['02', <Sprout size={28} />, 'Production tracking', 'Log harvests, yields, and crop cycles per member. Build a data trail over seasons.', 'features'],
-  ['03', <CreditCard size={28} />, 'Payments & disbursements', 'Collect dues and pay out via MoMo or card with full transaction records and receipts.', 'solutions'],
-  ['04', <MessageSquare size={28} />, 'SMS broadcasts', 'Send announcements to all members or filtered groups in one operation.', 'features'],
-  ['05', <Star size={28} />, 'AgroCredit Trust Score', 'Creditworthiness scores built from payment, production, repayment, and attendance data.', 'solutions'],
-  ['06', <Smartphone size={28} />, 'USSD access', 'Check active loan balances, pay dues, and view announcements without mobile data.', 'ussd'],
+  ['01', <Users size={28} />, 'Accurate member records', 'Keep farmer profiles, dues status, and history in one place instead of scattered sheets.', 'features'],
+  ['02', <Banknote size={28} />, 'Loans and repayments', 'Track loan requests, approvals, disbursements, and repayments without rebuilding formulas.', 'solutions'],
+  ['03', <Sprout size={28} />, 'Produce and farmer payments', 'Record deliveries and payouts so produce and money stay connected.', 'solutions'],
+  ['04', <MessageSquare size={28} />, 'SMS reminders and announcements', 'Reach members quickly with dues reminders, meeting notices, and updates.', 'features'],
+  ['05', <Smartphone size={28} />, 'Access on any mobile phone', 'Farmers use USSD on basic phones when they do not have smartphones or internet.', 'ussd'],
+  ['06', <Star size={28} />, 'Trust Score for lending', 'Use payment, production, and repayment history to support clearer lending decisions.', 'solutions'],
 ]
 
 const WHO = [
@@ -94,13 +94,14 @@ export default function HomePage({ user }) {
       <section className="hero">
         <div className="hero-grid">
           <Reveal>
-            <div className="hero-eyebrow">Operating system for farmer cooperatives</div>
+            <div className="hero-eyebrow">Digital office for farmer cooperatives</div>
             <h1 className="hero-h1 serif">
-              Run your cooperative<br /><em>with one connected</em><br />operating system
+              Less paperwork.<br /><em>Better records.</em><br />Stronger farmer cooperatives.
             </h1>
             <p className="hero-sub">
-              Manage members, production, MoMo payments, communications, and credit decisions
-              from one accountable platform built for Ghanaian agricultural operations.
+              AgroOS helps farmer cooperatives replace paperwork and spreadsheets with one simple
+              system for managing members, loans, payments, produce and communication. It works on
+              smartphones and even basic mobile phones through USSD, making it accessible to every farmer.
             </p>
             <div className="hero-ctas">
               {user ? (
@@ -130,11 +131,11 @@ export default function HomePage({ user }) {
       </section>
 
       {/* ── Operational proof ── */}
-      <section className="home-proof" aria-label="Platform operating model">
+      <section className="home-proof" aria-label="What cooperatives gain">
         <Reveal className="home-proof-inner">
           <div className="home-proof-heading">
-            <span>Built for real cooperative operations</span>
-            <strong className="serif">Digital infrastructure across office and field.</strong>
+            <span>What really stands out</span>
+            <strong className="serif">Not the technology. The outcomes.</strong>
           </div>
           <div className="home-proof-grid">
             {OPERATING_PROOF.map(([Icon, title, text]) => (
@@ -168,10 +169,10 @@ export default function HomePage({ user }) {
       {/* ── Features ── */}
       <section className="sec">
         <Reveal className="sec-inner">
-          <div className="sec-lbl">The platform</div>
-          <h2 className="sec-h2 serif">Everything you need to<br />manage your cooperative</h2>
+          <div className="sec-lbl">With AgroOS, cooperatives can</div>
+          <h2 className="sec-h2 serif">Spend less time on paperwork<br />and more time supporting farmers</h2>
           <p className="sec-sub">
-            One platform replacing the WhatsApp groups, spreadsheets, and paper ledgers holding cooperatives back.
+            One simple system for the day-to-day work that usually lives in paper records and Excel.
           </p>
           <div className="feat-grid">
             {FEATURES.map(([num, icon, title, desc, target]) => (
@@ -292,7 +293,7 @@ export default function HomePage({ user }) {
 
       {/* ── CTA ── */}
       <CTASection
-        heading="Ready to modernize<br />your cooperative?"
+        heading="Spend less time on paperwork.<br />More time supporting your farmers."
         subtext="Create a Starter workspace without a card, or speak with our team about a structured enterprise rollout."
         primaryLabel={user ? 'Go to dashboard' : 'Start with Starter'}
         secondaryLabel="Discuss enterprise rollout"
