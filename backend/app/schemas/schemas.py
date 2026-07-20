@@ -41,6 +41,7 @@ class CooperativeUpdate(BaseModel):
 
 class CooperativeResponse(CooperativeBase):
     id: int
+    ussd_code: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -88,6 +89,7 @@ class FarmerResponse(FarmerBase):
     # `id` is the cooperative membership ID used by cooperative operations.
     id: int
     farmer_id: int
+    farmer_code: Optional[str] = None
     membership_status: MembershipStatus
     trust_score: float
     existing_farmer: bool = False

@@ -99,6 +99,16 @@ def create_farmer(
             detail="This farmer is already a member of your cooperative",
         )
 
+    import random
+    while True:
+        code = f"{random.randint(100000, 999999)}"
+        exists = db.query(CooperativeMembership).filter(
+            CooperativeMembership.cooperative_id == cooperative_id,
+            CooperativeMembership.farmer_code == code
+        ).first()
+        if not exists:
+            break
+
     membership = CooperativeMembership(
         farmer_id=farmer.id,
         cooperative_id=cooperative_id,
@@ -107,6 +117,7 @@ def create_farmer(
         production_focus=farmer_in.production_focus,
         animal_type=farmer_in.animal_type,
         animal_scale=farmer_in.animal_scale,
+        farmer_code=code,
     )
     db.add(membership)
     try:

@@ -17,6 +17,7 @@ from app.services.auth_service import (
     get_current_user,
     require_roles,
 )
+from app.services.moolre_service import MoolreService
 
 router = APIRouter(prefix="/cooperatives", tags=["cooperatives"])
 
@@ -90,6 +91,51 @@ def update_cooperative(
                 resource_type="cooperative",
                 resource_id=str(coop.id),
                 details="fields=" + ",".join(sorted(updates.model_dump(exclude_none=True))),
+            )
+        )
+    db.commit()
+    db.refresh(coop)
+    return coop
+
+
+@router.post("/{cooperative_id}/wallet/provision", response_model=CooperativeResponse)
+async def provision_wallet(
+    cooperative_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+):
+    """Provision a Moolre sub-wallet for the cooperative."""
+    enforce_cooperative_scope(current_user, cooperative_id)
+    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
+    if not coop:
+        raise HTTPException(status_code=404, detail="Cooperative not found")
+        
+    if coop.moolre_account_number:
+        raise HTTPException(status_code=400, detail="Wallet already provisioned")
+        
+    moolre = MoolreService()
+    result = await moolre.create_account(
+        account_name=coop.name,
+        currency=coop.currency or "GHS",
+    )
+    
+    if not result.get("success"):
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Failed to provision wallet: {result.get('raw', {}).get('message', 'Unknown error')}"
+        )
+        
+    coop.moolre_account_number = result.get("account_number")
+    
+    if current_user:
+        db.add(
+            AdminAuditLog(
+                cooperative_id=coop.id,
+                actor_id=str(current_user.id),
+                action="wallet.provisioned",
+                resource_type="cooperative",
+                resource_id=str(coop.id),
+                details=f"account_number={coop.moolre_account_number}",
             )
         )
     db.commit()

@@ -230,24 +230,43 @@ export default function AuthPage({ onAuth }) {
     setError(null)
     setLoading(true)
     try {
+      const plan = subscriptionIntent?.plan || 'starter'
       const data = await signup({
         email: signupEmail,
         password: signupPassword,
         cooperativeName,
         location: location || undefined,
         memberCount: memberCount || undefined,
-        subscriptionPlan: subscriptionIntent?.plan || 'starter',
+        subscriptionPlan: plan,
         onboardingRole: subscriptionIntent?.role || 'Cooperative administrator',
       })
       storeAuthToken(data.access_token)
       if (subscriptionIntent) window.sessionStorage.removeItem('agroos-subscription-intent')
+      
+      const user = data.user || userFromAuthToken(data.access_token)
+      
+      if (plan !== 'starter' && user?.cooperative_id) {
+        setLoading(true)
+        // Attempt to redirect to Moolre checkout
+        try {
+          const { createSubscriptionCheckout } = await import('../api/cooperatives')
+          const res = await createSubscriptionCheckout(user.cooperative_id, plan)
+          if (res.authorization_url) {
+            window.location.href = res.authorization_url
+            return
+          }
+        } catch (err) {
+          console.error("Subscription checkout failed:", err)
+          // Fall through to regular login if checkout fails
+        }
+      }
+      
       setSuccess(true)
       setTimeout(() => {
         completeAuth(data, userFromSignupResponse(data, signupEmail.trim()))
       }, 1200)
     } catch (err) {
       setError(err.message)
-    } finally {
       setLoading(false)
     }
   }

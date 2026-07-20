@@ -487,7 +487,7 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
                 <div key={farmer.id} className="mt-row members-admin-row">
                   <div>
                     <div className="pt-name">{farmer.name}</div>
-                    <div className="pt-id">#{farmer.id}</div>
+                    <div className="pt-id">#{farmer.id} • Code: {farmer.farmer_code || 'N/A'}</div>
                   </div>
                   <span className="pt-m" style={{ fontSize: 12 }}>{farmer.phone}</span>
                   <span className="pt-m">{farmer.location || '—'}</span>

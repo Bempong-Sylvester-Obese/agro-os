@@ -170,8 +170,12 @@ class Cooperative(Base):
     location = Column(String, nullable=True)
     currency = Column(String, default="GHS")
     subscription_plan = Column(String, default="starter", nullable=False)
+    subscription_status = Column(String, default="active", nullable=False)
+    subscription_expires_at = Column(DateTime, nullable=True)
     # Moolre wallet that holds cooperative funds
     moolre_account_number = Column(String, nullable=True)
+    # 4-digit code for USSD onboarding
+    ussd_code = Column(String(4), unique=True, index=True, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -213,6 +217,8 @@ class CooperativeMembership(Base):
     cooperative_id = Column(
         Integer, ForeignKey("cooperatives.id"), nullable=False, index=True
     )
+    # 6-digit code for USSD onboarding
+    farmer_code = Column(String(6), index=True, nullable=True)
     crop_type = Column(String, nullable=True)
     acreage = Column(Float, nullable=True)
     production_focus = Column(

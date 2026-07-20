@@ -184,6 +184,18 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
                   disabled={saving}
                 />
               </div>
+
+              <div style={{ marginTop: 16 }}>
+                <label style={labelStyle}>Cooperative USSD Onboarding Code</label>
+                <input 
+                  style={{...inputStyle, background: 'var(--background)'}} 
+                  type="text" 
+                  value={cooperative.ussd_code || 'Not Generated'} 
+                  disabled 
+                  readOnly 
+                />
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>Farmers can use this code to join your cooperative via USSD.</p>
+              </div>
             </div>
 
             <div style={{ height: 1, background: 'var(--border)', margin: '12px 0' }} />
@@ -191,7 +203,7 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
             {/* Financial Configuration */}
             <div>
               <h3 className="serif" style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Financial Configuration</h3>
-              <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>Use your primary AgroOS Moolre merchant wallet (e.g. ending in …2809) for loan disbursements. This must match MOOLRE_ACCOUNT_NUMBER on the server.</p>
+              <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>Enter your cooperative's dedicated Moolre sub-wallet account number. This account will receive all transaction splits and loan repayments.</p>
               
               <div className="settings-form-row" style={{ marginBottom: 16 }}>
                 <div style={{ flex: 1 }}>
@@ -207,6 +219,50 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
                 </div>
               </div>
             </div>
+            <div style={{ height: 1, background: 'var(--border)', margin: '12px 0' }} />
+
+            {/* Platform Subscription */}
+            <div>
+              <h3 className="serif" style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Platform Subscription</h3>
+              <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>Manage your cooperative's plan and billing status.</p>
+              
+              <div className="settings-form-row" style={{ marginBottom: 16, alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Current Plan Status</div>
+                  <div style={{ fontWeight: 600, color: cooperative.subscription_status === 'active' ? '#047857' : '#991B1B' }}>
+                    {cooperative.subscription_status === 'active' ? 'Active' : 'Inactive / Evaluation'}
+                  </div>
+                  {cooperative.subscription_expires_at && (
+                    <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+                      Expires: {new Date(cooperative.subscription_expires_at).toLocaleDateString()}
+                    </div>
+                  )}
+                </div>
+                <div style={{ flex: 1, textAlign: 'right' }}>
+                  <button 
+                    type="button" 
+                    className="btn-lg" 
+                    onClick={async () => {
+                      try {
+                        setSaving(true)
+                        const { createSubscriptionCheckout } = await import('../../api/cooperatives')
+                        const res = await createSubscriptionCheckout(cooperativeId, 'growth')
+                        if (res.authorization_url) {
+                          window.location.href = res.authorization_url
+                        }
+                      } catch (err) {
+                        setError(err.message)
+                        setSaving(false)
+                      }
+                    }} 
+                    disabled={saving} 
+                    style={{ padding: '10px 16px', display: 'inline-flex', alignItems: 'center', gap: 8, background: '#10B981', color: 'white' }}
+                  >
+                    Upgrade / Renew Plan
+                  </button>
+                </div>
+              </div>
+            </div>
             
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
               <button type="submit" className="btn-lg" disabled={saving} style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -216,7 +272,7 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
           </div>
         </form>
       </div>
-      <GovernanceSettings />
+      <GovernanceSettings cooperativeId={cooperativeId} />
       <section
         className="admin-card"
         aria-labelledby="demo-reset-title"

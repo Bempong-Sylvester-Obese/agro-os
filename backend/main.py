@@ -33,8 +33,9 @@ from app.routes import (
     reports,
     sales,
     settlements,
+    subscriptions,
     transactions,
-    ussdk_hooks,
+    ussd,
     webhooks,
 )
 from app.services.auth_service import decode_access_token
@@ -172,22 +173,23 @@ async def optional_admin_auth(request: Request, call_next):
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(cooperatives.router)
+app.include_router(subscriptions.router)
 app.include_router(farmers.router)
 app.include_router(intake.router)
 app.include_router(aggregation.router)
 app.include_router(buyers.router)
+app.include_router(production.router)
+app.include_router(reports.router)
+app.include_router(communications.router)
 app.include_router(sales.router)
 app.include_router(settlements.router)
 app.include_router(transactions.router)
 app.include_router(loans.router)
 app.include_router(marketing.router)
-app.include_router(production.router)
-app.include_router(reports.router)
-app.include_router(communications.router)
+app.include_router(subscriptions.router)
 app.include_router(webhooks.router)
-app.include_router(ussdk_hooks.router)
+app.include_router(ussd.router)
 app.include_router(agro_ai.router)
-
 
 @app.get("/", tags=["health"])
 def root():

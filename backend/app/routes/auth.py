@@ -40,13 +40,31 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
     if data.member_count:
         description = f"Approximate member count: {data.member_count}"
 
+    import random
+    while True:
+        code = f"{random.randint(1000, 9999)}"
+        if not db.query(Cooperative).filter(Cooperative.ussd_code == code).first():
+            break
+
     new_coop = Cooperative(
         name=data.cooperative_name,
         location=data.location,
         description=description,
         currency="GHS",
         subscription_plan=data.subscription_plan,
+        ussd_code=code,
     )
+
+    import asyncio
+    from app.services.moolre_service import MoolreService
+    try:
+        moolre_svc = MoolreService()
+        moolre_result = asyncio.run(moolre_svc.create_account(account_name=data.cooperative_name))
+        if moolre_result.get("success"):
+            new_coop.moolre_account_number = moolre_result.get("account_number")
+    except Exception as e:
+        print(f"Warning: Failed to automatically create Moolre sub-wallet: {e}")
+
     db.add(new_coop)
     db.flush()  # get the ID without committing yet
 
@@ -132,15 +150,16 @@ def register(
 
 @router.get("/users", response_model=list[UserResponse])
 def list_users(
+    cooperative_id: int | None = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_roles("admin")),
 ):
-    return (
-        db.query(User)
-        .filter(User.cooperative_id == current_user.cooperative_id)
-        .order_by(User.email)
-        .all()
-    )
+    query = db.query(User)
+    if current_user:
+        query = query.filter(User.cooperative_id == current_user.cooperative_id)
+    elif cooperative_id:
+        query = query.filter(User.cooperative_id == cooperative_id)
+    return query.order_by(User.email).all()
 
 
 @router.patch("/users/{user_id}", response_model=UserResponse)
@@ -151,9 +170,18 @@ def update_user(
     current_user: User = Depends(require_roles("admin")),
 ):
     # Serialize all administrator-count decisions per cooperative.
+    if current_user:
+        coop_id = current_user.cooperative_id
+    else:
+        # If auth is disabled, allow editing any user. We must find their coop_id.
+        target = db.query(User).filter(User.id == user_id).first()
+        if not target:
+            raise HTTPException(status_code=404, detail="User not found")
+        coop_id = target.cooperative_id
+
     cooperative = (
         db.query(Cooperative)
-        .filter(Cooperative.id == current_user.cooperative_id)
+        .filter(Cooperative.id == coop_id)
         .with_for_update()
         .first()
     )
@@ -163,13 +191,13 @@ def update_user(
         db.query(User)
         .filter(
             User.id == user_id,
-            User.cooperative_id == current_user.cooperative_id,
+            User.cooperative_id == coop_id,
         )
         .first()
     )
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
-    if target.id == current_user.id and body.is_active is False:
+    if target.id == getattr(current_user, "id", None) and body.is_active is False:
         raise HTTPException(status_code=409, detail="You cannot deactivate your own account")
     removing_admin = target.role == "admin" and (
         body.role == "finance_officer" or body.is_active is False
@@ -178,7 +206,7 @@ def update_user(
         active_admins = (
             db.query(User)
             .filter(
-                User.cooperative_id == current_user.cooperative_id,
+                User.cooperative_id == coop_id,
                 User.role == "admin",
                 User.is_active.is_(True),
             )
@@ -192,8 +220,8 @@ def update_user(
         target.is_active = body.is_active
     db.add(
         AdminAuditLog(
-            cooperative_id=current_user.cooperative_id,
-            actor_id=str(current_user.id),
+            cooperative_id=coop_id,
+            actor_id=str(current_user.id) if current_user else "system",
             action="user.updated",
             resource_type="user",
             resource_id=str(target.id),

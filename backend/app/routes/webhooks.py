@@ -138,6 +138,31 @@ def _process_payment_payload(
     except (TypeError, ValueError):
         amount = 0.0
 
+    if external_ref and external_ref.startswith("sub_upg_"):
+        if moolre_status == 1:
+            try:
+                # Format: sub_upg_{cooperative_id}_{timestamp}
+                parts = external_ref.split("_")
+                coop_id = int(parts[2])
+                from app.models.models import Cooperative
+                coop = db.query(Cooperative).filter(Cooperative.id == coop_id).first()
+                if coop:
+                    # In a real app we'd map amount to plan_key or get it from metadata
+                    coop.subscription_status = "active"
+                    # Add 30 days
+                    from datetime import timedelta
+                    now = datetime.utcnow()
+                    if not coop.subscription_expires_at or coop.subscription_expires_at < now:
+                        coop.subscription_expires_at = now + timedelta(days=30)
+                    else:
+                        coop.subscription_expires_at = coop.subscription_expires_at + timedelta(days=30)
+                    
+                    db.commit()
+                    logger.info(f"Subscription upgraded for cooperative {coop.id} via webhook")
+            except Exception as e:
+                logger.error(f"Failed to process subscription webhook: {e}")
+        return {"status": "ok", "message": "Subscription webhook processed"}
+
     tx: Transaction | None = None
     if external_ref:
         tx = (
@@ -286,8 +311,25 @@ async def _post_payment_tasks(farmer_id: int, amount: float, reference: str) -> 
             if farmer:
                 comms = CommunicationsService()
                 await comms.send_payment_confirmation(farmer, amount, reference, db)
+                
+                # Sweep platform fee (e.g., 2% of transaction)
+                # Only if the cooperative has a dedicated Moolre account
+                coop = farmer.cooperative
+                if coop and coop.moolre_account_number:
+                    fee_amount = round(amount * 0.02, 2)
+                    if fee_amount > 0:
+                        moolre = MoolreService()
+                        # Transfer from Coop sub-wallet to Platform Master wallet
+                        await moolre.internal_transfer(
+                            receiver_account=moolre.settings.moolre_account_number,
+                            amount=fee_amount,
+                            currency=coop.currency or "GHS",
+                            reference=f"Platform Fee for tx {reference}",
+                            from_account_number=coop.moolre_account_number
+                        )
+                        logger.info(f"Swept GHS {fee_amount} fee from coop {coop.id} to master wallet")
         except Exception as exc:  # noqa: BLE001
-            logger.error("Payment confirmation SMS failed for farmer %s: %s", farmer_id, exc)
+            logger.error("Payment confirmation or fee sweep failed for farmer %s: %s", farmer_id, exc)
     finally:
         db_gen.close()
 
