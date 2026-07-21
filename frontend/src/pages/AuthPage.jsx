@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { login, signup, storeAuthToken, userFromAuthToken, userFromSignupResponse, warmAuthBackend } from '../api/auth'
+import { createSubscriptionCheckout } from '../api/cooperatives'
 import { Sprout, ArrowLeft, ArrowRight, Building2, Users, MapPin, Mail, Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
@@ -249,7 +250,6 @@ export default function AuthPage({ onAuth }) {
         setLoading(true)
         // Attempt to redirect to Moolre checkout
         try {
-          const { createSubscriptionCheckout } = await import('../api/cooperatives')
           const res = await createSubscriptionCheckout(user.cooperative_id, plan)
           if (res.authorization_url) {
             window.location.href = res.authorization_url

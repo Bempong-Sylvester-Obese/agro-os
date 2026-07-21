@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { confirmDemoReset, previewDemoReset } from '../../api/admin'
-import { updateCooperative } from '../../api/cooperatives'
+import { createSubscriptionCheckout, updateCooperative } from '../../api/cooperatives'
 import { formatTransportError } from '../../api/config'
 import { SettingsSkeleton } from './DashboardSkeleton'
 import GovernanceSettings from './GovernanceSettings'
@@ -245,7 +245,6 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
                     onClick={async () => {
                       try {
                         setSaving(true)
-                        const { createSubscriptionCheckout } = await import('../../api/cooperatives')
                         const res = await createSubscriptionCheckout(cooperativeId, 'growth')
                         if (res.authorization_url) {
                           window.location.href = res.authorization_url
