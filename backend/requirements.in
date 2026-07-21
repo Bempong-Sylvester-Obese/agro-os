@@ -1,4 +1,4 @@
-fastapi==0.138.0
+fastapi==0.139.2
 alembic>=1.14.0
 uvicorn[standard]==0.51.0
 python-dotenv>=1.0.0
