@@ -36,6 +36,7 @@ from app.routes import (
     subscriptions,
     transactions,
     ussd,
+    ussdk_hooks,
     webhooks,
 )
 from app.services.auth_service import decode_access_token
@@ -55,6 +56,7 @@ _PUBLIC_PATHS = frozenset({
     "/marketing/demo-bookings",
     "/webhooks/moolre/payment",
     "/webhooks/moolre/ussd",
+    "/ussd/callback",
     "/ussdk/loan-balance",
     "/ussdk/loan-request",
     "/ussdk/loan-repayment",
@@ -189,6 +191,7 @@ app.include_router(marketing.router)
 app.include_router(subscriptions.router)
 app.include_router(webhooks.router)
 app.include_router(ussd.router)
+app.include_router(ussdk_hooks.router)
 app.include_router(agro_ai.router)
 
 @app.get("/", tags=["health"])

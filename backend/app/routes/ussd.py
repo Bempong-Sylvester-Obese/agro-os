@@ -146,8 +146,13 @@ async def ussd_callback(
                 return Response(content=f"END Failed to process repayment: {str(e)}", media_type="text/plain")
                 
     elif menu_selection == "4":
-        # Check Balance
-        active_loans = db.query(Loan).filter(Loan.farmer_id == farmer.id, Loan.status == LoanStatus.disbursed).all()
+        # Check Balance (Loan.farmer_id maps to membership_id column)
+        membership_ids = [m.id for m in memberships]
+        active_loans = (
+            db.query(Loan)
+            .filter(Loan.farmer_id.in_(membership_ids), Loan.status == LoanStatus.disbursed)
+            .all()
+        )
         total_balance = sum(ln.amount for ln in active_loans)
         return Response(content=f"END Your total active loan balance is GHS {total_balance}.", media_type="text/plain")
         
