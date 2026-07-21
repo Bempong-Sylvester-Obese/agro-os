@@ -39,10 +39,6 @@ email-validator==2.2.0
     # via -r requirements.in
 fastapi==0.138.0
     # via -r requirements.in
-gitdb==4.0.12
-    # via gitpython
-gitpython==3.1.50
-    # via wandb
 greenlet==3.5.3
     # via sqlalchemy
 h11==0.16.0
@@ -132,8 +128,6 @@ scipy==1.18.0
     # via scikit-learn
 sentry-sdk==2.63.0
     # via wandb
-smmap==5.0.3
-    # via gitdb
 sqlalchemy==2.0.51
     # via
     #   -r requirements.in
@@ -164,7 +158,7 @@ uvicorn[standard]==0.49.0
     # via -r requirements.in
 uvloop==0.22.1
     # via uvicorn
-wandb==0.27.2
+wandb==0.28.1
     # via -r requirements.in
 watchfiles==1.2.0
     # via uvicorn
