@@ -1,7 +1,7 @@
 """add work_tasks, worker_assignments, worker_attendance tables
 
 Revision ID: 007_phase1
-Revises: 006_farmer_finance_flows
+Revises: 007_organization_type
 """
 
 from typing import Sequence, Union
