@@ -246,6 +246,31 @@ class CommunicationsService:
             "log_id": log.id,
         }
 
+    async def send_single_sms(
+        self,
+        recipient: str,
+        message: str,
+        db: Session | None = None,
+        cooperative_id: int | None = None,
+    ) -> dict:
+        """Send a single SMS without a farmer object."""
+        result = await self.moolre.send_single_sms(
+            phone=recipient,
+            message=message,
+            ref=str(uuid.uuid4()),
+        )
+        if db is not None:
+            self._log(
+                db=db,
+                message_type=MessageType.sms,
+                cooperative_id=cooperative_id,
+                recipients_count=1,
+                body=message,
+                moolre_ref=result.get("raw", {}).get("data"),
+                status="sent" if result["success"] else "failed",
+            )
+        return result
+
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------

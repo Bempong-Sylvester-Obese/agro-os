@@ -4,12 +4,14 @@ from sqlalchemy.orm import Session, joinedload
 from app.database.db import get_db
 from app.models.models import Cooperative, User
 from app.models.work_task import TaskStatus, WorkTask, WorkerAssignment
+from app.models.worker import Worker
 from app.schemas.work_task import TaskAssignmentCreate, TaskCreate, TaskResponse, TaskUpdate
 from app.services.auth_service import (
     enforce_cooperative_scope,
     get_current_user,
     require_roles,
 )
+from app.services.communications_service import CommunicationsService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -34,7 +36,7 @@ def list_tasks(
 
 
 @router.post("/", response_model=TaskResponse, status_code=201)
-def create_task(
+async def create_task(
     data: TaskCreate,
     cooperative_id: int = Query(...),
     db: Session = Depends(get_db),
@@ -63,6 +65,18 @@ def create_task(
 
     db.commit()
     db.refresh(task)
+
+    comm = CommunicationsService()
+    for worker_id in data.worker_ids:
+        worker = db.query(Worker).filter(Worker.id == worker_id).first()
+        if worker and worker.phone:
+            await comm.send_single_sms(
+                recipient=worker.phone,
+                message=f"New task assigned: {task.title} on {task.scheduled_date}",
+                db=db,
+                cooperative_id=cooperative_id,
+            )
+
     return db.query(WorkTask).options(joinedload(WorkTask.assignments)).filter(WorkTask.id == task.id).first()
 
 
@@ -92,7 +106,7 @@ def update_task(
 
 
 @router.post("/{task_id}/assign", response_model=TaskResponse)
-def assign_workers(
+async def assign_workers(
     task_id: int,
     data: TaskAssignmentCreate,
     cooperative_id: int = Query(...),
@@ -107,11 +121,26 @@ def assign_workers(
         raise HTTPException(status_code=404, detail="Task not found")
 
     existing_ids = {a.worker_id for a in task.assignments}
+    new_ids = []
     for worker_id in data.worker_ids:
         if worker_id not in existing_ids:
             assignment = WorkerAssignment(work_task_id=task_id, worker_id=worker_id)
             db.add(assignment)
+            new_ids.append(worker_id)
 
     db.commit()
     db.refresh(task)
+
+    if new_ids:
+        comm = CommunicationsService()
+        for worker_id in new_ids:
+            worker = db.query(Worker).filter(Worker.id == worker_id).first()
+            if worker and worker.phone:
+                await comm.send_single_sms(
+                    recipient=worker.phone,
+                    message=f"New task assigned: {task.title} on {task.scheduled_date}",
+                    db=db,
+                    cooperative_id=cooperative_id,
+                )
+
     return task

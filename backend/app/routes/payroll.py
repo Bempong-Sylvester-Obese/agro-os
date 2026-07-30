@@ -22,6 +22,7 @@ from app.services.auth_service import (
     get_current_user,
     require_roles,
 )
+from app.services.communications_service import CommunicationsService
 
 router = APIRouter(prefix="/payroll", tags=["payroll"])
 logger = logging.getLogger(__name__)
@@ -214,6 +215,19 @@ async def disburse_payroll(
     db.commit()
     for p in results:
         db.refresh(p)
+
+    comm = CommunicationsService()
+    for payout in results:
+        if payout.status == PayoutStatus.paid:
+            worker = db.query(Worker).filter(Worker.id == payout.worker_id).first()
+            if worker and worker.phone:
+                await comm.send_single_sms(
+                    recipient=worker.phone,
+                    message=f"Payment of GHS {payout.gross_amount:.2f} for {payout.period_start} to {payout.period_end} has been sent to your mobile money wallet.",
+                    db=db,
+                    cooperative_id=cooperative_id,
+                )
+
     return results
 
 
