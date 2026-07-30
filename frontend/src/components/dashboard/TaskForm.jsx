@@ -12,7 +12,7 @@ export default function TaskForm({ cooperativeId, task, onSaved, onCancel }) {
     scheduled_date: task?.scheduled_date || '',
     status: task?.status || 'open',
   })
-  const [workerIds, setWorkerIds] = useState(task?.assigned_workers?.map(w => w.id) || [])
+  const [workerIds, setWorkerIds] = useState(task?.assignments?.map(a => a.worker_id) || [])
   const [workers, setWorkers] = useState([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -48,7 +48,7 @@ export default function TaskForm({ cooperativeId, task, onSaved, onCancel }) {
           status: form.status,
         }
         await updateTask(cooperativeId, task.id, editPayload)
-        const currentIds = task.assigned_workers?.map(w => w.id) || []
+        const currentIds = task.assignments?.map(a => a.worker_id) || []
         const changed = currentIds.length !== workerIds.length ||
           currentIds.some(id => !workerIds.includes(id)) ||
           workerIds.some(id => !currentIds.includes(id))
@@ -90,12 +90,10 @@ export default function TaskForm({ cooperativeId, task, onSaved, onCancel }) {
               onChange={e => setForm({...form, task_type: e.target.value})}>
               <option value="general">General</option>
               <option value="planting">Planting</option>
+              <option value="weeding">Weeding</option>
               <option value="harvesting">Harvesting</option>
               <option value="irrigation">Irrigation</option>
-              <option value="fertilization">Fertilization</option>
-              <option value="pest_control">Pest Control</option>
-              <option value="maintenance">Maintenance</option>
-              <option value="other">Other</option>
+              <option value="fertilizing">Fertilizing</option>
             </select>
           )}
         </div>

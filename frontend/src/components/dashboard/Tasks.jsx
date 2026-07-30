@@ -99,7 +99,7 @@ export default function Tasks({ cooperativeId }) {
                 </span>
               </td>
               <td>{t.scheduled_date ? new Date(t.scheduled_date).toLocaleDateString() : '—'}</td>
-              <td>{t.assigned_workers?.length ?? 0}</td>
+              <td>{t.assignments?.length ?? 0}</td>
               <td className="actions-cell">
                 <button className="btn-icon" title="Edit"
                   onClick={() => { setEditingTask(t); setShowForm(true) }}>
