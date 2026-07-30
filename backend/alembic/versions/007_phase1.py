@@ -59,8 +59,28 @@ def upgrade() -> None:
             sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
         )
 
+    if "farm_productions" not in table_names:
+        op.create_table(
+            "farm_productions",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("cooperative_id", sa.Integer(), sa.ForeignKey("cooperatives.id"), nullable=False, index=True),
+            sa.Column("crop_type", sa.String(), nullable=False),
+            sa.Column("season", sa.String(), nullable=False),
+            sa.Column("location", sa.String(), nullable=True),
+            sa.Column("planted_date", sa.Date(), nullable=False),
+            sa.Column("expected_harvest_date", sa.Date(), nullable=True),
+            sa.Column("actual_harvest_date", sa.Date(), nullable=True),
+            sa.Column("expected_quantity_kg", sa.Float(), nullable=False),
+            sa.Column("actual_quantity_kg", sa.Float(), nullable=True),
+            sa.Column("quality_grade", sa.String(), nullable=True),
+            sa.Column("notes", sa.Text(), nullable=True),
+            sa.Column("logged_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
+            sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
+        )
+
 
 def downgrade() -> None:
+    op.drop_table("farm_productions")
     op.drop_table("worker_attendance")
     op.drop_table("worker_assignments")
     op.drop_table("work_tasks")
