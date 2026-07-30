@@ -6,7 +6,7 @@ from pydantic import BaseModel, EmailStr, Field
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
-    role: Literal["admin", "finance_officer"] = "finance_officer"
+    role: Literal["admin", "finance_officer", "farm_owner", "farm_manager", "supervisor"] = "finance_officer"
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -25,7 +25,7 @@ class UserResponse(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    role: Literal["admin", "finance_officer"] | None = None
+    role: Literal["admin", "finance_officer", "farm_owner", "farm_manager", "supervisor"] | None = None
     is_active: bool | None = None
 
 class Token(BaseModel):

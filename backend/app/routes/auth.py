@@ -46,6 +46,7 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
         description=description,
         currency="GHS",
         subscription_plan=data.subscription_plan,
+        organization_type=data.organization_type,
     )
     db.add(new_coop)
     db.flush()  # get the ID without committing yet
@@ -92,6 +93,7 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
         "cooperative_id": new_coop.id,
         "cooperative_name": new_coop.name,
         "subscription_plan": new_coop.subscription_plan,
+        "organization_type": data.organization_type,
         "onboarding_role": new_user.onboarding_role,
     }
 
