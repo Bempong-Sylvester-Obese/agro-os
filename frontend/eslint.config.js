@@ -31,6 +31,8 @@ export default [
         cancelAnimationFrame: 'readonly',
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
+        alert: 'readonly',
+        confirm: 'readonly',
         atob: 'readonly',
         FileReader: 'readonly',
         localStorage: 'readonly',
