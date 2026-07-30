@@ -28,6 +28,7 @@ from app.routes import (
     farm_production,
     loans,
     marketing,
+    payroll,
     production,
     reports,
     tasks,
@@ -38,6 +39,7 @@ from app.routes import (
 )
 from app.models import worker  # noqa: F401
 from app.models import farm_production as farm_production_model  # noqa: F401
+from app.models import wage_payout  # noqa: F401
 from app.services.auth_service import decode_access_token
 
 logging.basicConfig(level=logging.INFO)
@@ -180,6 +182,7 @@ app.include_router(workers.router)
 app.include_router(tasks.router)
 app.include_router(attendance.router)
 app.include_router(farm_production.router)
+app.include_router(payroll.router)
 app.include_router(agro_ai.router)
 
 
