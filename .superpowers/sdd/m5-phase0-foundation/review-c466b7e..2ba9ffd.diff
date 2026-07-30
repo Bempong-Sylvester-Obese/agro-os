@@ -1,0 +1,199 @@
+﻿# Review package: c466b7e..2ba9ffd
+
+## Commits
+2ba9ffd feat: add Worker CRUD API routes
+
+## Files changed
+ backend/app/routes/workers.py | 134 ++++++++++++++++++++++++++++++++++++++++++
+ backend/main.py               |   2 +
+ 2 files changed, 136 insertions(+)
+
+## Diff
+diff --git a/backend/app/routes/workers.py b/backend/app/routes/workers.py
+new file mode 100644
+index 0000000..8801673
+--- /dev/null
++++ b/backend/app/routes/workers.py
+@@ -0,0 +1,134 @@
++from fastapi import APIRouter, Depends, HTTPException, Query
++from sqlalchemy.orm import Session
++
++from app.database.db import get_db
++from app.models.models import Cooperative, User
++from app.models.worker import Worker, WorkerRole, WorkerStatus
++from app.schemas.worker import WorkerCreate, WorkerResponse, WorkerUpdate
++from app.services.auth_service import (
++    enforce_cooperative_scope,
++    get_current_user,
++    require_roles,
++)
++
++router = APIRouter(prefix="/workers", tags=["workers"])
++
++
++@router.get("/", response_model=list[WorkerResponse])
++def list_workers(
++    cooperative_id: int = Query(...),
++    skip: int = 0,
++    limit: int = Query(default=100, le=500),
++    db: Session = Depends(get_db),
++    current_user: User | None = Depends(get_current_user),
++):
++    enforce_cooperative_scope(current_user, cooperative_id)
++    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
++    if not coop:
++        raise HTTPException(status_code=404, detail="Cooperative not found")
++    return (
++        db.query(Worker)
++        .filter(Worker.cooperative_id == cooperative_id)
++        .offset(skip)
++        .limit(limit)
++        .all()
++    )
++
++
++@router.get("/{worker_id}", response_model=WorkerResponse)
++def get_worker(
++    worker_id: int,
++    cooperative_id: int = Query(...),
++    db: Session = Depends(get_db),
++    current_user: User | None = Depends(get_current_user),
++):
++    enforce_cooperative_scope(current_user, cooperative_id)
++    worker = (
++        db.query(Worker)
++        .filter(Worker.id == worker_id, Worker.cooperative_id == cooperative_id)
++        .first()
++    )
++    if not worker:
++        raise HTTPException(status_code=404, detail="Worker not found")
++    return worker
++
++
++@router.post("/", response_model=WorkerResponse, status_code=201)
++def create_worker(
++    data: WorkerCreate,
++    cooperative_id: int = Query(...),
++    db: Session = Depends(get_db),
++    current_user: User | None = Depends(require_roles("admin", "farm_owner", "farm_manager")),
++):
++    enforce_cooperative_scope(current_user, cooperative_id)
++    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
++    if not coop:
++        raise HTTPException(status_code=404, detail="Cooperative not found")
++
++    existing = (
++        db.query(Worker)
++        .filter(Worker.cooperative_id == cooperative_id, Worker.phone == data.phone)
++        .first()
++    )
++    if existing:
++        raise HTTPException(status_code=409, detail="Worker with this phone already exists")
++
++    worker = Worker(
++        cooperative_id=cooperative_id,
++        name=data.name,
++        phone=data.phone,
++        wage_rate=data.wage_rate,
++        role=WorkerRole(data.role) if data.role else WorkerRole.worker,
++    )
++    db.add(worker)
++    db.commit()
++    db.refresh(worker)
++    return worker
++
++
++@router.patch("/{worker_id}", response_model=WorkerResponse)
++def update_worker(
++    worker_id: int,
++    data: WorkerUpdate,
++    cooperative_id: int = Query(...),
++    db: Session = Depends(get_db),
++    current_user: User | None = Depends(require_roles("admin", "farm_owner", "farm_manager")),
++):
++    enforce_cooperative_scope(current_user, cooperative_id)
++    worker = (
++        db.query(Worker)
++        .filter(Worker.id == worker_id, Worker.cooperative_id == cooperative_id)
++        .first()
++    )
++    if not worker:
++        raise HTTPException(status_code=404, detail="Worker not found")
++
++    for field, value in data.model_dump(exclude_none=True).items():
++        if field == "role" and value:
++            value = WorkerRole(value)
++        if field == "status" and value:
++            value = WorkerStatus(value)
++        setattr(worker, field, value)
++
++    db.commit()
++    db.refresh(worker)
++    return worker
++
++
++@router.delete("/{worker_id}", status_code=204)
++def delete_worker(
++    worker_id: int,
++    cooperative_id: int = Query(...),
++    db: Session = Depends(get_db),
++    current_user: User | None = Depends(require_roles("admin", "farm_owner")),
++):
++    enforce_cooperative_scope(current_user, cooperative_id)
++    worker = (
++        db.query(Worker)
++        .filter(Worker.id == worker_id, Worker.cooperative_id == cooperative_id)
++        .first()
++    )
++    if not worker:
++        raise HTTPException(status_code=404, detail="Worker not found")
++    worker.status = WorkerStatus.inactive
++    db.commit()
+diff --git a/backend/main.py b/backend/main.py
+index b9e4132..0ce60a9 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -24,20 +24,21 @@ from app.routes import (
+     communications,
+     cooperatives,
+     farmers,
+     loans,
+     marketing,
+     production,
+     reports,
+     transactions,
+     ussdk_hooks,
+     webhooks,
++    workers,
+ )
+ from app.models import worker  # noqa: F401
+ from app.services.auth_service import decode_access_token
+ 
+ logging.basicConfig(level=logging.INFO)
+ 
+ settings = get_settings()
+ 
+ # Only these routes are public when authentication is enabled.
+ _PUBLIC_PATHS = frozenset({
+@@ -163,20 +164,21 @@ app.include_router(auth.router)
+ app.include_router(admin.router)
+ app.include_router(cooperatives.router)
+ app.include_router(farmers.router)
+ app.include_router(transactions.router)
+ app.include_router(loans.router)
+ app.include_router(marketing.router)
+ app.include_router(production.router)
+ app.include_router(reports.router)
+ app.include_router(communications.router)
+ app.include_router(webhooks.router)
++app.include_router(workers.router)
+ app.include_router(ussdk_hooks.router)
+ app.include_router(agro_ai.router)
+ 
+ 
+ @app.get("/", tags=["health"])
+ def root():
+     """API root ÔÇö returns version info."""
+     return {
+         "message": "Welcome to AgroOS API",
+         "version": "1.0.0",

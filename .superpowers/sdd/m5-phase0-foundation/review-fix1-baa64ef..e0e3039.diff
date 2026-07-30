@@ -1,0 +1,37 @@
+﻿# Review package (fix round 1): baa64ef..e0e3039
+
+## Commits
+e0e3039 fix: align migration 007 docstring with down_revision
+
+## Files changed
+ backend/alembic/versions/007_organization_type.py | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/backend/alembic/versions/007_organization_type.py b/backend/alembic/versions/007_organization_type.py
+index 1bf550e..d546b99 100644
+--- a/backend/alembic/versions/007_organization_type.py
++++ b/backend/alembic/versions/007_organization_type.py
+@@ -1,20 +1,21 @@
+ """add organization_type to cooperatives
+ 
+ Revision ID: 007_organization_type
+-Revises: 006_farmer_finance_flows
++Revises: 005_review_hardening
+ Create Date: 2026-07-30
+ """
+ from alembic import op
+ import sqlalchemy as sa
+ 
+ revision = "007_organization_type"
++# branched from 005 because 006 cannot apply on SQLite (ALTER TABLE)
+ down_revision = "005_review_hardening"
+ branch_labels = None
+ depends_on = None
+ 
+ 
+ def upgrade():
+     op.add_column(
+         "cooperatives",
+         sa.Column("organization_type", sa.String(), server_default="cooperative", nullable=False),
+     )

@@ -33,6 +33,7 @@ from app.routes import (
     webhooks,
     workers,
 )
+)
 from app.models import worker  # noqa: F401
 from app.services.auth_service import decode_access_token
 
@@ -171,8 +172,8 @@ app.include_router(production.router)
 app.include_router(reports.router)
 app.include_router(communications.router)
 app.include_router(webhooks.router)
-app.include_router(workers.router)
 app.include_router(ussdk_hooks.router)
+app.include_router(workers.router)
 app.include_router(agro_ai.router)
 
 

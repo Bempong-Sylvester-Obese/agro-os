@@ -1,0 +1,128 @@
+﻿# Review package: d1a629cc8b706b78dc82ccd0567d0acf0f699515..baa64ef
+
+## Commits
+baa64ef feat: add organization_type to Cooperative model + DB migration
+
+## Files changed
+ backend/alembic/versions/007_organization_type.py | 24 +++++++++++++++++++++++
+ backend/app/models/models.py                      |  1 +
+ backend/app/schemas/auth.py                       |  2 ++
+ backend/app/schemas/schemas.py                    |  2 ++
+ 4 files changed, 29 insertions(+)
+
+## Diff
+diff --git a/backend/alembic/versions/007_organization_type.py b/backend/alembic/versions/007_organization_type.py
+new file mode 100644
+index 0000000..1bf550e
+--- /dev/null
++++ b/backend/alembic/versions/007_organization_type.py
+@@ -0,0 +1,24 @@
++"""add organization_type to cooperatives
++
++Revision ID: 007_organization_type
++Revises: 006_farmer_finance_flows
++Create Date: 2026-07-30
++"""
++from alembic import op
++import sqlalchemy as sa
++
++revision = "007_organization_type"
++down_revision = "005_review_hardening"
++branch_labels = None
++depends_on = None
++
++
++def upgrade():
++    op.add_column(
++        "cooperatives",
++        sa.Column("organization_type", sa.String(), server_default="cooperative", nullable=False),
++    )
++
++
++def downgrade():
++    op.drop_column("cooperatives", "organization_type")
+diff --git a/backend/app/models/models.py b/backend/app/models/models.py
+index 3086830..32d919d 100644
+--- a/backend/app/models/models.py
++++ b/backend/app/models/models.py
+@@ -92,20 +92,21 @@ class Cooperative(Base):
+     """Cooperative / Farmer Union Model"""
+ 
+     __tablename__ = "cooperatives"
+ 
+     id = Column(Integer, primary_key=True, index=True)
+     name = Column(String, index=True, nullable=False)
+     description = Column(Text, nullable=True)
+     location = Column(String, nullable=True)
+     currency = Column(String, default="GHS")
+     subscription_plan = Column(String, default="starter", nullable=False)
++    organization_type = Column(String, default="cooperative", nullable=False)
+     # Moolre wallet that holds cooperative funds
+     moolre_account_number = Column(String, nullable=True)
+     created_at = Column(DateTime, default=datetime.utcnow)
+     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+ 
+     # Relationships
+     memberships = relationship("CooperativeMembership", back_populates="cooperative")
+ 
+ 
+ # ---------------------------------------------------------------------------
+diff --git a/backend/app/schemas/auth.py b/backend/app/schemas/auth.py
+index 2e146bc..c29f1ec 100644
+--- a/backend/app/schemas/auth.py
++++ b/backend/app/schemas/auth.py
+@@ -34,19 +34,21 @@ class Token(BaseModel):
+     user: UserResponse | None = None
+ 
+ class SignupRequest(BaseModel):
+     """Combined cooperative + user registration in one step."""
+     email: EmailStr
+     password: str
+     cooperative_name: str
+     location: Optional[str] = None
+     member_count: Optional[int] = None  # stored as cooperative description hint
+     subscription_plan: Literal["starter", "growth"] = "starter"
++    organization_type: Literal["cooperative", "solo_farm"] = "cooperative"
+     onboarding_role: str | None = Field(default=None, max_length=80)
+ 
+ class SignupResponse(BaseModel):
+     access_token: str
+     token_type: str
+     cooperative_id: int
+     cooperative_name: str
+     subscription_plan: Literal["starter", "growth"]
++    organization_type: str = "cooperative"
+     onboarding_role: str | None = None
+diff --git a/backend/app/schemas/schemas.py b/backend/app/schemas/schemas.py
+index f161304..2123e11 100644
+--- a/backend/app/schemas/schemas.py
++++ b/backend/app/schemas/schemas.py
+@@ -28,26 +28,28 @@ class CooperativeBase(BaseModel):
+ class CooperativeCreate(CooperativeBase):
+     pass
+ 
+ 
+ class CooperativeUpdate(BaseModel):
+     name: Optional[str] = None
+     description: Optional[str] = None
+     location: Optional[str] = None
+     currency: Optional[str] = None
+     moolre_account_number: Optional[str] = None
++    organization_type: Optional[str] = None
+ 
+ 
+ class CooperativeResponse(CooperativeBase):
+     id: int
+     created_at: datetime
+     updated_at: datetime
++    organization_type: str = "cooperative"
+ 
+     class Config:
+         from_attributes = True
+ 
+ 
+ # ===========================================================================
+ # Farmer
+ # ===========================================================================
+ 
+ 
