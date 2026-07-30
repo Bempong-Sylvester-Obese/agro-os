@@ -1,0 +1,104 @@
+﻿# Review package: 4313a78..b743677
+
+## Commits
+b743677 feat: expand roles for solo_farm, wire org_type through signup
+
+## Files changed
+ backend/app/routes/auth.py  | 2 ++
+ backend/app/schemas/auth.py | 4 ++--
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+## Diff
+diff --git a/backend/app/routes/auth.py b/backend/app/routes/auth.py
+index 5d3bb8f..3da6031 100644
+--- a/backend/app/routes/auth.py
++++ b/backend/app/routes/auth.py
+@@ -39,20 +39,21 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
+     description = None
+     if data.member_count:
+         description = f"Approximate member count: {data.member_count}"
+ 
+     new_coop = Cooperative(
+         name=data.cooperative_name,
+         location=data.location,
+         description=description,
+         currency="GHS",
+         subscription_plan=data.subscription_plan,
++        organization_type=data.organization_type,
+     )
+     db.add(new_coop)
+     db.flush()  # get the ID without committing yet
+ 
+     # 3. Create the admin user linked to that cooperative
+     new_user = User(
+         email=data.email,
+         hashed_password=get_password_hash(data.password),
+         role="admin",
+         cooperative_id=new_coop.id,
+@@ -85,20 +86,21 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
+         },
+         expires_delta=access_token_expires,
+     )
+ 
+     return {
+         "access_token": access_token,
+         "token_type": "bearer",
+         "cooperative_id": new_coop.id,
+         "cooperative_name": new_coop.name,
+         "subscription_plan": new_coop.subscription_plan,
++        "organization_type": data.organization_type,
+         "onboarding_role": new_user.onboarding_role,
+     }
+ 
+ 
+ @router.post("/register", response_model=UserResponse)
+ def register(
+     user_in: UserCreate,
+     db: Session = Depends(get_db),
+     current_user: User = Depends(require_roles("admin")),
+ ):
+diff --git a/backend/app/schemas/auth.py b/backend/app/schemas/auth.py
+index c29f1ec..19b5807 100644
+--- a/backend/app/schemas/auth.py
++++ b/backend/app/schemas/auth.py
+@@ -1,38 +1,38 @@
+ from typing import Literal, Optional
+ 
+ from pydantic import BaseModel, EmailStr, Field
+ 
+ 
+ class UserCreate(BaseModel):
+     email: EmailStr
+     password: str
+-    role: Literal["admin", "finance_officer"] = "finance_officer"
++    role: Literal["admin", "finance_officer", "farm_owner", "farm_manager", "supervisor"] = "finance_officer"
+ 
+ class UserLogin(BaseModel):
+     email: EmailStr
+     password: str
+ 
+ class UserResponse(BaseModel):
+     id: int
+     email: EmailStr
+     role: str
+     is_active: bool = True
+     onboarding_role: str | None = None
+     cooperative_id: int | None = None
+ 
+     class Config:
+         from_attributes = True
+ 
+ 
+ class UserUpdate(BaseModel):
+-    role: Literal["admin", "finance_officer"] | None = None
++    role: Literal["admin", "finance_officer", "farm_owner", "farm_manager", "supervisor"] | None = None
+     is_active: bool | None = None
+ 
+ class Token(BaseModel):
+     access_token: str
+     token_type: str
+     user: UserResponse | None = None
+ 
+ class SignupRequest(BaseModel):
+     """Combined cooperative + user registration in one step."""
+     email: EmailStr

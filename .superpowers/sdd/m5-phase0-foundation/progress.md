@@ -12,3 +12,10 @@ Task 1: fix round 1/5 (2 addressed, 0 open; commits baa64ef..e0e3039)
 Task 1: complete (commits d1a629c..e0e3039, review clean)
 
 Task 2: complete (commits e0e3039..c466b7e, review clean)
+
+Task 3: fix round 1/5 (1 addressed, 0 open; commits 2ba9ffd..4313a78)
+Task 3: complete (commits c466b7e..4313a78, review clean)
+
+Tasks 4+5: complete (commits 4313a78..b743677, review clean)
+
+Task 6: complete (commits b743677..d5698df, review clean)

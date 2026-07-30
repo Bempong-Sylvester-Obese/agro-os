@@ -33,7 +33,6 @@ from app.routes import (
     webhooks,
     workers,
 )
-)
 from app.models import worker  # noqa: F401
 from app.services.auth_service import decode_access_token
 

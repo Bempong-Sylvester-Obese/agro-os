@@ -1,0 +1,2394 @@
+﻿# Review package (fix round 1): 2ba9ffd..4313a78
+
+## Commits
+4313a78 fix: order workers router alphabetically in main.py
+
+## Files changed
+ .superpowers/sdd/m5-phase0-foundation/progress.md  |   14 +
+ .../review-c466b7e..2ba9ffd.diff                   |  199 ++++
+ .../review-d1a629c..baa64ef.diff                   |  128 +++
+ .../review-e0e3039..c466b7e.diff                   |  121 +++
+ .../review-fix1-baa64ef..e0e3039.diff              |   37 +
+ .../sdd/m5-phase0-foundation/task-1-brief.md       |   80 ++
+ .../sdd/m5-phase0-foundation/task-1-report.md      |   26 +
+ .../sdd/m5-phase0-foundation/task-2-brief.md       |   99 ++
+ .../sdd/m5-phase0-foundation/task-2-report.md      |   21 +
+ .../sdd/m5-phase0-foundation/task-3-brief.md       |  162 ++++
+ .../sdd/m5-phase0-foundation/task-3-report.md      |   15 +
+ backend/main.py                                    |    3 +-
+ .../plans/2026-07-30-m5-phase0-foundation.md       | 1024 ++++++++++++++++++++
+ .../2026-07-30-m5-solo-farm-platform-design.md     |  317 ++++++
+ 14 files changed, 2245 insertions(+), 1 deletion(-)
+
+## Diff
+diff --git a/.superpowers/sdd/m5-phase0-foundation/progress.md b/.superpowers/sdd/m5-phase0-foundation/progress.md
+new file mode 100644
+index 0000000..b4b5aa2
+--- /dev/null
++++ b/.superpowers/sdd/m5-phase0-foundation/progress.md
+@@ -0,0 +1,14 @@
++# SDD ledger ÔÇö plan: docs/superpowers/plans/2026-07-30-m5-phase0-foundation.md
++
++## Pre-flight scan
++- Global constraints: clear, no contradictions
++- Tasks are sequential with clear dependencies
++- All code blocks self-contained
++- No task conflicts detected
++
++## Task Progress
++
++Task 1: fix round 1/5 (2 addressed, 0 open; commits baa64ef..e0e3039)
++Task 1: complete (commits d1a629c..e0e3039, review clean)
++
++Task 2: complete (commits e0e3039..c466b7e, review clean)
+diff --git a/.superpowers/sdd/m5-phase0-foundation/review-c466b7e..2ba9ffd.diff b/.superpowers/sdd/m5-phase0-foundation/review-c466b7e..2ba9ffd.diff
+new file mode 100644
+index 0000000..61dca63
+--- /dev/null
++++ b/.superpowers/sdd/m5-phase0-foundation/review-c466b7e..2ba9ffd.diff
+@@ -0,0 +1,199 @@
++´╗┐# Review package: c466b7e..2ba9ffd
++
++## Commits
++2ba9ffd feat: add Worker CRUD API routes
++
++## Files changed
++ backend/app/routes/workers.py | 134 ++++++++++++++++++++++++++++++++++++++++++
++ backend/main.py               |   2 +
++ 2 files changed, 136 insertions(+)
++
++## Diff
++diff --git a/backend/app/routes/workers.py b/backend/app/routes/workers.py
++new file mode 100644
++index 0000000..8801673
++--- /dev/null
+++++ b/backend/app/routes/workers.py
++@@ -0,0 +1,134 @@
+++from fastapi import APIRouter, Depends, HTTPException, Query
+++from sqlalchemy.orm import Session
+++
+++from app.database.db import get_db
+++from app.models.models import Cooperative, User
+++from app.models.worker import Worker, WorkerRole, WorkerStatus
+++from app.schemas.worker import WorkerCreate, WorkerResponse, WorkerUpdate
+++from app.services.auth_service import (
+++    enforce_cooperative_scope,
+++    get_current_user,
+++    require_roles,
+++)
+++
+++router = APIRouter(prefix="/workers", tags=["workers"])
+++
+++
+++@router.get("/", response_model=list[WorkerResponse])
+++def list_workers(
+++    cooperative_id: int = Query(...),
+++    skip: int = 0,
+++    limit: int = Query(default=100, le=500),
+++    db: Session = Depends(get_db),
+++    current_user: User | None = Depends(get_current_user),
+++):
+++    enforce_cooperative_scope(current_user, cooperative_id)
+++    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
+++    if not coop:
+++        raise HTTPException(status_code=404, detail="Cooperative not found")
+++    return (
+++        db.query(Worker)
+++        .filter(Worker.cooperative_id == cooperative_id)
+++        .offset(skip)
+++        .limit(limit)
+++        .all()
+++    )
+++
+++
+++@router.get("/{worker_id}", response_model=WorkerResponse)
+++def get_worker(
+++    worker_id: int,
+++    cooperative_id: int = Query(...),
+++    db: Session = Depends(get_db),
+++    current_user: User | None = Depends(get_current_user),
+++):
+++    enforce_cooperative_scope(current_user, cooperative_id)
+++    worker = (
+++        db.query(Worker)
+++        .filter(Worker.id == worker_id, Worker.cooperative_id == cooperative_id)
+++        .first()
+++    )
+++    if not worker:
+++        raise HTTPException(status_code=404, detail="Worker not found")
+++    return worker
+++
+++
+++@router.post("/", response_model=WorkerResponse, status_code=201)
+++def create_worker(
+++    data: WorkerCreate,
+++    cooperative_id: int = Query(...),
+++    db: Session = Depends(get_db),
+++    current_user: User | None = Depends(require_roles("admin", "farm_owner", "farm_manager")),
+++):
+++    enforce_cooperative_scope(current_user, cooperative_id)
+++    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
+++    if not coop:
+++        raise HTTPException(status_code=404, detail="Cooperative not found")
+++
+++    existing = (
+++        db.query(Worker)
+++        .filter(Worker.cooperative_id == cooperative_id, Worker.phone == data.phone)
+++        .first()
+++    )
+++    if existing:
+++        raise HTTPException(status_code=409, detail="Worker with this phone already exists")
+++
+++    worker = Worker(
+++        cooperative_id=cooperative_id,
+++        name=data.name,
+++        phone=data.phone,
+++        wage_rate=data.wage_rate,
+++        role=WorkerRole(data.role) if data.role else WorkerRole.worker,
+++    )
+++    db.add(worker)
+++    db.commit()
+++    db.refresh(worker)
+++    return worker
+++
+++
+++@router.patch("/{worker_id}", response_model=WorkerResponse)
+++def update_worker(
+++    worker_id: int,
+++    data: WorkerUpdate,
+++    cooperative_id: int = Query(...),
+++    db: Session = Depends(get_db),
+++    current_user: User | None = Depends(require_roles("admin", "farm_owner", "farm_manager")),
+++):
+++    enforce_cooperative_scope(current_user, cooperative_id)
+++    worker = (
+++        db.query(Worker)
+++        .filter(Worker.id == worker_id, Worker.cooperative_id == cooperative_id)
+++        .first()
+++    )
+++    if not worker:
+++        raise HTTPException(status_code=404, detail="Worker not found")
+++
+++    for field, value in data.model_dump(exclude_none=True).items():
+++        if field == "role" and value:
+++            value = WorkerRole(value)
+++        if field == "status" and value:
+++            value = WorkerStatus(value)
+++        setattr(worker, field, value)
+++
+++    db.commit()
+++    db.refresh(worker)
+++    return worker
+++
+++
+++@router.delete("/{worker_id}", status_code=204)
+++def delete_worker(
+++    worker_id: int,
+++    cooperative_id: int = Query(...),
+++    db: Session = Depends(get_db),
+++    current_user: User | None = Depends(require_roles("admin", "farm_owner")),
+++):
+++    enforce_cooperative_scope(current_user, cooperative_id)
+++    worker = (
+++        db.query(Worker)
+++        .filter(Worker.id == worker_id, Worker.cooperative_id == cooperative_id)
+++        .first()
+++    )
+++    if not worker:
+++        raise HTTPException(status_code=404, detail="Worker not found")
+++    worker.status = WorkerStatus.inactive
+++    db.commit()
++diff --git a/backend/main.py b/backend/main.py
++index b9e4132..0ce60a9 100644
++--- a/backend/main.py
+++++ b/backend/main.py
++@@ -24,20 +24,21 @@ from app.routes import (
++     communications,
++     cooperatives,
++     farmers,
++     loans,
++     marketing,
++     production,
++     reports,
++     transactions,
++     ussdk_hooks,
++     webhooks,
+++    workers,
++ )
++ from app.models import worker  # noqa: F401
++ from app.services.auth_service import decode_access_token
++ 
++ logging.basicConfig(level=logging.INFO)
++ 
++ settings = get_settings()
++ 
++ # Only these routes are public when authentication is enabled.
++ _PUBLIC_PATHS = frozenset({
++@@ -163,20 +164,21 @@ app.include_router(auth.router)
++ app.include_router(admin.router)
++ app.include_router(cooperatives.router)
++ app.include_router(farmers.router)
++ app.include_router(transactions.router)
++ app.include_router(loans.router)
++ app.include_router(marketing.router)
++ app.include_router(production.router)
++ app.include_router(reports.router)
++ app.include_router(communications.router)
++ app.include_router(webhooks.router)
+++app.include_router(workers.router)
++ app.include_router(ussdk_hooks.router)
++ app.include_router(agro_ai.router)
++ 
++ 
++ @app.get("/", tags=["health"])
++ def root():
++     """API root ├ö├ç├Â returns version info."""
++     return {
++         "message": "Welcome to AgroOS API",
++         "version": "1.0.0",
+diff --git a/.superpowers/sdd/m5-phase0-foundation/review-d1a629c..baa64ef.diff b/.superpowers/sdd/m5-phase0-foundation/review-d1a629c..baa64ef.diff
+new file mode 100644
+index 0000000..56f514f
+--- /dev/null
++++ b/.superpowers/sdd/m5-phase0-foundation/review-d1a629c..baa64ef.diff
+@@ -0,0 +1,128 @@
++´╗┐# Review package: d1a629cc8b706b78dc82ccd0567d0acf0f699515..baa64ef
++
++## Commits
++baa64ef feat: add organization_type to Cooperative model + DB migration
++
++## Files changed
++ backend/alembic/versions/007_organization_type.py | 24 +++++++++++++++++++++++
++ backend/app/models/models.py                      |  1 +
++ backend/app/schemas/auth.py                       |  2 ++
++ backend/app/schemas/schemas.py                    |  2 ++
++ 4 files changed, 29 insertions(+)
++
++## Diff
++diff --git a/backend/alembic/versions/007_organization_type.py b/backend/alembic/versions/007_organization_type.py
++new file mode 100644
++index 0000000..1bf550e
++--- /dev/null
+++++ b/backend/alembic/versions/007_organization_type.py
++@@ -0,0 +1,24 @@
+++"""add organization_type to cooperatives
+++
+++Revision ID: 007_organization_type
+++Revises: 006_farmer_finance_flows
+++Create Date: 2026-07-30
+++"""
+++from alembic import op
+++import sqlalchemy as sa
+++
+++revision = "007_organization_type"
+++down_revision = "005_review_hardening"
+++branch_labels = None
+++depends_on = None
+++
+++
+++def upgrade():
+++    op.add_column(
+++        "cooperatives",
+++        sa.Column("organization_type", sa.String(), server_default="cooperative", nullable=False),
+++    )
+++
+++
+++def downgrade():
+++    op.drop_column("cooperatives", "organization_type")
++diff --git a/backend/app/models/models.py b/backend/app/models/models.py
++index 3086830..32d919d 100644
++--- a/backend/app/models/models.py
+++++ b/backend/app/models/models.py
++@@ -92,20 +92,21 @@ class Cooperative(Base):
++     """Cooperative / Farmer Union Model"""
++ 
++     __tablename__ = "cooperatives"
++ 
++     id = Column(Integer, primary_key=True, index=True)
++     name = Column(String, index=True, nullable=False)
++     description = Column(Text, nullable=True)
++     location = Column(String, nullable=True)
++     currency = Column(String, default="GHS")
++     subscription_plan = Column(String, default="starter", nullable=False)
+++    organization_type = Column(String, default="cooperative", nullable=False)
++     # Moolre wallet that holds cooperative funds
++     moolre_account_number = Column(String, nullable=True)
++     created_at = Column(DateTime, default=datetime.utcnow)
++     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
++ 
++     # Relationships
++     memberships = relationship("CooperativeMembership", back_populates="cooperative")
++ 
++ 
++ # ---------------------------------------------------------------------------
++diff --git a/backend/app/schemas/auth.py b/backend/app/schemas/auth.py
++index 2e146bc..c29f1ec 100644
++--- a/backend/app/schemas/auth.py
+++++ b/backend/app/schemas/auth.py
++@@ -34,19 +34,21 @@ class Token(BaseModel):
++     user: UserResponse | None = None
++ 
++ class SignupRequest(BaseModel):
++     """Combined cooperative + user registration in one step."""
++     email: EmailStr
++     password: str
++     cooperative_name: str
++     location: Optional[str] = None
++     member_count: Optional[int] = None  # stored as cooperative description hint
++     subscription_plan: Literal["starter", "growth"] = "starter"
+++    organization_type: Literal["cooperative", "solo_farm"] = "cooperative"
++     onboarding_role: str | None = Field(default=None, max_length=80)
++ 
++ class SignupResponse(BaseModel):
++     access_token: str
++     token_type: str
++     cooperative_id: int
++     cooperative_name: str
++     subscription_plan: Literal["starter", "growth"]
+++    organization_type: str = "cooperative"
++     onboarding_role: str | None = None
++diff --git a/backend/app/schemas/schemas.py b/backend/app/schemas/schemas.py
++index f161304..2123e11 100644
++--- a/backend/app/schemas/schemas.py
+++++ b/backend/app/schemas/schemas.py
++@@ -28,26 +28,28 @@ class CooperativeBase(BaseModel):
++ class CooperativeCreate(CooperativeBase):
++     pass
++ 
++ 
++ class CooperativeUpdate(BaseModel):
++     name: Optional[str] = None
++     description: Optional[str] = None
++     location: Optional[str] = None
++     currency: Optional[str] = None
++     moolre_account_number: Optional[str] = None
+++    organization_type: Optional[str] = None
++ 
++ 
++ class CooperativeResponse(CooperativeBase):
++     id: int
++     created_at: datetime
++     updated_at: datetime
+++    organization_type: str = "cooperative"
++ 
++     class Config:
++         from_attributes = True
++ 
++ 
++ # ===========================================================================
++ # Farmer
++ # ===========================================================================
++ 
++ 
+diff --git a/.superpowers/sdd/m5-phase0-foundation/review-e0e3039..c466b7e.diff b/.superpowers/sdd/m5-phase0-foundation/review-e0e3039..c466b7e.diff
+new file mode 100644
+index 0000000..92baa54
+--- /dev/null
++++ b/.superpowers/sdd/m5-phase0-foundation/review-e0e3039..c466b7e.diff
+@@ -0,0 +1,121 @@
++´╗┐# Review package: e0e3039..c466b7e
++
++## Commits
++c466b7e feat: add Worker model and schemas
++
++## Files changed
++ backend/app/models/worker.py  | 37 +++++++++++++++++++++++++++++++++++++
++ backend/app/schemas/worker.py | 34 ++++++++++++++++++++++++++++++++++
++ backend/main.py               |  1 +
++ 3 files changed, 72 insertions(+)
++
++## Diff
++diff --git a/backend/app/models/worker.py b/backend/app/models/worker.py
++new file mode 100644
++index 0000000..574fcbb
++--- /dev/null
+++++ b/backend/app/models/worker.py
++@@ -0,0 +1,37 @@
+++import enum
+++from datetime import datetime
+++
+++from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint
+++from sqlalchemy.orm import relationship
+++
+++from app.database.db import Base
+++
+++
+++class WorkerRole(str, enum.Enum):
+++    worker = "worker"
+++    supervisor = "supervisor"
+++
+++
+++class WorkerStatus(str, enum.Enum):
+++    active = "active"
+++    inactive = "inactive"
+++
+++
+++class Worker(Base):
+++    __tablename__ = "workers"
+++
+++    id = Column(Integer, primary_key=True, index=True)
+++    cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=False, index=True)
+++    name = Column(String, nullable=False)
+++    phone = Column(String, nullable=False, index=True)
+++    wage_rate = Column(Float, default=0.0)
+++    role = Column(Enum(WorkerRole), default=WorkerRole.worker)
+++    status = Column(Enum(WorkerStatus), default=WorkerStatus.active)
+++    created_at = Column(DateTime, default=datetime.utcnow)
+++    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+++
+++    cooperative = relationship("Cooperative")
+++
+++    __table_args__ = (
+++        UniqueConstraint("cooperative_id", "phone", name="uq_worker_phone_per_coop"),
+++    )
++diff --git a/backend/app/schemas/worker.py b/backend/app/schemas/worker.py
++new file mode 100644
++index 0000000..433d8a9
++--- /dev/null
+++++ b/backend/app/schemas/worker.py
++@@ -0,0 +1,34 @@
+++from datetime import datetime
+++from typing import Literal, Optional
+++
+++from pydantic import BaseModel
+++
+++
+++class WorkerCreate(BaseModel):
+++    name: str
+++    phone: str
+++    wage_rate: float = 0.0
+++    role: Literal["worker", "supervisor"] = "worker"
+++
+++
+++class WorkerUpdate(BaseModel):
+++    name: Optional[str] = None
+++    phone: Optional[str] = None
+++    wage_rate: Optional[float] = None
+++    role: Optional[Literal["worker", "supervisor"]] = None
+++    status: Optional[Literal["active", "inactive"]] = None
+++
+++
+++class WorkerResponse(BaseModel):
+++    id: int
+++    cooperative_id: int
+++    name: str
+++    phone: str
+++    wage_rate: float
+++    role: str
+++    status: str
+++    created_at: datetime
+++    updated_at: datetime
+++
+++    class Config:
+++        from_attributes = True
++diff --git a/backend/main.py b/backend/main.py
++index 5cffd37..b9e4132 100644
++--- a/backend/main.py
+++++ b/backend/main.py
++@@ -25,20 +25,21 @@ from app.routes import (
++     cooperatives,
++     farmers,
++     loans,
++     marketing,
++     production,
++     reports,
++     transactions,
++     ussdk_hooks,
++     webhooks,
++ )
+++from app.models import worker  # noqa: F401
++ from app.services.auth_service import decode_access_token
++ 
++ logging.basicConfig(level=logging.INFO)
++ 
++ settings = get_settings()
++ 
++ # Only these routes are public when authentication is enabled.
++ _PUBLIC_PATHS = frozenset({
++     "/",
++     "/health",
+diff --git a/.superpowers/sdd/m5-phase0-foundation/review-fix1-baa64ef..e0e3039.diff b/.superpowers/sdd/m5-phase0-foundation/review-fix1-baa64ef..e0e3039.diff
+new file mode 100644
+index 0000000..35e9cde
+--- /dev/null
++++ b/.superpowers/sdd/m5-phase0-foundation/review-fix1-baa64ef..e0e3039.diff
+@@ -0,0 +1,37 @@
++´╗┐# Review package (fix round 1): baa64ef..e0e3039
++
++## Commits
++e0e3039 fix: align migration 007 docstring with down_revision
++
++## Files changed
++ backend/alembic/versions/007_organization_type.py | 3 ++-
++ 1 file changed, 2 insertions(+), 1 deletion(-)
++
++## Diff
++diff --git a/backend/alembic/versions/007_organization_type.py b/backend/alembic/versions/007_organization_type.py
++index 1bf550e..d546b99 100644
++--- a/backend/alembic/versions/007_organization_type.py
+++++ b/backend/alembic/versions/007_organization_type.py
++@@ -1,20 +1,21 @@
++ """add organization_type to cooperatives
++ 
++ Revision ID: 007_organization_type
++-Revises: 006_farmer_finance_flows
+++Revises: 005_review_hardening
++ Create Date: 2026-07-30
++ """
++ from alembic import op
++ import sqlalchemy as sa
++ 
++ revision = "007_organization_type"
+++# branched from 005 because 006 cannot apply on SQLite (ALTER TABLE)
++ down_revision = "005_review_hardening"
++ branch_labels = None
++ depends_on = None
++ 
++ 
++ def upgrade():
++     op.add_column(
++         "cooperatives",
++         sa.Column("organization_type", sa.String(), server_default="cooperative", nullable=False),
++     )
+diff --git a/.superpowers/sdd/m5-phase0-foundation/task-1-brief.md b/.superpowers/sdd/m5-phase0-foundation/task-1-brief.md
+new file mode 100644
+index 0000000..b0758e4
+--- /dev/null
++++ b/.superpowers/sdd/m5-phase0-foundation/task-1-brief.md
+@@ -0,0 +1,80 @@
++### Task 1: Add `organization_type` to Cooperative model + DB migration
++
++**Files:**
++- Modify: `backend/app/models/models.py:101`
++- Create: `backend/alembic/versions/007_organization_type.py`
++- Modify: `backend/app/schemas/schemas.py:40-46`
++- Modify: `backend/app/schemas/auth.py:43`
++
++**Step 1: Add `organization_type` column to Cooperative model**
++
++In `backend/app/models/models.py`, add after `subscription_plan` (line 101):
++
++```python
++organization_type = Column(String, default="cooperative", nullable=False)
++```
++
++**Step 2: Create Alembic migration**
++
++Create `backend/alembic/versions/007_organization_type.py`:
++
++```python
++"""add organization_type to cooperatives
++
++Revision ID: 007_organization_type
++Revises: 006_farmer_finance_flows
++Create Date: 2026-07-30
++"""
++from alembic import op
++import sqlalchemy as sa
++
++revision = "007_organization_type"
++down_revision = "006_farmer_finance_flows"
++branch_labels = None
++depends_on = None
++
++
++def upgrade():
++    op.add_column(
++        "cooperatives",
++        sa.Column("organization_type", sa.String(), server_default="cooperative", nullable=False),
++    )
++
++
++def downgrade():
++    op.drop_column("cooperatives", "organization_type")
++```
++
++**Step 3: Update CooperativeResponse schema**
++
++In `backend/app/schemas/schemas.py`, add to `CooperativeResponse`:
++
++```python
++organization_type: str = "cooperative"
++```
++
++And add to `CooperativeUpdate`:
++
++```python
++organization_type: Optional[str] = None
++```
++
++**Step 4: Update SignupRequest schema**
++
++In `backend/app/schemas/auth.py`, update `SignupRequest`:
++
++```python
++organization_type: Literal["cooperative", "solo_farm"] = "cooperative"
++```
++
++Update `SignupResponse`:
++
++```python
++organization_type: str = "cooperative"
++```
++
++**Step 5: Run migration**
++
++```bash
++cd backend && alembic upgrade head
++```
+diff --git a/.superpowers/sdd/m5-phase0-foundation/task-1-report.md b/.superpowers/sdd/m5-phase0-foundation/task-1-report.md
+new file mode 100644
+index 0000000..883d07c
+--- /dev/null
++++ b/.superpowers/sdd/m5-phase0-foundation/task-1-report.md
+@@ -0,0 +1,26 @@
++# Task 1 Report: Add `organization_type` to Cooperative model + DB migration
++
++## Status
++DONE_WITH_CONCERNS
++
++## Commit Hash
++baa64ef
++
++## Files Changed
++- `backend/app/models/models.py` ÔÇö Added `organization_type` column to Cooperative model
++- `backend/alembic/versions/007_organization_type.py` ÔÇö Created migration to add column
++- `backend/app/schemas/schemas.py` ÔÇö Added `organization_type` to `CooperativeResponse` and `CooperativeUpdate`
++- `backend/app/schemas/auth.py` ÔÇö Added `organization_type` to `SignupRequest` and `SignupResponse`
++
++## Commands Run
++```
++cd backend && alembic upgrade head
++```
++
++## Test Evidence
++- Alembic current reports: `007_organization_type (head)`
++- Verified via sqlite3 PRAGMA table_info: `organization_type` column exists in `cooperatives` table
++- All files parse correctly with no syntax errors
++
++## Concerns
++- Migration `006_farmer_finance_flows` cannot be applied on SQLite (ForeignKey ALTER not supported). Had to change my migration's `down_revision` from `006_farmer_finance_flows` to `005_review_hardening` to match the actual DB head. This creates two heads (`006` and `007`). `006` should be fixed separately (add batch mode or dialect check) before `007` can be chained to it.
+diff --git a/.superpowers/sdd/m5-phase0-foundation/task-2-brief.md b/.superpowers/sdd/m5-phase0-foundation/task-2-brief.md
+new file mode 100644
+index 0000000..dd9b3ba
+--- /dev/null
++++ b/.superpowers/sdd/m5-phase0-foundation/task-2-brief.md
+@@ -0,0 +1,99 @@
++### Task 2: Create Worker model + schemas
++
++**Files:**
++- Create: `backend/app/models/worker.py`
++- Create: `backend/app/schemas/worker.py`
++- Modify: `backend/main.py`
++
++**Step 1: Create Worker ORM model**
++
++`backend/app/models/worker.py`:
++
++```python
++import enum
++from datetime import datetime
++
++from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint
++from sqlalchemy.orm import relationship
++
++from app.database.db import Base
++
++
++class WorkerRole(str, enum.Enum):
++    worker = "worker"
++    supervisor = "supervisor"
++
++
++class WorkerStatus(str, enum.Enum):
++    active = "active"
++    inactive = "inactive"
++
++
++class Worker(Base):
++    __tablename__ = "workers"
++
++    id = Column(Integer, primary_key=True, index=True)
++    cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=False, index=True)
++    name = Column(String, nullable=False)
++    phone = Column(String, nullable=False, index=True)
++    wage_rate = Column(Float, default=0.0)
++    role = Column(Enum(WorkerRole), default=WorkerRole.worker)
++    status = Column(Enum(WorkerStatus), default=WorkerStatus.active)
++    created_at = Column(DateTime, default=datetime.utcnow)
++    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
++
++    cooperative = relationship("Cooperative")
++
++    __table_args__ = (
++        UniqueConstraint("cooperative_id", "phone", name="uq_worker_phone_per_coop"),
++    )
++```
++
++**Step 2: Create Worker Pydantic schemas**
++
++`backend/app/schemas/worker.py`:
++
++```python
++from datetime import datetime
++from typing import Literal, Optional
++
++from pydantic import BaseModel
++
++
++class WorkerCreate(BaseModel):
++    name: str
++    phone: str
++    wage_rate: float = 0.0
++    role: Literal["worker", "supervisor"] = "worker"
++
++
++class WorkerUpdate(BaseModel):
++    name: Optional[str] = None
++    phone: Optional[str] = None
++    wage_rate: Optional[float] = None
++    role: Optional[Literal["worker", "supervisor"]] = None
++    status: Optional[Literal["active", "inactive"]] = None
++
++
++class WorkerResponse(BaseModel):
++    id: int
++    cooperative_id: int
++    name: str
++    phone: str
++    wage_rate: float
++    role: str
++    status: str
++    created_at: datetime
++    updated_at: datetime
++
++    class Config:
++        from_attributes = True
++```
++
++**Step 3: Register model import in main.py**
++
++In `backend/main.py`, add among the other model imports:
++
++```python
++from app.models import worker  # noqa: F401
++```
+diff --git a/.superpowers/sdd/m5-phase0-foundation/task-2-report.md b/.superpowers/sdd/m5-phase0-foundation/task-2-report.md
+new file mode 100644
+index 0000000..fb52fbb
+--- /dev/null
++++ b/.superpowers/sdd/m5-phase0-foundation/task-2-report.md
+@@ -0,0 +1,21 @@
++# Task 2 Report ÔÇö Worker model + schemas
++
++## Files created/modified
++- Created: `backend/app/models/worker.py`
++- Created: `backend/app/schemas/worker.py`
++- Modified: `backend/main.py` (added `from app.models import worker  # noqa: F401`)
++
++## Commands and output
++```
++> python -c "from app.models.worker import Worker, WorkerRole, WorkerStatus; print('Worker model OK')"
++Worker model OK
++
++> python -c "from app.schemas.worker import WorkerCreate, WorkerUpdate, WorkerResponse; print('Worker schemas OK')"
++Worker schemas OK
++```
++
++## Commit
++`c466b7e` ÔÇö `feat: add Worker model and schemas`
++
++## Concerns
++None.
+diff --git a/.superpowers/sdd/m5-phase0-foundation/task-3-brief.md b/.superpowers/sdd/m5-phase0-foundation/task-3-brief.md
+new file mode 100644
+index 0000000..727da19
+--- /dev/null
++++ b/.superpowers/sdd/m5-phase0-foundation/task-3-brief.md
+@@ -0,0 +1,162 @@
++### Task 3: Worker CRUD API routes
++
++**Files:**
++- Create: `backend/app/routes/workers.py`
++- Modify: `backend/main.py` (register workers router)
++
++**Step 1: Create workers router**
++
++`backend/app/routes/workers.py`:
++
++```python
++from fastapi import APIRouter, Depends, HTTPException, Query
++from sqlalchemy.orm import Session
++
++from app.database.db import get_db
++from app.models.models import Cooperative, User
++from app.models.worker import Worker, WorkerRole, WorkerStatus
++from app.schemas.worker import WorkerCreate, WorkerResponse, WorkerUpdate
++from app.services.auth_service import (
++    enforce_cooperative_scope,
++    get_current_user,
++    require_roles,
++)
++
++router = APIRouter(prefix="/workers", tags=["workers"])
++
++
++@router.get("/", response_model=list[WorkerResponse])
++def list_workers(
++    cooperative_id: int = Query(...),
++    skip: int = 0,
++    limit: int = Query(default=100, le=500),
++    db: Session = Depends(get_db),
++    current_user: User | None = Depends(get_current_user),
++):
++    enforce_cooperative_scope(current_user, cooperative_id)
++    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
++    if not coop:
++        raise HTTPException(status_code=404, detail="Cooperative not found")
++    return (
++        db.query(Worker)
++        .filter(Worker.cooperative_id == cooperative_id)
++        .offset(skip)
++        .limit(limit)
++        .all()
++    )
++
++
++@router.get("/{worker_id}", response_model=WorkerResponse)
++def get_worker(
++    worker_id: int,
++    cooperative_id: int = Query(...),
++    db: Session = Depends(get_db),
++    current_user: User | None = Depends(get_current_user),
++):
++    enforce_cooperative_scope(current_user, cooperative_id)
++    worker = (
++        db.query(Worker)
++        .filter(Worker.id == worker_id, Worker.cooperative_id == cooperative_id)
++        .first()
++    )
++    if not worker:
++        raise HTTPException(status_code=404, detail="Worker not found")
++    return worker
++
++
++@router.post("/", response_model=WorkerResponse, status_code=201)
++def create_worker(
++    data: WorkerCreate,
++    cooperative_id: int = Query(...),
++    db: Session = Depends(get_db),
++    current_user: User | None = Depends(require_roles("admin", "farm_owner", "farm_manager")),
++):
++    enforce_cooperative_scope(current_user, cooperative_id)
++    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
++    if not coop:
++        raise HTTPException(status_code=404, detail="Cooperative not found")
++
++    existing = (
++        db.query(Worker)
++        .filter(Worker.cooperative_id == cooperative_id, Worker.phone == data.phone)
++        .first()
++    )
++    if existing:
++        raise HTTPException(status_code=409, detail="Worker with this phone already exists")
++
++    worker = Worker(
++        cooperative_id=cooperative_id,
++        name=data.name,
++        phone=data.phone,
++        wage_rate=data.wage_rate,
++        role=WorkerRole(data.role) if data.role else WorkerRole.worker,
++    )
++    db.add(worker)
++    db.commit()
++    db.refresh(worker)
++    return worker
++
++
++@router.patch("/{worker_id}", response_model=WorkerResponse)
++def update_worker(
++    worker_id: int,
++    data: WorkerUpdate,
++    cooperative_id: int = Query(...),
++    db: Session = Depends(get_db),
++    current_user: User | None = Depends(require_roles("admin", "farm_owner", "farm_manager")),
++):
++    enforce_cooperative_scope(current_user, cooperative_id)
++    worker = (
++        db.query(Worker)
++        .filter(Worker.id == worker_id, Worker.cooperative_id == cooperative_id)
++        .first()
++    )
++    if not worker:
++        raise HTTPException(status_code=404, detail="Worker not found")
++
++    for field, value in data.model_dump(exclude_none=True).items():
++        if field == "role" and value:
++            value = WorkerRole(value)
++        if field == "status" and value:
++            value = WorkerStatus(value)
++        setattr(worker, field, value)
++
++    db.commit()
++    db.refresh(worker)
++    return worker
++
++
++@router.delete("/{worker_id}", status_code=204)
++def delete_worker(
++    worker_id: int,
++    cooperative_id: int = Query(...),
++    db: Session = Depends(get_db),
++    current_user: User | None = Depends(require_roles("admin", "farm_owner")),
++):
++    enforce_cooperative_scope(current_user, cooperative_id)
++    worker = (
++        db.query(Worker)
++        .filter(Worker.id == worker_id, Worker.cooperative_id == cooperative_id)
++        .first()
++    )
++    if not worker:
++        raise HTTPException(status_code=404, detail="Worker not found")
++    worker.status = WorkerStatus.inactive
++    db.commit()
++```
++
++**Step 2: Register workers router in main.py**
++
++In `backend/main.py`, add the import:
++
++```python
++from app.routes import workers as workers_router
++```
++
++And register with the other routers:
++
++```python
++app.include_router(workers_router.router)
++```
++
++Place it alphabetically (after webhooks, before agro_ai).
+diff --git a/.superpowers/sdd/m5-phase0-foundation/task-3-report.md b/.superpowers/sdd/m5-phase0-foundation/task-3-report.md
+new file mode 100644
+index 0000000..ac660b8
+--- /dev/null
++++ b/.superpowers/sdd/m5-phase0-foundation/task-3-report.md
+@@ -0,0 +1,15 @@
++# Task 3: Worker CRUD API routes
++
++**Status:** DONE
++**Commit:** `2ba9ffdf3c85f86f8d7f6a138d7e032fd3354139`
++
++## Summary
++
++- Created `backend/app/routes/workers.py` with CRUD endpoints:
++  - `GET /workers/` ÔÇö list workers (requires cooperative_id)
++  - `GET /workers/{worker_id}` ÔÇö get worker by ID
++  - `POST /workers/` ÔÇö create worker (admin/farm_owner/farm_manager)
++  - `PATCH /workers/{worker_id}` ÔÇö update worker
++  - `DELETE /workers/{worker_id}` ÔÇö soft-delete (sets status to inactive)
++- Registered workers router in `backend/main.py` (alphabetically after webhooks)
++- Verified clean import: `python -c "from app.routes.workers import router; print('OK')"`
+diff --git a/backend/main.py b/backend/main.py
+index 0ce60a9..ff84b45 100644
+--- a/backend/main.py
++++ b/backend/main.py
+@@ -26,20 +26,21 @@ from app.routes import (
+     farmers,
+     loans,
+     marketing,
+     production,
+     reports,
+     transactions,
+     ussdk_hooks,
+     webhooks,
+     workers,
+ )
++)
+ from app.models import worker  # noqa: F401
+ from app.services.auth_service import decode_access_token
+ 
+ logging.basicConfig(level=logging.INFO)
+ 
+ settings = get_settings()
+ 
+ # Only these routes are public when authentication is enabled.
+ _PUBLIC_PATHS = frozenset({
+     "/",
+@@ -164,22 +165,22 @@ app.include_router(auth.router)
+ app.include_router(admin.router)
+ app.include_router(cooperatives.router)
+ app.include_router(farmers.router)
+ app.include_router(transactions.router)
+ app.include_router(loans.router)
+ app.include_router(marketing.router)
+ app.include_router(production.router)
+ app.include_router(reports.router)
+ app.include_router(communications.router)
+ app.include_router(webhooks.router)
+-app.include_router(workers.router)
+ app.include_router(ussdk_hooks.router)
++app.include_router(workers.router)
+ app.include_router(agro_ai.router)
+ 
+ 
+ @app.get("/", tags=["health"])
+ def root():
+     """API root ÔÇö returns version info."""
+     return {
+         "message": "Welcome to AgroOS API",
+         "version": "1.0.0",
+         "environment": settings.app_env,
+diff --git a/docs/superpowers/plans/2026-07-30-m5-phase0-foundation.md b/docs/superpowers/plans/2026-07-30-m5-phase0-foundation.md
+new file mode 100644
+index 0000000..263ae12
+--- /dev/null
++++ b/docs/superpowers/plans/2026-07-30-m5-phase0-foundation.md
+@@ -0,0 +1,1024 @@
++# M5 Phase 0 ÔÇö Solo Farm Foundation Implementation Plan
++
++> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
++
++**Goal:** Lay the foundation for Solo Farm by adding `organization_type` to cooperatives, creating the `workers` table, expanding roles, adding Worker CRUD API, and making the signup + nav org-type-aware.
++
++**Architecture:** Expand existing Cooperative model with org type discriminator. Workers are a new entity parallel to Farmers (not members). Frontend nav becomes a function of org type.
++
++**Tech Stack:** FastAPI, SQLAlchemy, Alembic, React 18, Vite, Pydantic v2
++
++## Global Constraints
++
++- `organization_type` defaults to `"cooperative"` for backward compat
++- Workers are scoped to `cooperative_id` ÔÇö no cross-tenant access
++- Existing cooperative/farmer models stay untouched
++- Frontend role handling: cooperative sees existing nav, solo_farm sees new nav
++- Python type hints throughout (Python 3.10+)
++
++---
++
++## File Structure
++
++### New files:
++- `backend/app/models/worker.py` ÔÇö Worker ORM model + enums
++- `backend/app/schemas/worker.py` ÔÇö Worker Pydantic schemas
++- `backend/app/routes/workers.py` ÔÇö Worker CRUD endpoints
++- `frontend/src/api/workers.js` ÔÇö Worker API client
++- `frontend/src/components/dashboard/Workers.jsx` ÔÇö Workers section component
++- `frontend/src/components/dashboard/WorkerForm.jsx` ÔÇö Add/edit worker modal
++
++### Modified files:
++- `backend/app/models/models.py` ÔÇö Add `organization_type` to Cooperative
++- `backend/app/schemas/schemas.py` ÔÇö Add `organization_type` to CooperativeResponse/CooperativeUpdate
++- `backend/app/schemas/auth.py` ÔÇö Add `organization_type` to SignupRequest/SignupResponse, expand role Literal
++- `backend/app/routes/auth.py` ÔÇö Pass organization_type on signup
++- `backend/app/routes/cooperatives.py` ÔÇö Return organization_type
++- `backend/app/main.py` ÔÇö Register workers router
++- `frontend/src/constants/routes.js` ÔÇö Add worker sections to DASHBOARD_SECTIONS
++- `frontend/src/pages/DashboardPage.jsx` ÔÇö Org-aware NAV_GROUPS, section rendering
++- `frontend/src/pages/PricingPage.jsx` ÔÇö Add solo plan
++- `frontend/src/pages/SubscriptionPage.jsx` ÔÇö Org type step
++- `frontend/src/pages/AuthPage.jsx` ÔÇö Org type in signup flow
++- `frontend/src/api/auth.js` ÔÇö Pass org_type in signup
++- `frontend/src/api/cooperatives.js` ÔÇö Pass org_type in responses
++
++---
++
++### Task 1: Add `organization_type` to Cooperative model + DB migration
++
++**Files:**
++- Modify: `backend/app/models/models.py:101`
++- Modify: `backend/alembic/versions/007_organization_type.py` (new migration)
++- Modify: `backend/app/schemas/schemas.py:40-46`
++- Modify: `backend/app/schemas/auth.py:43`
++
++- [ ] **Step 1: Add `organization_type` column to Cooperative model**
++
++In `backend/app/models/models.py`, add after `subscription_plan` (line 101):
++
++```python
++organization_type = Column(String, default="cooperative", nullable=False)
++```
++
++- [ ] **Step 2: Create Alembic migration**
++
++Create `backend/alembic/versions/007_organization_type.py`:
++
++```python
++"""add organization_type to cooperatives, create workers table
++
++Revision ID: 007_organization_type
++Revises: 006_farmer_finance_flows
++Create Date: 2026-07-30
++"""
++from alembic import op
++import sqlalchemy as sa
++
++revision = "007_organization_type"
++down_revision = "006_farmer_finance_flows"
++branch_labels = None
++depends_on = None
++
++
++def upgrade():
++    op.add_column(
++        "cooperatives",
++        sa.Column("organization_type", sa.String(), server_default="cooperative", nullable=False),
++    )
++
++
++def downgrade():
++    op.drop_column("cooperatives", "organization_type")
++```
++
++- [ ] **Step 3: Update CooperativeResponse schema**
++
++In `backend/app/schemas/schemas.py`, add to `CooperativeResponse`:
++
++```python
++organization_type: str = "cooperative"
++```
++
++And add to `CooperativeUpdate`:
++
++```python
++organization_type: Optional[str] = None
++```
++
++- [ ] **Step 4: Update SignupRequest schema**
++
++In `backend/app/schemas/auth.py`:
++
++```python
++organization_type: Literal["cooperative", "solo_farm"] = "cooperative"
++```
++
++Update `SignupResponse`:
++
++```python
++organization_type: str = "cooperative"
++```
++
++- [ ] **Step 5: Run migration**
++
++```bash
++cd backend && alembic upgrade head
++```
++
++---
++
++### Task 2: Create Worker model + schemas
++
++**Files:**
++- Create: `backend/app/models/worker.py`
++- Create: `backend/app/schemas/worker.py`
++
++- [ ] **Step 1: Create Worker ORM model**
++
++`backend/app/models/worker.py`:
++
++```python
++import enum
++from datetime import datetime
++
++from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, String, Float
++from sqlalchemy.orm import relationship
++
++from app.database.db import Base
++
++
++class WorkerRole(str, enum.Enum):
++    worker = "worker"
++    supervisor = "supervisor"
++
++
++class WorkerStatus(str, enum.Enum):
++    active = "active"
++    inactive = "inactive"
++
++
++class Worker(Base):
++    __tablename__ = "workers"
++
++    id = Column(Integer, primary_key=True, index=True)
++    cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=False, index=True)
++    name = Column(String, nullable=False)
++    phone = Column(String, nullable=False, index=True)
++    wage_rate = Column(Float, default=0.0)
++    role = Column(Enum(WorkerRole), default=WorkerRole.worker)
++    status = Column(Enum(WorkerStatus), default=WorkerStatus.active)
++    created_at = Column(DateTime, default=datetime.utcnow)
++    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
++
++    cooperative = relationship("Cooperative")
++
++    __table_args__ = (
++        sa.UniqueConstraint("cooperative_id", "phone", name="uq_worker_phone_per_coop"),
++    )
++```
++
++- [ ] **Step 2: Create Worker Pydantic schemas**
++
++`backend/app/schemas/worker.py`:
++
++```python
++from datetime import datetime
++from typing import Literal, Optional
++
++from pydantic import BaseModel, Field
++
++
++class WorkerCreate(BaseModel):
++    name: str
++    phone: str
++    wage_rate: float = 0.0
++    role: Literal["worker", "supervisor"] = "worker"
++
++
++class WorkerUpdate(BaseModel):
++    name: Optional[str] = None
++    phone: Optional[str] = None
++    wage_rate: Optional[float] = None
++    role: Optional[Literal["worker", "supervisor"]] = None
++    status: Optional[Literal["active", "inactive"]] = None
++
++
++class WorkerResponse(BaseModel):
++    id: int
++    cooperative_id: int
++    name: str
++    phone: str
++    wage_rate: float
++    role: str
++    status: str
++    created_at: datetime
++    updated_at: datetime
++
++    class Config:
++        from_attributes = True
++```
++
++- [ ] **Step 3: Register model import in main.py**
++
++Add to `backend/main.py`:
++
++```python
++from app.models import worker  # noqa: F401
++```
++
++---
++
++### Task 3: Worker CRUD API routes
++
++**Files:**
++- Create: `backend/app/routes/workers.py`
++- Modify: `backend/main.py:173`
++
++- [ ] **Step 1: Create workers router**
++
++`backend/app/routes/workers.py`:
++
++```python
++from fastapi import APIRouter, Depends, HTTPException, Query
++from sqlalchemy.orm import Session
++
++from app.database.db import get_db
++from app.models.models import Cooperative, User
++from app.models.worker import Worker, WorkerRole, WorkerStatus
++from app.schemas.worker import WorkerCreate, WorkerResponse, WorkerUpdate
++from app.services.auth_service import (
++    enforce_cooperative_scope,
++    get_current_user,
++    require_roles,
++)
++
++router = APIRouter(prefix="/workers", tags=["workers"])
++
++
++@router.get("/", response_model=list[WorkerResponse])
++def list_workers(
++    cooperative_id: int = Query(...),
++    skip: int = 0,
++    limit: int = Query(default=100, le=500),
++    db: Session = Depends(get_db),
++    current_user: User | None = Depends(get_current_user),
++):
++    enforce_cooperative_scope(current_user, cooperative_id)
++    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
++    if not coop:
++        raise HTTPException(status_code=404, detail="Cooperative not found")
++    return (
++        db.query(Worker)
++        .filter(Worker.cooperative_id == cooperative_id)
++        .offset(skip)
++        .limit(limit)
++        .all()
++    )
++
++
++@router.get("/{worker_id}", response_model=WorkerResponse)
++def get_worker(
++    worker_id: int,
++    cooperative_id: int = Query(...),
++    db: Session = Depends(get_db),
++    current_user: User | None = Depends(get_current_user),
++):
++    enforce_cooperative_scope(current_user, cooperative_id)
++    worker = (
++        db.query(Worker)
++        .filter(Worker.id == worker_id, Worker.cooperative_id == cooperative_id)
++        .first()
++    )
++    if not worker:
++        raise HTTPException(status_code=404, detail="Worker not found")
++    return worker
++
++
++@router.post("/", response_model=WorkerResponse, status_code=201)
++def create_worker(
++    data: WorkerCreate,
++    cooperative_id: int = Query(...),
++    db: Session = Depends(get_db),
++    current_user: User | None = Depends(require_roles("admin", "farm_owner", "farm_manager")),
++):
++    enforce_cooperative_scope(current_user, cooperative_id)
++    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
++    if not coop:
++        raise HTTPException(status_code=404, detail="Cooperative not found")
++
++    existing = (
++        db.query(Worker)
++        .filter(Worker.cooperative_id == cooperative_id, Worker.phone == data.phone)
++        .first()
++    )
++    if existing:
++        raise HTTPException(status_code=409, detail="Worker with this phone already exists")
++
++    worker = Worker(
++        cooperative_id=cooperative_id,
++        name=data.name,
++        phone=data.phone,
++        wage_rate=data.wage_rate,
++        role=WorkerRole(data.role) if data.role else WorkerRole.worker,
++    )
++    db.add(worker)
++    db.commit()
++    db.refresh(worker)
++    return worker
++
++
++@router.patch("/{worker_id}", response_model=WorkerResponse)
++def update_worker(
++    worker_id: int,
++    data: WorkerUpdate,
++    cooperative_id: int = Query(...),
++    db: Session = Depends(get_db),
++    current_user: User | None = Depends(require_roles("admin", "farm_owner", "farm_manager")),
++):
++    enforce_cooperative_scope(current_user, cooperative_id)
++    worker = (
++        db.query(Worker)
++        .filter(Worker.id == worker_id, Worker.cooperative_id == cooperative_id)
++        .first()
++    )
++    if not worker:
++        raise HTTPException(status_code=404, detail="Worker not found")
++
++    for field, value in data.model_dump(exclude_none=True).items():
++        if field == "role" and value:
++            value = WorkerRole(value)
++        if field == "status" and value:
++            value = WorkerStatus(value)
++        setattr(worker, field, value)
++
++    db.commit()
++    db.refresh(worker)
++    return worker
++
++
++@router.delete("/{worker_id}", status_code=204)
++def delete_worker(
++    worker_id: int,
++    cooperative_id: int = Query(...),
++    db: Session = Depends(get_db),
++    current_user: User | None = Depends(require_roles("admin", "farm_owner")),
++):
++    enforce_cooperative_scope(current_user, cooperative_id)
++    worker = (
++        db.query(Worker)
++        .filter(Worker.id == worker_id, Worker.cooperative_id == cooperative_id)
++        .first()
++    )
++    if not worker:
++        raise HTTPException(status_code=404, detail="Worker not found")
++    worker.status = WorkerStatus.inactive
++    db.commit()
++```
++
++- [ ] **Step 2: Register workers router in main.py**
++
++In `backend/main.py`, add after the last `app.include_router(...)`:
++
++```python
++from app.routes import workers as workers_router
++app.include_router(workers_router.router)
++```
++
++---
++
++### Task 4: Expand role validators for solo_farm roles
++
++**Files:**
++- Modify: `backend/app/schemas/auth.py:9`
++
++- [ ] **Step 1: Expand role Literal to include farm roles**
++
++In `backend/app/schemas/auth.py`, change `UserCreate.role` and `UserUpdate.role`:
++
++```python
++role: Literal["admin", "finance_officer", "farm_owner", "farm_manager", "supervisor"] = "finance_officer"
++```
++
++And in `UserUpdate`:
++
++```python
++role: Literal["admin", "finance_officer", "farm_owner", "farm_manager", "supervisor"] | None = None
++```
++
++---
++
++### Task 5: Wire organization_type through signup
++
++**Files:**
++- Modify: `backend/app/routes/auth.py:43-50`
++
++- [ ] **Step 1: Pass organization_type when creating cooperative**
++
++In `backend/app/routes/auth.py`, add to the `new_coop` creation:
++
++```python
++new_coop = Cooperative(
++    name=data.cooperative_name,
++    location=data.location,
++    description=description,
++    currency="GHS",
++    subscription_plan=data.subscription_plan,
++    organization_type=data.organization_type,
++)
++```
++
++And in the signup response, return `organization_type`:
++
++```python
++return {
++    "access_token": access_token,
++    "token_type": "bearer",
++    "cooperative_id": new_coop.id,
++    "cooperative_name": new_coop.name,
++    "subscription_plan": data.subscription_plan,
++    "organization_type": data.organization_type,
++    "onboarding_role": data.onboarding_role,
++}
++```
++
++- [ ] **Step 2: Return organization_type from cooperative endpoints**
++
++In `backend/app/routes/cooperatives.py`, the `CooperativeResponse` already includes it (from schema update in Task 1). Ensure the PUT handler passes `organization_type` through:
++
++```python
++organization_type: Optional[str] = None,  # in CooperativeUpdate
++```
++
++---
++
++### Task 6: Frontend ÔÇö Org-aware signup flow
++
++**Files:**
++- Modify: `frontend/src/pages/AuthPage.jsx`
++- Modify: `frontend/src/pages/SubscriptionPage.jsx`
++- Modify: `frontend/src/api/auth.js`
++
++- [ ] **Step 1: Add org_type to auth API**
++
++In `frontend/src/api/auth.js`, find the signup call and add `organization_type`:
++
++```javascript
++// In signup function, add to payload:
++organization_type: formData.organization_type || 'cooperative',
++```
++
++- [ ] **Step 2: Add org type selector to signup**
++
++In `AuthPage.jsx`, add a step/field in the signup form for org type:
++
++```jsx
++{/* After cooperative name field */}
++<div className="form-group">
++  <label>Organization type</label>
++  <select
++    name="organization_type"
++    value={formData.organization_type}
++    onChange={handleChange}
++    className="form-input"
++  >
++    <option value="cooperative">Cooperative</option>
++    <option value="solo_farm">Solo Farm</option>
++  </select>
++</div>
++```
++
++- [ ] **Step 3: Add org type step to subscription page**
++
++In `SubscriptionPage.jsx`, include org type in the onboarding flow so it passes through to signup.
++
++---
++
++### Task 7: Frontend ÔÇö Org-aware dashboard navigation
++
++**Files:**
++- Modify: `frontend/src/constants/routes.js`
++- Modify: `frontend/src/pages/DashboardPage.jsx`
++
++- [ ] **Step 1: Add new sections to DASHBOARD_SECTIONS**
++
++In `frontend/src/constants/routes.js`:
++
++```javascript
++export const DASHBOARD_SECTIONS = [
++  'overview',
++  'members',
++  'workers',
++  'payments',
++  'loans',
++  'production',
++  'scores',
++  'sms',
++  'ussd',
++  'activity',
++  'settings',
++]
++```
++
++- [ ] **Step 2: Make NAV_GROUPS a function of org_type**
++
++In `DashboardPage.jsx`, replace the static `NAV_GROUPS` with a function:
++
++```javascript
++function getNavGroups(organizationType) {
++  if (organizationType === 'solo_farm') {
++    return [
++      {
++        label: 'Operations',
++        items: [
++          { key: 'overview', icon: <BarChart3 size={18} />, label: 'Overview' },
++          { key: 'workers', icon: <Users size={18} />, label: 'Workers' },
++          { key: 'production', icon: <Tractor size={18} />, label: 'Production' },
++        ],
++      },
++      {
++        label: 'Communications',
++        items: [
++          { key: 'sms', icon: <MessageSquare size={18} />, label: 'SMS broadcasts' },
++          { key: 'ussd', icon: <Phone size={18} />, label: 'USSD activity' },
++        ],
++      },
++      {
++        label: 'Governance',
++        items: [
++          { key: 'activity', icon: <ClipboardList size={18} />, label: 'Activity log' },
++        ],
++      },
++    ]
++  }
++  // Default cooperative nav
++  return [
++    {
++      label: 'Operations',
++      items: [
++        { key: 'overview', icon: <BarChart3 size={18} />, label: 'Overview' },
++        { key: 'members', icon: <Users size={18} />, label: 'Members' },
++        { key: 'production', icon: <Tractor size={18} />, label: 'Production' },
++        { key: 'scores', icon: <Star size={18} />, label: 'Agro-AI scores' },
++      ],
++    },
++    {
++      label: 'Finance',
++      items: [
++        { key: 'payments', icon: <CreditCard size={18} />, label: 'Payments' },
++        { key: 'loans', icon: <Banknote size={18} />, label: 'Loans' },
++      ],
++    },
++    {
++      label: 'Communications',
++      items: [
++        { key: 'sms', icon: <MessageSquare size={18} />, label: 'SMS broadcasts' },
++        { key: 'ussd', icon: <Phone size={18} />, label: 'USSD activity' },
++      ],
++    },
++    {
++      label: 'Governance',
++      items: [
++        { key: 'activity', icon: <ClipboardList size={18} />, label: 'Activity log' },
++      ],
++    },
++  ]
++}
++```
++
++- [ ] **Step 3: Load org_type in DashboardPage state**
++
++Add state and fetch for org type:
++
++```javascript
++const [organizationType, setOrganizationType] = useState('cooperative')
++
++// In loadAll or a separate effect:
++useEffect(() => {
++  if (cooperativeId) {
++    fetchCooperative(cooperativeId).then(coop => {
++      if (coop) setOrganizationType(coop.organization_type || 'cooperative')
++    })
++  }
++}, [cooperativeId])
++```
++
++- [ ] **Step 4: Use function-based nav groups**
++
++Replace `NAV_GROUPS` usage with:
++
++```javascript
++const navGroups = getNavGroups(organizationType)
++const NAV_ITEMS = navGroups.flatMap((group) => group.items)
++```
++
++- [ ] **Step 5: Add Workers section rendering**
++
++In the section rendering block, add:
++
++```jsx
++section === 'workers' && <Workers cooperativeId={cooperativeId} />
++```
++
++- [ ] **Step 6: Import Workers component**
++
++```javascript
++import Workers from '../components/dashboard/Workers'
++```
++
++- [ ] **Step 7: Section gating - redirect members to workers for solo_farm**
++
++At the top of the DashboardPage render, add:
++
++```javascript
++if (organizationType === 'solo_farm' && section === 'members') {
++  return <Navigate to={dashboardPath('workers')} replace />
++}
++if (organizationType === 'cooperative' && section === 'workers') {
++  return <Navigate to={dashboardPath('members')} replace />
++}
++```
++
++---
++
++### Task 8: Frontend ÔÇö Workers section component
++
++**Files:**
++- Create: `frontend/src/components/dashboard/Workers.jsx`
++- Create: `frontend/src/components/dashboard/WorkerForm.jsx`
++- Create: `frontend/src/api/workers.js`
++
++- [ ] **Step 1: Create workers API client**
++
++`frontend/src/api/workers.js`:
++
++```javascript
++import { API_URL, apiFetch, authHeaders } from './config'
++
++export async function fetchWorkers(cooperativeId) {
++  const res = await apiFetch(`${API_URL}/workers/?cooperative_id=${cooperativeId}`, {
++    headers: authHeaders(),
++  })
++  if (!res.ok) return []
++  return res.json()
++}
++
++export async function createWorker(cooperativeId, data) {
++  const res = await apiFetch(`${API_URL}/workers/?cooperative_id=${cooperativeId}`, {
++    method: 'POST',
++    headers: authHeaders(true),
++    body: JSON.stringify(data),
++  })
++  if (!res.ok) {
++    const err = await res.json().catch(() => ({}))
++    throw new Error(err.detail || 'Failed to create worker')
++  }
++  return res.json()
++}
++
++export async function updateWorker(cooperativeId, workerId, data) {
++  const res = await apiFetch(`${API_URL}/workers/${workerId}?cooperative_id=${cooperativeId}`, {
++    method: 'PATCH',
++    headers: authHeaders(true),
++    body: JSON.stringify(data),
++  })
++  if (!res.ok) {
++    const err = await res.json().catch(() => ({}))
++    throw new Error(err.detail || 'Failed to update worker')
++  }
++  return res.json()
++}
++
++export async function deleteWorker(cooperativeId, workerId) {
++  const res = await apiFetch(`${API_URL}/workers/${workerId}?cooperative_id=${cooperativeId}`, {
++    method: 'DELETE',
++    headers: authHeaders(),
++  })
++  if (!res.ok) {
++    const err = await res.json().catch(() => ({}))
++    throw new Error(err.detail || 'Failed to delete worker')
++  }
++  return true
++}
++```
++
++- [ ] **Step 2: Create Workers section component**
++
++`frontend/src/components/dashboard/Workers.jsx` ÔÇö see full component below:
++
++```jsx
++import { useEffect, useState } from 'react'
++import { Plus, UserMinus, UserCheck, Pencil } from 'lucide-react'
++import { fetchWorkers, deleteWorker } from '../../api/workers'
++import DashboardTableToolbar from './DashboardTableToolbar'
++import DashboardPagination from './DashboardPagination'
++import WorkerForm from './WorkerForm'
++import ModalPresence from './ModalPresence'
++
++const PAGE_SIZE = 20
++
++export default function Workers({ cooperativeId }) {
++  const [workers, setWorkers] = useState([])
++  const [loading, setLoading] = useState(true)
++  const [error, setError] = useState(null)
++  const [showForm, setShowForm] = useState(false)
++  const [editingWorker, setEditingWorker] = useState(null)
++  const [page, setPage] = useState(0)
++  const [search, setSearch] = useState('')
++
++  function loadWorkers() {
++    if (!cooperativeId) return
++    setLoading(true)
++    fetchWorkers(cooperativeId)
++      .then(setWorkers)
++      .catch(setError)
++      .finally(() => setLoading(false))
++  }
++
++  useEffect(() => { loadWorkers() }, [cooperativeId])
++
++  const filtered = workers.filter(w =>
++    !search || w.name.toLowerCase().includes(search.toLowerCase()) || w.phone.includes(search)
++  )
++  const pageCount = Math.ceil(filtered.length / PAGE_SIZE)
++  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
++
++  async function handleDelete(workerId) {
++    if (!confirm('Deactivate this worker?')) return
++    try {
++      await deleteWorker(cooperativeId, workerId)
++      loadWorkers()
++    } catch (e) { alert(e.message) }
++  }
++
++  if (loading) return <div className="skeleton-box" style={{height:400}}/>
++  if (error) return <div className="error-banner">Failed to load workers</div>
++
++  return (
++    <div className="section-card">
++      <div className="section-header">
++        <h2>Workers ({workers.length})</h2>
++        <button className="btn btn-primary" onClick={() => { setEditingWorker(null); setShowForm(true) }}>
++          <Plus size={16} /> Add worker
++        </button>
++      </div>
++
++      <DashboardTableToolbar search={search} onSearch={setSearch} />
++
++      <table className="data-table">
++        <thead>
++          <tr>
++            <th>Name</th>
++            <th>Phone</th>
++            <th>Wage rate</th>
++            <th>Role</th>
++            <th>Status</th>
++            <th>Actions</th>
++          </tr>
++        </thead>
++        <tbody>
++          {paged.map(w => (
++            <tr key={w.id}>
++              <td>{w.name}</td>
++              <td>{w.phone}</td>
++              <td>GHS {w.wage_rate?.toFixed(2)}</td>
++              <td><span className="badge">{w.role}</span></td>
++              <td>{w.status === 'active'
++                ? <span className="status-active"><UserCheck size={14} /> Active</span>
++                : <span className="status-inactive"><UserMinus size={14} /> Inactive</span>}
++              </td>
++              <td className="actions-cell">
++                <button className="btn-icon" title="Edit" onClick={() => { setEditingWorker(w); setShowForm(true) }}>
++                  <Pencil size={15} />
++                </button>
++                <button className="btn-icon btn-icon-danger" title="Deactivate"
++                  onClick={() => handleDelete(w.id)} disabled={w.status === 'inactive'}>
++                  <UserMinus size={15} />
++                </button>
++              </td>
++            </tr>
++          ))}
++          {paged.length === 0 && (
++            <tr><td colSpan={6} className="empty-state">No workers yet</td></tr>
++          )}
++        </tbody>
++      </table>
++
++      <DashboardPagination page={page} pageCount={pageCount} onPage={setPage} total={filtered.length}
++        rangeStart={page * PAGE_SIZE + 1} rangeEnd={Math.min((page + 1) * PAGE_SIZE, filtered.length)} />
++
++      <ModalPresence show={showForm} onClose={() => setShowForm(false)}>
++        <WorkerForm
++          cooperativeId={cooperativeId}
++          worker={editingWorker}
++          onSaved={() => { setShowForm(false); loadWorkers() }}
++          onCancel={() => setShowForm(false)}
++        />
++      </ModalPresence>
++    </div>
++  )
++}
++```
++
++- [ ] **Step 3: Create WorkerForm component**
++
++`frontend/src/components/dashboard/WorkerForm.jsx`:
++
++```jsx
++import { useState } from 'react'
++import { createWorker, updateWorker } from '../../api/workers'
++
++export default function WorkerForm({ cooperativeId, worker, onSaved, onCancel }) {
++  const isEdit = !!worker
++  const [form, setForm] = useState({
++    name: worker?.name || '',
++    phone: worker?.phone || '',
++    wage_rate: worker?.wage_rate || '',
++    role: worker?.role || 'worker',
++  })
++  const [saving, setSaving] = useState(false)
++  const [error, setError] = useState(null)
++
++  async function handleSubmit(e) {
++    e.preventDefault()
++    setSaving(true)
++    setError(null)
++    try {
++      const payload = { ...form, wage_rate: parseFloat(form.wage_rate) || 0 }
++      if (isEdit) {
++        await updateWorker(cooperativeId, worker.id, payload)
++      } else {
++        await createWorker(cooperativeId, payload)
++      }
++      onSaved()
++    } catch (e) { setError(e.message) }
++    finally { setSaving(false) }
++  }
++
++  return (
++    <div className="modal-content">
++      <h2>{isEdit ? 'Edit worker' : 'Add worker'}</h2>
++      {error && <div className="error-banner">{error}</div>}
++      <form onSubmit={handleSubmit}>
++        <div className="form-group">
++          <label>Name</label>
++          <input className="form-input" required value={form.name}
++            onChange={e => setForm({...form, name: e.target.value})} />
++        </div>
++        <div className="form-group">
++          <label>Phone</label>
++          <input className="form-input" required value={form.phone}
++            onChange={e => setForm({...form, phone: e.target.value})} />
++        </div>
++        <div className="form-group">
++          <label>Wage rate (GHS per day)</label>
++          <input className="form-input" type="number" step="0.01" min="0" value={form.wage_rate}
++            onChange={e => setForm({...form, wage_rate: e.target.value})} />
++        </div>
++        <div className="form-group">
++          <label>Role</label>
++          <select className="form-input" value={form.role}
++            onChange={e => setForm({...form, role: e.target.value})}>
++            <option value="worker">Worker</option>
++            <option value="supervisor">Supervisor</option>
++          </select>
++        </div>
++        <div className="form-actions">
++          <button type="button" className="btn btn-secondary" onClick={onCancel}>Cancel</button>
++          <button type="submit" className="btn btn-primary" disabled={saving}>
++            {saving ? 'Saving...' : isEdit ? 'Update' : 'Create'}
++          </button>
++        </div>
++      </form>
++    </div>
++  )
++}
++```
++
++---
++
++### Task 9: Alembic migration for workers table
++
++**Files:**
++- Modify: `backend/alembic/versions/007_organization_type.py` (update existing)
++
++- [ ] **Step 1: Add workers table creation to migration**
++
++Append to the `upgrade()` function in the existing migration:
++
++```python
++def upgrade():
++    op.add_column(...)  # from Task 1
++
++    op.create_table(
++        "workers",
++        sa.Column("id", sa.Integer(), primary_key=True),
++        sa.Column("cooperative_id", sa.Integer(), sa.ForeignKey("cooperatives.id"), nullable=False, index=True),
++        sa.Column("name", sa.String(), nullable=False),
++        sa.Column("phone", sa.String(), nullable=False, index=True),
++        sa.Column("wage_rate", sa.Float(), server_default="0.0"),
++        sa.Column("role", sa.String(), server_default="worker"),
++        sa.Column("status", sa.String(), server_default="active"),
++        sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
++        sa.Column("updated_at", sa.DateTime(), server_default=sa.func.now()),
++    )
++    op.create_unique_constraint("uq_worker_phone_per_coop", "workers", ["cooperative_id", "phone"])
++```
++
++---
++
++### Task 10: Backend tests for Worker CRUD
++
++**Files:**
++- Create: `backend/tests/test_workers.py`
++
++- [ ] **Step 1: Write tests**
++
++`backend/tests/test_workers.py`:
++
++```python
++def test_create_worker(auth_client, test_cooperative):
++    """POST /workers creates a worker for the cooperative."""
++    res = auth_client.post(
++        f"/workers/?cooperative_id={test_cooperative.id}",
++        json={"name": "John Doe", "phone": "0241112233", "wage_rate": 50.0, "role": "worker"},
++    )
++    assert res.status_code == 201
++    data = res.json()
++    assert data["name"] == "John Doe"
++    assert data["phone"] == "0241112233"
++    assert data["wage_rate"] == 50.0
++    assert data["status"] == "active"
++
++
++def test_list_workers(auth_client, test_cooperative):
++    """GET /workers lists workers for the cooperative."""
++    auth_client.post(
++        f"/workers/?cooperative_id={test_cooperative.id}",
++        json={"name": "Jane", "phone": "0241112234", "wage_rate": 45.0},
++    )
++    res = auth_client.get(f"/workers/?cooperative_id={test_cooperative.id}")
++    assert res.status_code == 200
++    assert len(res.json()) >= 1
++
++
++def test_get_worker(auth_client, test_cooperative):
++    """GET /workers/:id returns a worker."""
++    created = auth_client.post(
++        f"/workers/?cooperative_id={test_cooperative.id}",
++        json={"name": "Bob", "phone": "0241112235", "wage_rate": 55.0},
++    ).json()
++    res = auth_client.get(f"/workers/{created['id']}?cooperative_id={test_cooperative.id}")
++    assert res.status_code == 200
++    assert res.json()["name"] == "Bob"
++
++
++def test_update_worker(auth_client, test_cooperative):
++    """PATCH /workers/:id updates worker fields."""
++    created = auth_client.post(
++        f"/workers/?cooperative_id={test_cooperative.id}",
++        json={"name": "Alice", "phone": "0241112236", "wage_rate": 40.0},
++    ).json()
++    res = auth_client.patch(
++        f"/workers/{created['id']}?cooperative_id={test_cooperative.id}",
++        json={"name": "Alice Updated", "wage_rate": 45.0},
++    )
++    assert res.status_code == 200
++    assert res.json()["name"] == "Alice Updated"
++    assert res.json()["wage_rate"] == 45.0
++
++
++def test_delete_worker_soft(auth_client, test_cooperative):
++    """DELETE /workers/:id sets status to inactive."""
++    created = auth_client.post(
++        f"/workers/?cooperative_id={test_cooperative.id}",
++        json={"name": "Charlie", "phone": "0241112237", "wage_rate": 50.0},
++    ).json()
++    res = auth_client.delete(f"/workers/{created['id']}?cooperative_id={test_cooperative.id}")
++    assert res.status_code == 204
++    get_res = auth_client.get(f"/workers/{created['id']}?cooperative_id={test_cooperative.id}")
++    assert get_res.json()["status"] == "inactive"
++
++
++def test_create_worker_duplicate_phone(auth_client, test_cooperative):
++    """Creating a worker with duplicate phone returns 409."""
++    auth_client.post(
++        f"/workers/?cooperative_id={test_cooperative.id}",
++        json={"name": "First", "phone": "0241112238"},
++    )
++    res = auth_client.post(
++        f"/workers/?cooperative_id={test_cooperative.id}",
++        json={"name": "Second", "phone": "0241112238"},
++    )
++    assert res.status_code == 409
++
++
++def test_worker_cross_coop_not_found(auth_client, test_cooperative, another_cooperative):
++    """Worker from coop A is not visible from coop B."""
++    created = auth_client.post(
++        f"/workers/?cooperative_id={test_cooperative.id}",
++        json={"name": "Cross", "phone": "0241112239"},
++    ).json()
++    res = auth_client.get(f"/workers/{created['id']}?cooperative_id={another_cooperative.id}")
++    assert res.status_code == 404
++```
+diff --git a/docs/superpowers/specs/2026-07-30-m5-solo-farm-platform-design.md b/docs/superpowers/specs/2026-07-30-m5-solo-farm-platform-design.md
+new file mode 100644
+index 0000000..2dc59e1
+--- /dev/null
++++ b/docs/superpowers/specs/2026-07-30-m5-solo-farm-platform-design.md
+@@ -0,0 +1,317 @@
++# M5 ÔÇö Solo Farm / Worker Platform Design Spec
++
++**Date:** 2026-07-30  
++**Status:** Draft  
++**Milestone:** M5 ÔÇö Solo Farm / Worker Platform  
++**Issues:** #252, #253, #254, #255, #256, #257, #258, #259, #260
++
++---
++
++## 1. Overview
++
++Solo Farm is a new product tier for individual farmland owners who manage hired workers. It is distinct from the cooperative product (member farmers with trust scores, loans, dues). A business can be either a `cooperative` or a `solo_farm` at signup, and cooperatives can also spawn solo farm sub-entities.
++
++---
++
++## 2. Data Model
++
++### 2.1 Organization Type
++
++Add `organization_type` column to `cooperatives` table:
++
++```
++cooperatives.organization_type: Literal["cooperative", "solo_farm"]
++```
++
++Default is `"cooperative"`. Signup flow asks for org type. The organization_type determines which dashboard IA and feature set is shown.
++
++### 2.2 Workers Table
++
++```
++workers
++  id (PK)
++  cooperative_id (FK -> cooperatives.id)
++  name (string)
++  phone (string, unique within cooperative)
++  wage_rate (decimal, per day/shift)
++  role (enum: "worker", "supervisor")
++  status (enum: "active", "inactive")
++  created_at, updated_at
++```
++
++Workers are **not** farmers. They exist only within a cooperative (solo_farm) scope. No trust scores, no loans, no dues. Phone is the identifier for USSD/SMS.
++
++### 2.3 Work Tasks
++
++```
++work_tasks
++  id (PK)
++  cooperative_id (FK -> cooperatives.id)
++  title (string)
++  description (text, nullable)
++  task_type (enum: "planting", "weeding", "harvesting", "irrigation", "fertilizing", "general")
++  plot / location (string, nullable)
++  scheduled_date (date)
++  assigned_by (FK -> users.id)
++  status (enum: "open", "in_progress", "completed", "cancelled")
++  created_at
++```
++
++```
++worker_assignments
++  id (PK)
++  work_task_id (FK -> work_tasks.id)
++  worker_id (FK -> workers.id)
++  assigned_at (datetime)
++```
++
++### 2.4 Worker Attendance (Labor Logging)
++
++```
++worker_attendance
++  id (PK)
++  worker_id (FK -> workers.id)
++  work_task_id (FK -> work_tasks.id, nullable)
++  cooperative_id (FK -> cooperatives.id)
++  date (date)
++  hours_worked (decimal, nullable)
++  shift (enum: "morning", "afternoon", "full_day")
++  logged_by (FK -> users.id)
++  notes (text, nullable)
++  created_at
++```
++
++This is **separate** from `cooperative_attendances` (which is for member meeting attendance / trust scoring).
++
++### 2.5 Farm-Level Production
++
++```
++farm_productions
++  id (PK)
++  cooperative_id (FK -> cooperatives.id)
++  crop_type (string)
++  season (string)
++  plot / location (string, nullable)
++  planted_date (date)
++  expected_harvest_date (date, nullable)
++  actual_harvest_date (date, nullable)
++  expected_quantity_kg (decimal)
++  actual_quantity_kg (decimal, nullable)
++  quality_grade (string, nullable)
++  notes (text, nullable)
++  logged_by (FK -> users.id)
++  created_at
++```
++
++Production is at the farm level (not per-member). The farm owner/manager logs plantings and harvests directly.
++
++### 2.6 Wage Payroll
++
++```
++wage_payouts
++  id (PK)
++  cooperative_id (FK -> cooperatives.id)
++  worker_id (FK -> workers.id)
++  period_start (date)
++  period_end (date)
++  total_hours / total_shifts (decimal)
++  wage_rate (decimal)
++  gross_amount (decimal)
++  status (enum: "pending", "approved", "paid", "failed")
++  approved_by (FK -> users.id, nullable)
++  approved_at (datetime, nullable)
++  paid_at (datetime, nullable)
++  moolre_reference (string, nullable)
++  failure_reason (text, nullable)
++  created_at
++```
++
++### 2.7 Roles
++
++New roles for solo_farm orgs (on the `users` table, existing `role` field):
++
++- `farm_owner` ÔÇö full access (admin-equivalent for solo org)
++- `farm_manager` ÔÇö manage workers, tasks, attendance, approve payouts
++- `supervisor` ÔÇö log attendance, view schedules
++
++Existing roles (`admin`, `finance_officer`) remain for cooperative orgs.
++
++---
++
++## 3. API Endpoints
++
++### 3.1 Worker CRUD (`/workers`)
++
++| Method | Path | Description |
++|--------|------|-------------|
++| GET | `/workers` | List workers (scoped to current coop) |
++| POST | `/workers` | Create worker |
++| PATCH | `/workers/{id}` | Update worker |
++| DELETE | `/workers/{id}` | Soft-delete (status=inactive) |
++
++Gated by `farm_owner`, `farm_manager` roles.
++
++### 3.2 Task Management (`/tasks`)
++
++| Method | Path | Description |
++|--------|------|-------------|
++| GET | `/tasks` | List work tasks |
++| POST | `/tasks` | Create task + assign workers |
++| PATCH | `/tasks/{id}` | Update task status |
++| POST | `/tasks/{id}/assign` | Assign workers to task |
++
++### 3.3 Attendance (`/attendance`)
++
++| Method | Path | Description |
++|--------|------|-------------|
++| GET | `/attendance` | List attendance records |
++| POST | `/attendance` | Log worker attendance (with task reference) |
++| GET | `/attendance/summary` | Aggregate for payroll period |
++
++### 3.4 Farm Production (`/production/farm`)
++
++| Method | Path | Description |
++|--------|------|-------------|
++| GET | `/production/farm` | List farm production records |
++| POST | `/production/farm` | Log planting/harvest |
++| PATCH | `/production/farm/{id}` | Update record |
++
++### 3.5 Payroll (`/payroll`)
++
++| Method | Path | Description |
++|--------|------|-------------|
++| GET | `/payroll/summary` | Pending payroll summary for period |
++| POST | `/payroll/approve` | Approve wage run (creates payout records) |
++| POST | `/payroll/disburse` | Process approved payouts via Moolre |
++| GET | `/payroll/history` | Past payout history |
++
++### 3.6 Organization Type
++
++| Method | Path | Description |
++|--------|------|-------------|
++| PATCH | `/cooperatives/{id}/type` | Set organization_type (or spawn solo sub-entity) |
++
++### 3.7 Signup
++
++Add `organization_type` field to signup request. If `solo_farm`, default subscription_plan to `"solo"`.
++
++---
++
++## 4. Frontend Changes
++
++### 4.1 Org-Aware Navigation
++
++`NAV_GROUPS` in `DashboardPage.jsx` becomes a function:
++```
++getNavGroups(organization_type) -> NavGroup[]
++```
++
++**Cooperative** (unchanged):
++Operations: Overview, Members, Production, Agro-AI Scores  
++Finance: Payments, Loans  
++Communications: SMS, USSD  
++Governance: Activity  
++Account: Settings
++
++**Solo Farm**:
++Operations: Overview, Workers, Tasks, Attendance, Production, Payroll  
++Communications: SMS, USSD  
++Governance: Activity  
++Account: Settings
++
++### 4.2 New Pages/Sections
++
++- **Workers** ÔÇö table CRUD (name, phone, wage_rate, role, status), add/edit modal
++- **Tasks** ÔÇö create task form, assignment picker, status board (open/in_progress/completed)
++- **Attendance** ÔÇö calendar/list view, log attendance per worker/task, summary for payroll
++- **Production** ÔÇö log planting/harvest, farm-level records
++- **Payroll** ÔÇö pending summary with approve button, payout history with status
++
++### 4.3 Shared Components
++
++Reuse from existing dashboard: `DashboardTableToolbar`, `DashboardPagination`, `useDashboardTable` hook, `ModalPresence`, skeleton loaders.
++
++### 4.4 Section Gating
++
++If a solo_farm user navigates to `/dashboard/members`, redirect to `/dashboard/workers`. Show empty states for cooperative-only sections: "This feature is only available for cooperatives."
++
++### 4.5 Pricing Page
++
++Add Solo plan to `PLANS` array in `PricingPage.jsx`:
++- GHS 99/mo, up to 20 workers, tasks + attendance + payroll, 200 SMS/mo, worker USSD
++
++---
++
++## 5. Worker USSD/SMS
++
++### 5.1 USSD Menus
++
++Workers authenticate by phone (same pattern as farmers but resolved via `workers` table):
++
++- Option 1: "My schedule" ÔÇö today's/upcoming assigned tasks
++- Option 2: "My pay" ÔÇö last payout amount + date, next expected payout
++
++No access to member flows (loans, dues, trust scores).
++
++### 5.2 SMS Notifications
++
++Automated SMS for:
++- Task assigned
++- Payout confirmation
++- Schedule reminder
++
++Reuse existing SMS infrastructure (`communications_service.py` + `MoolreService.send_sms()`).
++
++---
++
++## 6. Billing
++
++### 6.1 Solo Plan
++
++Add `"solo"` to valid `subscription_plan` values on `cooperatives`.
++
++Solo plan entitlements:
++- Worker fleet: up to 20
++- SMS quota: 200/mo
++- Feature flags: tasks, attendance, payroll, farm production
++
++### 6.2 Entitlement Enforcement
++
++Reuse the M3 plan catalog approach (issue #232). The solo plan is added to the catalog with its limits. Enforcement middleware checks plan caps on worker count, SMS usage.
++
++---
++
++## 7. Implementation Phases
++
++### Phase 0: Foundation
++- DB migration: `organization_type` on cooperatives, `workers` table, new roles
++- Backend: signup org type, worker CRUD API, role enforcement
++- Frontend: org-aware signup, nav gating
++- Tests: worker CRUD, role gating, org-type signup
++
++### Phase 1: Tasks + Attendance
++- DB: `work_tasks`, `worker_assignments`, `worker_attendance` tables
++- Backend: task CRUD, assignment, attendance logging
++- Frontend: Tasks section, Attendance section
++
++### Phase 2: Farm Production
++- DB: `farm_productions` table
++- Backend: farm production CRUD
++- Frontend: Production section for solo farms
++
++### Phase 3: Wage Payroll
++- DB: `wage_payouts` table
++- Backend: payroll calculation, approval workflow, Moolre transfer
++- Frontend: Payroll section
++
++### Phase 4: Billing + USSD
++- Solo plan in catalog
++- Worker USSD menus
++- Worker SMS notifications
++
++---
++
++## 8. Open Questions
++
++- Should a cooperative be able to spawn a solo_farm sub-entity, or should that be a separate signup? (Design assumes signup-level choice, with potential for sub-entity later.)
++- Worker wage payout: use existing Moolre `initiate_transfer` directly, or wait for M2 PaymentProvider port? (Design assumes direct use of existing transfer path, with port adoption as future refactor.)

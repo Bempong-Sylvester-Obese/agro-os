@@ -20,46 +20,75 @@ import Production from '../components/dashboard/Production'
 import SettingsView from '../components/dashboard/Settings'
 import USSD from '../components/dashboard/USSD'
 import Activity from '../components/dashboard/Activity'
+import Workers from '../components/dashboard/Workers'
 import DashboardUserMenu from '../components/dashboard/DashboardUserMenu'
 import { SidebarCoopSkeleton } from '../components/dashboard/DashboardSkeleton'
 import { BarChart3, Users, CreditCard, Star, MessageSquare, Settings, Sprout, Banknote, Tractor, Phone, RefreshCw, ClipboardList } from 'lucide-react'
 
-const NAV_GROUPS = [
-  {
-    label: 'Operations',
-    items: [
-      { key: 'overview', icon: <BarChart3 size={18} />, label: 'Overview' },
-      { key: 'members', icon: <Users size={18} />, label: 'Members' },
-      { key: 'production', icon: <Tractor size={18} />, label: 'Production' },
-      { key: 'scores', icon: <Star size={18} />, label: 'Agro-AI scores' },
-    ],
-  },
-  {
-    label: 'Finance',
-    items: [
-      { key: 'payments', icon: <CreditCard size={18} />, label: 'Payments' },
-      { key: 'loans', icon: <Banknote size={18} />, label: 'Loans' },
-    ],
-  },
-  {
-    label: 'Communications',
-    items: [
-      { key: 'sms', icon: <MessageSquare size={18} />, label: 'SMS broadcasts' },
-      { key: 'ussd', icon: <Phone size={18} />, label: 'USSD activity' },
-    ],
-  },
-  {
-    label: 'Governance',
-    items: [
-      { key: 'activity', icon: <ClipboardList size={18} />, label: 'Activity log' },
-    ],
-  },
-]
-const NAV_ITEMS = NAV_GROUPS.flatMap((group) => group.items)
+function getNavGroups(organizationType) {
+  if (organizationType === 'solo_farm') {
+    return [
+      {
+        label: 'Operations',
+        items: [
+          { key: 'overview', icon: <BarChart3 size={18} />, label: 'Overview' },
+          { key: 'workers', icon: <Users size={18} />, label: 'Workers' },
+          { key: 'production', icon: <Tractor size={18} />, label: 'Production' },
+        ],
+      },
+      {
+        label: 'Communications',
+        items: [
+          { key: 'sms', icon: <MessageSquare size={18} />, label: 'SMS broadcasts' },
+          { key: 'ussd', icon: <Phone size={18} />, label: 'USSD activity' },
+        ],
+      },
+      {
+        label: 'Governance',
+        items: [
+          { key: 'activity', icon: <ClipboardList size={18} />, label: 'Activity log' },
+        ],
+      },
+    ]
+  }
+  // Default cooperative nav
+  return [
+    {
+      label: 'Operations',
+      items: [
+        { key: 'overview', icon: <BarChart3 size={18} />, label: 'Overview' },
+        { key: 'members', icon: <Users size={18} />, label: 'Members' },
+        { key: 'production', icon: <Tractor size={18} />, label: 'Production' },
+        { key: 'scores', icon: <Star size={18} />, label: 'Agro-AI scores' },
+      ],
+    },
+    {
+      label: 'Finance',
+      items: [
+        { key: 'payments', icon: <CreditCard size={18} />, label: 'Payments' },
+        { key: 'loans', icon: <Banknote size={18} />, label: 'Loans' },
+      ],
+    },
+    {
+      label: 'Communications',
+      items: [
+        { key: 'sms', icon: <MessageSquare size={18} />, label: 'SMS broadcasts' },
+        { key: 'ussd', icon: <Phone size={18} />, label: 'USSD activity' },
+      ],
+    },
+    {
+      label: 'Governance',
+      items: [
+        { key: 'activity', icon: <ClipboardList size={18} />, label: 'Activity log' },
+      ],
+    },
+  ]
+}
 
 const TITLES = {
   overview: 'Overview',
   members:  'Members',
+  workers:  'Workers',
   payments: 'Payments',
   loans:    'Loans',
   production: 'Production',
@@ -95,6 +124,7 @@ export default function DashboardPage({ user, onLogout }) {
   const [resourceErrors, setResourceErrors] = useState({})
   const [lastUpdated, setLastUpdated] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [organizationType, setOrganizationType] = useState('cooperative')
   const reduceMotion = useReducedMotion()
 
   const loadAll = async () => {
@@ -125,7 +155,11 @@ export default function DashboardPage({ user, onLogout }) {
     setCooperativeId(resolvedId)
     if (resolvedId) {
       try {
-        setCooperative(await fetchCooperative(resolvedId))
+        const resolvedCoop = await fetchCooperative(resolvedId)
+        setCooperative(resolvedCoop)
+        if (resolvedCoop?.organization_type) {
+          setOrganizationType(resolvedCoop.organization_type)
+        }
       } catch (error) {
         errors.cooperative = formatTransportError(error)
       }
@@ -179,8 +213,17 @@ export default function DashboardPage({ user, onLogout }) {
     fetchFarmers(cooperativeId).then(setFarmers).catch(() => {})
   }
 
+  const navGroups = getNavGroups(organizationType)
+  const NAV_ITEMS = navGroups.flatMap((group) => group.items)
+
   if (urlSection && !DASHBOARD_SECTIONS.includes(urlSection)) {
     return <Navigate to={dashboardPath('overview')} replace />
+  }
+  if (organizationType === 'solo_farm' && section === 'members') {
+    return <Navigate to={dashboardPath('workers')} replace />
+  }
+  if (organizationType !== 'solo_farm' && section === 'workers') {
+    return <Navigate to={dashboardPath('members')} replace />
   }
 
   return (
@@ -210,7 +253,7 @@ export default function DashboardPage({ user, onLogout }) {
         </label>
 
         <nav className="admin-nav" aria-label="Dashboard sections">
-          {NAV_GROUPS.map((group) => (
+          {navGroups.map((group) => (
             <div className="admin-nav-group" key={group.label}>
               <div className="admin-nav-lbl">{group.label}</div>
               {group.items.map(({ key, icon, label }) => (
@@ -313,6 +356,9 @@ export default function DashboardPage({ user, onLogout }) {
               onMemberAdded={handleMemberAdded}
               loading={loading}
             />
+          )}
+          {section === 'workers' && (
+            <Workers cooperativeId={cooperativeId} />
           )}
           {section === 'payments' && (
             <Payments
