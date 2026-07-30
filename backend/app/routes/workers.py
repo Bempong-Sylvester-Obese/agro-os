@@ -17,6 +17,7 @@ router = APIRouter(prefix="/workers", tags=["workers"])
 @router.get("/", response_model=list[WorkerResponse])
 def list_workers(
     cooperative_id: int = Query(...),
+    include_inactive: bool = Query(default=False),
     skip: int = 0,
     limit: int = Query(default=100, le=500),
     db: Session = Depends(get_db),
@@ -26,13 +27,10 @@ def list_workers(
     coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
-    return (
-        db.query(Worker)
-        .filter(Worker.cooperative_id == cooperative_id)
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    query = db.query(Worker).filter(Worker.cooperative_id == cooperative_id)
+    if not include_inactive:
+        query = query.filter(Worker.status != WorkerStatus.inactive)
+    return query.offset(skip).limit(limit).all()
 
 
 @router.get("/{worker_id}", response_model=WorkerResponse)

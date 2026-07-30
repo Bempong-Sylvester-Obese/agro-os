@@ -5,7 +5,10 @@ export async function fetchWorkers(cooperativeId) {
   const res = await apiFetch(`${API_URL}/workers/?cooperative_id=${cooperativeId}`, {
     headers: authHeaders(),
   })
-  if (!res.ok) return []
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.detail || 'Failed to load workers')
+  }
   return res.json()
 }
 
