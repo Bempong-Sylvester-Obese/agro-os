@@ -63,7 +63,7 @@ def log_attendance(
         date=data.date,
         hours_worked=data.hours_worked,
         shift=Shift(data.shift),
-        logged_by=current_user.id,
+        logged_by=current_user.id if current_user else None,
         notes=data.notes,
     )
     db.add(record)

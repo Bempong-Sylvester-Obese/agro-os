@@ -40,7 +40,7 @@ class TaskResponse(BaseModel):
     task_type: str
     location: Optional[str] = None
     scheduled_date: date
-    assigned_by: int
+    assigned_by: Optional[int] = None
     status: str
     created_at: datetime
     assignments: list[WorkerAssignmentResponse] = []

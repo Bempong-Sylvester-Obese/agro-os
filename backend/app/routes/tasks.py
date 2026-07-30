@@ -52,7 +52,7 @@ def create_task(
         task_type=data.task_type,
         location=data.location,
         scheduled_date=data.scheduled_date,
-        assigned_by=current_user.id,
+        assigned_by=current_user.id if current_user else None,
     )
     db.add(task)
     db.flush()

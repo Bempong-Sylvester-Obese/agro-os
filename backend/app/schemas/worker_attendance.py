@@ -21,7 +21,7 @@ class AttendanceResponse(BaseModel):
     date: date
     hours_worked: Optional[float] = None
     shift: str
-    logged_by: int
+    logged_by: Optional[int] = None
     notes: Optional[str] = None
     created_at: datetime
 

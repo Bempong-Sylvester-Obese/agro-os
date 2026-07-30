@@ -33,7 +33,7 @@ class WorkTask(Base):
     task_type = Column(Enum(TaskType), nullable=False)
     location = Column(String, nullable=True)
     scheduled_date = Column(Date, nullable=False)
-    assigned_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    assigned_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     status = Column(Enum(TaskStatus), default=TaskStatus.open)
     created_at = Column(DateTime, default=datetime.utcnow)
 

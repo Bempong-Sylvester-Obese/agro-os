@@ -23,7 +23,7 @@ class WorkerAttendance(Base):
     date = Column(Date, nullable=False)
     hours_worked = Column(Float, nullable=True)
     shift = Column(Enum(Shift), nullable=False)
-    logged_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    logged_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
