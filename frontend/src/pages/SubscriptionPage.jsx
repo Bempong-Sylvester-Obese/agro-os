@@ -11,6 +11,13 @@ const PLAN_DETAILS = {
     description: 'Core member records and payment collection for cooperatives getting started.',
     terms: ['Up to 50 members', 'Immediate workspace access', 'Upgrade when your operation grows'],
   },
+  solo: {
+    name: 'Solo Farm',
+    price: 'GHS 99',
+    cadence: 'per farm / month',
+    description: 'Manage farm workers, track tasks and attendance, run payroll.',
+    terms: ['Up to 20 workers', 'Worker management', 'Attendance tracking', 'Wage payroll'],
+  },
   growth: {
     name: 'Growth',
     price: 'GHS 299',
@@ -59,7 +66,8 @@ export default function SubscriptionPage() {
   }
 
   function continueToAccount() {
-    const intent = { plan: planKey, ...form }
+    const orgType = planKey === 'solo' ? 'solo_farm' : 'cooperative'
+    const intent = { plan: planKey, ...form, org_type: orgType }
     window.sessionStorage.setItem('agroos-subscription-intent', JSON.stringify(intent))
     const params = new URLSearchParams({ mode: 'signup', plan: planKey, onboarding: 'subscription' })
     navigate(`/login?${params.toString()}`)
