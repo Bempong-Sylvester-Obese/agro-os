@@ -1,13 +1,14 @@
 """add organization_type to cooperatives
 
 Revision ID: 007_organization_type
-Revises: 006_farmer_finance_flows
+Revises: 005_review_hardening
 Create Date: 2026-07-30
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = "007_organization_type"
+# branched from 005 because 006 cannot apply on SQLite (ALTER TABLE)
 down_revision = "005_review_hardening"
 branch_labels = None
 depends_on = None
