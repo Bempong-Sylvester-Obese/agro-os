@@ -30,7 +30,7 @@ def upgrade() -> None:
             sa.Column("task_type", sa.String(), nullable=False),
             sa.Column("location", sa.String(), nullable=True),
             sa.Column("scheduled_date", sa.Date(), nullable=False),
-            sa.Column("assigned_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=False),
+            sa.Column("assigned_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
             sa.Column("status", sa.String(), server_default="open"),
             sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
         )
@@ -54,7 +54,7 @@ def upgrade() -> None:
             sa.Column("date", sa.Date(), nullable=False),
             sa.Column("hours_worked", sa.Float(), nullable=True),
             sa.Column("shift", sa.String(), nullable=False),
-            sa.Column("logged_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=False),
+            sa.Column("logged_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
             sa.Column("notes", sa.Text(), nullable=True),
             sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
         )
