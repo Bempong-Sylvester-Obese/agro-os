@@ -36,6 +36,7 @@ from app.routes import (
     ussdk_hooks,
     webhooks,
     workers,
+    worker_ussd,
 )
 from app.models import worker  # noqa: F401
 from app.models import farm_production as farm_production_model  # noqa: F401
@@ -63,6 +64,7 @@ _PUBLIC_PATHS = frozenset({
     "/ussdk/pending-payment",
     "/ussdk/wallet-balance",
     "/ussdk/announcements",
+    "/ussd/worker/menu",
     "/docs",
     "/redoc",
     "/openapi.json",
@@ -179,6 +181,7 @@ app.include_router(communications.router)
 app.include_router(webhooks.router)
 app.include_router(ussdk_hooks.router)
 app.include_router(workers.router)
+app.include_router(worker_ussd.router)
 app.include_router(tasks.router)
 app.include_router(attendance.router)
 app.include_router(farm_production.router)
