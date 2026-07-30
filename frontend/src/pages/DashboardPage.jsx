@@ -367,10 +367,10 @@ export default function DashboardPage({ user, onLogout }) {
             <Workers cooperativeId={cooperativeId} />
           )}
           {section === 'tasks' && (
-            <Tasks />
+            <Tasks cooperativeId={cooperativeId} />
           )}
           {section === 'attendance' && (
-            <Attendance />
+            <Attendance cooperativeId={cooperativeId} />
           )}
           {section === 'payments' && (
             <Payments
