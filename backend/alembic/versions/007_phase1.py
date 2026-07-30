@@ -59,6 +59,27 @@ def upgrade() -> None:
             sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
         )
 
+    if "wage_payouts" not in table_names:
+        op.create_table(
+            "wage_payouts",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("cooperative_id", sa.Integer(), sa.ForeignKey("cooperatives.id"), nullable=False, index=True),
+            sa.Column("worker_id", sa.Integer(), sa.ForeignKey("workers.id"), nullable=False, index=True),
+            sa.Column("period_start", sa.Date(), nullable=False),
+            sa.Column("period_end", sa.Date(), nullable=False),
+            sa.Column("total_hours", sa.Float(), server_default="0.0"),
+            sa.Column("total_shifts", sa.Integer(), server_default="0"),
+            sa.Column("wage_rate", sa.Float(), nullable=False),
+            sa.Column("gross_amount", sa.Float(), nullable=False),
+            sa.Column("status", sa.String(), server_default="pending"),
+            sa.Column("approved_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
+            sa.Column("approved_at", sa.DateTime(), nullable=True),
+            sa.Column("paid_at", sa.DateTime(), nullable=True),
+            sa.Column("moolre_reference", sa.String(), nullable=True),
+            sa.Column("failure_reason", sa.Text(), nullable=True),
+            sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
+        )
+
     if "farm_productions" not in table_names:
         op.create_table(
             "farm_productions",
@@ -80,6 +101,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_table("wage_payouts")
     op.drop_table("farm_productions")
     op.drop_table("worker_attendance")
     op.drop_table("worker_assignments")
