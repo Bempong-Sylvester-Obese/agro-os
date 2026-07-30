@@ -99,6 +99,7 @@ class Cooperative(Base):
     location = Column(String, nullable=True)
     currency = Column(String, default="GHS")
     subscription_plan = Column(String, default="starter", nullable=False)
+    organization_type = Column(String, default="cooperative", nullable=False)
     # Moolre wallet that holds cooperative funds
     moolre_account_number = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

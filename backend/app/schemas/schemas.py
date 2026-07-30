@@ -35,12 +35,14 @@ class CooperativeUpdate(BaseModel):
     location: Optional[str] = None
     currency: Optional[str] = None
     moolre_account_number: Optional[str] = None
+    organization_type: Optional[str] = None
 
 
 class CooperativeResponse(CooperativeBase):
     id: int
     created_at: datetime
     updated_at: datetime
+    organization_type: str = "cooperative"
 
     class Config:
         from_attributes = True

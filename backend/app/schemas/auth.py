@@ -41,6 +41,7 @@ class SignupRequest(BaseModel):
     location: Optional[str] = None
     member_count: Optional[int] = None  # stored as cooperative description hint
     subscription_plan: Literal["starter", "growth"] = "starter"
+    organization_type: Literal["cooperative", "solo_farm"] = "cooperative"
     onboarding_role: str | None = Field(default=None, max_length=80)
 
 class SignupResponse(BaseModel):
@@ -49,4 +50,5 @@ class SignupResponse(BaseModel):
     cooperative_id: int
     cooperative_name: str
     subscription_plan: Literal["starter", "growth"]
+    organization_type: str = "cooperative"
     onboarding_role: str | None = None
