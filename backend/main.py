@@ -20,6 +20,7 @@ from app.middleware.rate_limit import RouteRateLimitMiddleware
 from app.routes import (
     admin,
     agro_ai,
+    attendance,
     auth,
     communications,
     cooperatives,
@@ -28,6 +29,7 @@ from app.routes import (
     marketing,
     production,
     reports,
+    tasks,
     transactions,
     ussdk_hooks,
     webhooks,
@@ -173,6 +175,8 @@ app.include_router(communications.router)
 app.include_router(webhooks.router)
 app.include_router(ussdk_hooks.router)
 app.include_router(workers.router)
+app.include_router(tasks.router)
+app.include_router(attendance.router)
 app.include_router(agro_ai.router)
 
 
