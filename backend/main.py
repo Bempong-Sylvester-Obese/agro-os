@@ -37,7 +37,7 @@ from app.routes import (
     workers,
 )
 from app.models import worker  # noqa: F401
-from app.models import farm_production  # noqa: F401
+from app.models import farm_production as farm_production_model  # noqa: F401
 from app.services.auth_service import decode_access_token
 
 logging.basicConfig(level=logging.INFO)
