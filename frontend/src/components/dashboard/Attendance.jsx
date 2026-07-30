@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { fetchAttendance, logAttendance } from '../../api/attendance'
 import { fetchWorkers } from '../../api/workers'
+import DashboardTableToolbar from './DashboardTableToolbar'
 import DashboardPagination from './DashboardPagination'
 
 const PAGE_SIZE = 20
@@ -77,25 +78,23 @@ export default function Attendance({ cooperativeId }) {
         <h2>Attendance ({records.length})</h2>
       </div>
 
-      <div className="dashboard-table-toolbar">
-        <div className="dashboard-table-filters">
-          <label>
-            From
-            <input type="date" value={dateFrom} onChange={e => { setPage(0); setDateFrom(e.target.value) }} />
-          </label>
-          <label>
-            To
-            <input type="date" value={dateTo} onChange={e => { setPage(0); setDateTo(e.target.value) }} />
-          </label>
-          <label>
-            Worker
-            <select value={filterWorkerId} onChange={e => { setPage(0); setFilterWorkerId(e.target.value) }}>
-              <option value="">All workers</option>
-              {workers.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-            </select>
-          </label>
-        </div>
-      </div>
+      <DashboardTableToolbar>
+        <label>
+          From
+          <input type="date" value={dateFrom} onChange={e => { setPage(0); setDateFrom(e.target.value) }} />
+        </label>
+        <label>
+          To
+          <input type="date" value={dateTo} onChange={e => { setPage(0); setDateTo(e.target.value) }} />
+        </label>
+        <label>
+          Worker
+          <select value={filterWorkerId} onChange={e => { setPage(0); setFilterWorkerId(e.target.value) }}>
+            <option value="">All workers</option>
+            {workers.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+          </select>
+        </label>
+      </DashboardTableToolbar>
 
       <table className="data-table">
         <thead>
