@@ -4,6 +4,7 @@ export const DASHBOARD_SECTIONS = [
   'workers',
   'tasks',
   'attendance',
+  'payroll',
   'payments',
   'loans',
   'production',

@@ -24,6 +24,7 @@ import Activity from '../components/dashboard/Activity'
 import Workers from '../components/dashboard/Workers'
 import Tasks from '../components/dashboard/Tasks'
 import Attendance from '../components/dashboard/Attendance'
+import Payroll from '../components/dashboard/Payroll'
 import DashboardUserMenu from '../components/dashboard/DashboardUserMenu'
 import { SidebarCoopSkeleton } from '../components/dashboard/DashboardSkeleton'
 import { BarChart3, Users, CreditCard, Star, MessageSquare, Settings, Sprout, Banknote, Tractor, Phone, RefreshCw, ClipboardList } from 'lucide-react'
@@ -38,6 +39,7 @@ function getNavGroups(organizationType) {
           { key: 'workers', icon: <Users size={18} />, label: 'Workers' },
           { key: 'tasks', icon: <ClipboardList size={18} />, label: 'Tasks' },
           { key: 'attendance', icon: <Users size={18} />, label: 'Attendance' },
+          { key: 'payroll', icon: <CreditCard size={18} />, label: 'Payroll' },
           { key: 'production', icon: <Tractor size={18} />, label: 'Production' },
         ],
       },
@@ -96,6 +98,7 @@ const TITLES = {
   workers:  'Workers',
   tasks:    'Tasks',
   attendance: 'Attendance',
+  payroll: 'Payroll',
   payments: 'Payments',
   loans:    'Loans',
   production: 'Production',
@@ -372,6 +375,9 @@ export default function DashboardPage({ user, onLogout }) {
           )}
           {section === 'attendance' && (
             <Attendance cooperativeId={cooperativeId} />
+          )}
+          {section === 'payroll' && (
+            <Payroll cooperativeId={cooperativeId} />
           )}
           {section === 'payments' && (
             <Payments
