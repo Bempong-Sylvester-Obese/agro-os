@@ -17,6 +17,7 @@ import Scores   from '../components/dashboard/Scores'
 import SMS      from '../components/dashboard/SMS'
 import Loans    from '../components/dashboard/Loans'
 import Production from '../components/dashboard/Production'
+import FarmProduction from '../components/dashboard/FarmProduction'
 import SettingsView from '../components/dashboard/Settings'
 import USSD from '../components/dashboard/USSD'
 import Activity from '../components/dashboard/Activity'
@@ -401,7 +402,10 @@ export default function DashboardPage({ user, onLogout }) {
               dataStale={hasStaleSectionData}
             />
           )}
-          {section === 'production' && (
+          {section === 'production' && organizationType === 'solo_farm' && (
+            <FarmProduction cooperativeId={cooperativeId} />
+          )}
+          {section === 'production' && organizationType !== 'solo_farm' && (
             <Production
               farmers={farmers}
               productions={productions}
