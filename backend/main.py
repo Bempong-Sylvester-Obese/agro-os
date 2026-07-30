@@ -25,6 +25,7 @@ from app.routes import (
     communications,
     cooperatives,
     farmers,
+    farm_production,
     loans,
     marketing,
     production,
@@ -36,6 +37,7 @@ from app.routes import (
     workers,
 )
 from app.models import worker  # noqa: F401
+from app.models import farm_production  # noqa: F401
 from app.services.auth_service import decode_access_token
 
 logging.basicConfig(level=logging.INFO)
@@ -177,6 +179,7 @@ app.include_router(ussdk_hooks.router)
 app.include_router(workers.router)
 app.include_router(tasks.router)
 app.include_router(attendance.router)
+app.include_router(farm_production.router)
 app.include_router(agro_ai.router)
 
 
