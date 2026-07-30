@@ -2,6 +2,8 @@ export const DASHBOARD_SECTIONS = [
   'overview',
   'members',
   'workers',
+  'tasks',
+  'attendance',
   'payments',
   'loans',
   'production',
