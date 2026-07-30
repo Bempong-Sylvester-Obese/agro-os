@@ -65,6 +65,7 @@ export async function signupAdmin({
   member_count,
   subscription_plan,
   onboarding_role,
+  organization_type,
 }) {
   return authFetch('/auth/signup', {
     email,
@@ -74,6 +75,7 @@ export async function signupAdmin({
     member_count: member_count ?? null,
     subscription_plan: subscription_plan || 'starter',
     onboarding_role: onboarding_role || null,
+    organization_type: organization_type || 'cooperative',
   }, { retries: 0 })
 }
 
@@ -93,6 +95,7 @@ export async function signup({
   memberCount,
   subscriptionPlan,
   onboardingRole,
+  organizationType,
 }) {
   const data = await signupAdmin({
     email,
@@ -102,6 +105,7 @@ export async function signup({
     member_count: memberCount ? parseInt(memberCount, 10) : null,
     subscription_plan: subscriptionPlan,
     onboarding_role: onboardingRole,
+    organization_type: organizationType || 'cooperative',
   })
   return {
     ...data,

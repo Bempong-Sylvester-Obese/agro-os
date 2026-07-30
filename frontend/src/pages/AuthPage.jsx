@@ -146,6 +146,7 @@ export default function AuthPage({ onAuth }) {
   const [signupPassword, setSignupPassword] = useState('')
   const [showSignupPw, setShowSignupPw] = useState(false)
   const [subscriptionIntent, setSubscriptionIntent] = useState(null)
+  const [organizationType, setOrganizationType] = useState('cooperative')
 
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -238,6 +239,7 @@ export default function AuthPage({ onAuth }) {
         memberCount: memberCount || undefined,
         subscriptionPlan: subscriptionIntent?.plan || 'starter',
         onboardingRole: subscriptionIntent?.role || 'Cooperative administrator',
+        organizationType,
       })
       storeAuthToken(data.access_token)
       if (subscriptionIntent) window.sessionStorage.removeItem('agroos-subscription-intent')
@@ -493,6 +495,33 @@ export default function AuthPage({ onAuth }) {
                   placeholder="e.g. Tamale Farmers Union"
                   required
                 />
+                <div className="form-group">
+                  <label htmlFor="org-type">Organization type</label>
+                  <div style={{ position: 'relative' }}>
+                    <Building2 size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
+                    <select
+                      id="org-type"
+                      className="auth-input"
+                      value={organizationType}
+                      onChange={e => setOrganizationType(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '11px 12px 11px 38px',
+                        border: '1.5px solid var(--border)',
+                        borderRadius: 8,
+                        fontSize: 14,
+                        fontFamily: "'DM Sans', sans-serif",
+                        background: '#fff',
+                        color: 'var(--text)',
+                        outline: 'none',
+                        appearance: 'auto',
+                      }}
+                    >
+                      <option value="cooperative">Cooperative</option>
+                      <option value="solo_farm">Solo Farm</option>
+                    </select>
+                  </div>
+                </div>
                 <Field
                   label="Location (optional)"
                   icon={MapPin}
