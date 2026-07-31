@@ -7,10 +7,11 @@ export async function fetchLoans(cooperativeId = null) {
   })
 }
 
-export async function approveLoan(loanId) {
+export async function approveLoan(loanId, expectedRepaymentDate) {
   const res = await apiFetch(`${API_URL}/loans/${loanId}/approve`, {
     method: 'POST',
-    headers: authHeaders()
+    headers: authHeaders(true),
+    body: JSON.stringify({ expected_repayment_date: expectedRepaymentDate }),
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
@@ -19,10 +20,11 @@ export async function approveLoan(loanId) {
   return res.json()
 }
 
-export async function rejectLoan(loanId) {
+export async function rejectLoan(loanId, reason) {
   const res = await apiFetch(`${API_URL}/loans/${loanId}/reject`, {
     method: 'POST',
-    headers: authHeaders()
+    headers: authHeaders(true),
+    body: JSON.stringify({ reason }),
   })
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
@@ -84,17 +86,17 @@ export async function fetchDisbursementStatus(loanId) {
   return res.json()
 }
 
-export async function repayLoan(loanId) {
+export async function sendLoanReminder(loanId) {
   const { signal, clear } = createFetchSignal(MUTATION_TIMEOUT_MS)
   try {
-    const res = await apiFetch(`${API_URL}/loans/${loanId}/repay`, {
+    const res = await apiFetch(`${API_URL}/loans/${loanId}/reminders`, {
       method: 'POST',
       headers: authHeaders(),
       signal,
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {
-      throw new Error(typeof data.detail === 'string' ? data.detail : 'Failed to start repayment')
+      throw new Error(typeof data.detail === 'string' ? data.detail : 'Failed to send reminder')
     }
     return data
   } catch (err) {

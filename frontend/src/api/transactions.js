@@ -7,25 +7,6 @@ export async function fetchTransactions(cooperativeId = null) {
   })
 }
 
-export async function collectDues(farmerId, amount, channel, description) {
-  const res = await apiFetch(`${API_URL}/transactions/dues/collect`, {
-    method: 'POST',
-    headers: authHeaders(true),
-    body: JSON.stringify({
-      farmer_id: parseInt(farmerId, 10),
-      amount: parseFloat(amount),
-      channel,
-      description
-    })
-  })
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}))
-    throw new Error(errorData.detail || 'Failed to initiate payment')
-  }
-  return res.json()
-}
-
 export async function reconcileTransaction(transactionId) {
   const res = await apiFetch(`${API_URL}/transactions/${transactionId}/reconcile`, {
     method: 'POST',

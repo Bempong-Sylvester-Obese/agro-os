@@ -19,16 +19,23 @@ from app.database.seed import seed_golden_path
 from app.middleware.rate_limit import RouteRateLimitMiddleware
 from app.routes import (
     admin,
+    aggregation,
     agro_ai,
     auth,
+    buyers,
     communications,
     cooperatives,
     farmers,
+    intake,
     loans,
     marketing,
     production,
     reports,
+    sales,
+    settlements,
+    subscriptions,
     transactions,
+    ussd,
     ussdk_hooks,
     webhooks,
     workers,
@@ -51,8 +58,10 @@ _PUBLIC_PATHS = frozenset({
     "/marketing/demo-bookings",
     "/webhooks/moolre/payment",
     "/webhooks/moolre/ussd",
+    "/ussd/callback",
     "/ussdk/loan-balance",
     "/ussdk/loan-request",
+    "/ussdk/loan-repayment",
     "/ussdk/pay-dues",
     "/ussdk/pending-payment",
     "/ussdk/wallet-balance",
@@ -115,9 +124,13 @@ _dev_origins = [
 ]
 _prod_origins = [
     "https://agro-os-amber.vercel.app",
+    "https://agro-os-sylvester-bempong.vercel.app",
     "https://agroos.company",
     "https://www.agroos.company",
 ]
+_vercel_preview_origin_regex = (
+    r"^https://agro(?:-os)?-[a-z0-9-]+-sylvester-bempong\.vercel\.app$"
+)
 if settings.app_env.lower() in ("development", "dev"):
     _origins = ["*"]
     _allow_credentials = False
@@ -130,6 +143,7 @@ else:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,
+    allow_origin_regex=_vercel_preview_origin_regex,
     allow_credentials=_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -163,18 +177,25 @@ async def optional_admin_auth(request: Request, call_next):
 app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(cooperatives.router)
+app.include_router(subscriptions.router)
 app.include_router(farmers.router)
-app.include_router(transactions.router)
-app.include_router(loans.router)
-app.include_router(marketing.router)
+app.include_router(intake.router)
+app.include_router(aggregation.router)
+app.include_router(buyers.router)
 app.include_router(production.router)
 app.include_router(reports.router)
 app.include_router(communications.router)
+app.include_router(sales.router)
+app.include_router(settlements.router)
+app.include_router(transactions.router)
+app.include_router(loans.router)
+app.include_router(marketing.router)
+app.include_router(subscriptions.router)
 app.include_router(webhooks.router)
+app.include_router(ussd.router)
 app.include_router(ussdk_hooks.router)
 app.include_router(workers.router)
 app.include_router(agro_ai.router)
-
 
 @app.get("/", tags=["health"])
 def root():

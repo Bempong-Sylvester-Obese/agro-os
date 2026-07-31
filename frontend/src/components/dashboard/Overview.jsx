@@ -1,5 +1,6 @@
 // src/components/dashboard/Overview.jsx
 import { OverviewSkeleton } from './DashboardSkeleton'
+import { memberProductionDescription, productionFocusLabel, productionFocus } from '../../utils/production'
 
 const scoreTier = (score) => {
   if (score >= 82) return 'sh'
@@ -135,7 +136,7 @@ export default function Overview({ farmers = [], transactions = [], loading, onN
                 <div>
                   <div className="score-item-name">{farmer.name}</div>
                   <div className="score-item-region">
-                    {farmer.location || '—'} · {farmer.crop_type || 'Unspecified crop'}
+                    {farmer.location || '—'} · {productionFocusLabel(productionFocus(farmer))}: {memberProductionDescription(farmer)}
                   </div>
                 </div>
                 <span className={`score-bdg ${scoreTier(farmer.trust_score)}`}>
@@ -168,7 +169,7 @@ export default function Overview({ farmers = [], transactions = [], loading, onN
                 <div className="review-top">
                   <div>
                     <div className="pt-name">{farmer.name}</div>
-                    <div className="pt-id">#{farmer.id} · {farmer.crop_type || '—'}</div>
+                    <div className="pt-id">#{farmer.id} · {productionFocusLabel(productionFocus(farmer))}: {memberProductionDescription(farmer)}</div>
                   </div>
                   <span className={`score-bdg ${scoreTier(farmer.trust_score)}`}>
                     {farmer.trust_score > 0 ? Math.round(farmer.trust_score) : '—'}

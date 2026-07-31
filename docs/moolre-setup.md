@@ -126,45 +126,22 @@ the dashboard. AgroOS persists the original payment reference as an
 
 ### Farmer-action flow
 
-**Step 1 — Initiate collect** (creates a pending transaction):
-
-```http
-POST /transactions/dues/collect
-Content-Type: application/json
-
-{
-  "farmer_id": 1,
-  "amount": 1.00,
-  "channel": "13",
-  "description": "Cooperative dues"
-}
-```
-
-If TP14, the response includes:
-
-```json
-{
-  "transaction_id": 42,
-  "moolre_reference": "<uuid>",
-  "status": "verification_required",
-  "outcome": "verification_required",
-  "moolre_code": "TP14",
-  "customer_action": "otp",
-  "action_expires_at": "2026-07-15T11:30:00",
-  "message": "Please complete the verification process sent to you via SMS and try again."
-}
-```
+**Step 1 — Farmer starts payment:** the member dials `AGROOS_USSD_CODE` and
+chooses **Pay Dues** or **Repay Loan**. Signed USSDK menus call
+`POST /ussdk/pay-dues` or `POST /ussdk/loan-repayment`. Dashboard collection
+and payment-link endpoints are disabled in production.
 
 **Step 2 — Farmer completes the pending payment on their phone:**
 
-1. The member dials the AgroOS merchant code.
-2. They choose **Complete Pending Payment**.
-3. AgroOS resolves pending actions from the caller's registered phone.
+1. The member dials the configured `AGROOS_USSD_CODE` (currently
+   `*919*4020#`).
+2. They continue in the same dues or loan-repayment flow.
+3. AgroOS resolves the action from the caller's registered phone.
 4. The member enters the Moolre OTP in that USSD session.
-5. AgroOS reuses the original `moolre_reference`; no second dashboard collect
-   request is sent.
+5. AgroOS reuses the original `moolre_reference`; no second payment starts.
 
-USSDK deployments map the same screens to `POST /ussdk/pending-payment`.
+If the session is interrupted, **Complete Pending Payment** and
+`POST /ussdk/pending-payment` provide a recovery path.
 Calling it without `transaction_id` lists phone-scoped actions; calling it with
 the selected `transaction_id` first requests and then submits `otp_code`.
 The old admin endpoint `/transactions/dues/collect/verify` no longer exists.
@@ -173,6 +150,21 @@ The old admin endpoint `/transactions/dues/collect/verify` no longer exists.
 
 Pending OTP or approval actions expire after 15 minutes. OTP values are passed
 directly to Moolre and are never persisted or written to USSD logs.
+
+## Cooperative settlement payouts
+
+Produce-sale settlement is a transfer flow, not a farmer debit:
+
+1. AgroOS verifies the cooperative has recorded receipt of buyer funds.
+2. An approved settlement snapshots each farmer's net payable.
+3. AgroOS initiates one Moolre transfer per settlement line using a durable
+   external reference.
+4. Provider status/webhooks reconcile each line independently.
+5. Only failed lines may be retried; completed references are never reused for
+   another payout.
+
+No OTP is requested from a farmer receiving sale proceeds. This is separate
+from loan repayment and dues payment, where the farmer authorizes a debit.
 
 ### Channel codes
 
@@ -195,7 +187,10 @@ Required env vars:
 - `MOOLRE_API_VASKEY` — live SMS VAS key from the Moolre **developer portal** (regenerate if broadcasts return `AIN01` / `Authentication Error`)
 - `MOOLRE_API_USER` — same API user as payments
 - `DEFAULT_SMS_SENDER_ID` — must be approved in [app.moolre.com](https://app.moolre.com)
-- `MOOLRE_MERCHANT_CODE` (included in dues reminder dial string)
+- `AGROOS_USSD_CODE` — complete approved AgroOS menu dial string used in
+  farmer-facing payment instructions
+- `MOOLRE_MERCHANT_CODE` — bare Moolre merchant identifier only; do not include
+  `*203*` or `#`
 
 Payments/USSD continue to use `MOOLRE_API_KEY`, `MOOLRE_API_PUBKEY`, and `MOOLRE_ACCOUNT_NUMBER`.
 

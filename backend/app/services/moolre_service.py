@@ -611,9 +611,81 @@ class MoolreService:
             "raw": raw,
         }
 
+    async def internal_transfer(
+        self,
+        receiver_account: str,
+        amount: float,
+        currency: str = "GHS",
+        external_ref: str | None = None,
+        reference: str = "Internal Transfer",
+        from_account_number: str | None = None,
+    ) -> dict[str, Any]:
+        """Initiate an internal transfer between Moolre wallets."""
+        ext_ref = external_ref or str(uuid.uuid4())
+        acc = self.resolve_account_number(from_account_number)
+        
+        payload = {
+            "type": 1,
+            "currency": currency,
+            "amount": self._format_transfer_amount(amount),
+            "receiver": receiver_account,
+            "externalref": ext_ref,
+            "reference": reference,
+            "accountnumber": acc,
+        }
+        
+        raw = await self._post("/open/transact/internal", payload, headers=self._private_key_headers())
+        code = raw.get("code")
+        success = raw.get("status") in (1, "1") or str(code or "") == "TR099"
+        
+        return {
+            "success": success,
+            "external_ref": ext_ref,
+            "message": raw.get("message") or raw.get("error", ""),
+            "raw": raw,
+        }
+
     # ------------------------------------------------------------------
     # Account / Wallet
     # ------------------------------------------------------------------
+
+    async def create_account(
+        self,
+        account_name: str,
+        currency: str = "GHS",
+        api: int = 1,
+        callback: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a new business wallet (sub-account)."""
+        # Moolre requires a settlement object and callback if API is enabled
+        payload = {
+            "type": 1,
+            "accountname": account_name,
+            "currency": currency,
+            "api": api,
+            "callback": callback or "https://api.agroos.company/webhooks/moolre/payment",
+            "settlement": {
+                "currency": currency,
+                "frequency": "1",
+                "channel": "1",
+                "recipient": "0240000000" # default placeholder
+            }
+        }
+
+        # Uses USER + API_KEY according to docs
+        headers = self._private_key_headers()
+        raw = await self._post("/open/account/create", payload, headers=headers)
+        
+        acc_data = raw.get("data", {})
+        if not isinstance(acc_data, dict):
+            acc_data = {}
+            
+        return {
+            "success": raw.get("status") in (1, "1"),
+            "account_number": acc_data.get("accountnumber"),
+            "secret": acc_data.get("secret"),
+            "raw": raw,
+        }
 
     async def account_status(self, account_number: str | None = None) -> dict[str, Any]:
         """Check wallet balance."""

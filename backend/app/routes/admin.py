@@ -73,9 +73,9 @@ def list_admin_audit(
 def integration_health(
     current_user: User | None = Depends(require_roles("admin")),
 ):
-    if current_user is None:
-        raise HTTPException(status_code=401, detail="Authentication required")
     settings = get_settings()
+    if current_user is None and settings.auth_enabled:
+        raise HTTPException(status_code=401, detail="Authentication required")
     return {
         "environment": settings.moolre_env,
         "moolre": {

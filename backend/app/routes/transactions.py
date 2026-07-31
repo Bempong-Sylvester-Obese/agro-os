@@ -13,6 +13,8 @@ from app.dependencies.cooperative_scope import resolve_cooperative_scope
 from app.models.models import (
     AdminAuditLog,
     Cooperative,
+    Loan,
+    LoanStatus,
     PaymentWebhookEvent,
     Transaction,
     TransactionStatus,
@@ -202,6 +204,8 @@ def expire_customer_actions(
     *,
     farmer_id: int | None = None,
     cooperative_id: int | None = None,
+    loan_id: int | None = None,
+    transaction_type: TransactionType | None = None,
 ) -> int:
     """Mark elapsed customer actions failed while retaining an expired label."""
     now = datetime.utcnow()
@@ -217,6 +221,10 @@ def expire_customer_actions(
         query = query.join(Farmer, Transaction.farmer_id == Farmer.id).filter(
             Farmer.cooperative_id == cooperative_id
         )
+    if loan_id is not None:
+        query = query.filter(Transaction.loan_id == loan_id)
+    if transaction_type is not None:
+        query = query.filter(Transaction.transaction_type == transaction_type)
     expired = query.with_for_update().all()
     for tx in expired:
         tx.status = TransactionStatus.failed
@@ -505,6 +513,22 @@ async def reconcile_transaction(
     if tx.status in (TransactionStatus.completed, TransactionStatus.failed):
         tx.customer_action = "none"
         tx.action_expires_at = None
+    if tx.status == TransactionStatus.completed and tx.loan_id:
+        loan = (
+            db.query(Loan)
+            .filter(Loan.id == tx.loan_id)
+            .with_for_update()
+            .first()
+        )
+        if loan and tx.transaction_type == TransactionType.repayment:
+            if loan.status == LoanStatus.disbursed:
+                loan.status = LoanStatus.repaid
+                loan.repaid_at = datetime.utcnow()
+        elif loan and tx.transaction_type == TransactionType.payout:
+            if loan.status == LoanStatus.approved:
+                loan.status = LoanStatus.disbursed
+                loan.moolre_transfer_ref = tx.moolre_transfer_ref
+                loan.disbursed_at = datetime.utcnow()
     if current_user:
         db.add(
             AdminAuditLog(
@@ -574,11 +598,16 @@ async def collect_dues(
     current_user: User | None = Depends(require_roles("admin", "finance_officer")),
 ):
     """
-    Send one dues request to the member's phone.
-
-    Staff never submit the member's OTP. If Moolre requires verification, the
-    member resumes this transaction from their own USSD session.
+    Disabled for staff: farmers initiate dues payments through AgroOS USSD.
     """
+    settings = get_settings()
+    if current_user is not None or settings.app_env.lower() not in ("test", "testing"):
+        raise HTTPException(
+            status_code=403,
+            detail="Dues payments must be initiated by the farmer through USSD.",
+        )
+
+    # Kept temporarily for migration history; unreachable by policy.
     expire_customer_actions(db, farmer_id=request.farmer_id)
     farmer = (
         db.query(Farmer)
@@ -727,7 +756,15 @@ async def create_payment_link(
     db: Session = Depends(get_db),
     current_user: User | None = Depends(require_roles("admin", "finance_officer")),
 ):
-    """Generate a hosted Moolre payment page for a farmer."""
+    """Disabled for staff: farmers initiate payments through AgroOS USSD."""
+    settings = get_settings()
+    if current_user is not None or settings.app_env.lower() not in ("test", "testing"):
+        raise HTTPException(
+            status_code=403,
+            detail="Payments must be initiated by the farmer through USSD.",
+        )
+
+    # Kept temporarily for migration history; unreachable by policy.
     farmer = db.query(Farmer).filter(Farmer.id == request.farmer_id).first()
     if not farmer:
         raise HTTPException(status_code=404, detail="Farmer not found")

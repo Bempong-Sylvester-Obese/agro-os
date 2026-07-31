@@ -3,10 +3,11 @@ import { API_URL, apiFetch, authHeaders } from './config'
 /**
  * Fetch all farmers, optionally filtered to a specific cooperative.
  */
-export async function fetchFarmers(cooperativeId = null) {
-  const qs = cooperativeId
-    ? `?cooperative_id=${cooperativeId}&limit=100`
-    : '?limit=100'
+export async function fetchFarmers(cooperativeId = null, productionFocus = null) {
+  const params = new URLSearchParams({ limit: '100' })
+  if (cooperativeId) params.set('cooperative_id', cooperativeId)
+  if (productionFocus) params.set('production_focus', productionFocus)
+  const qs = `?${params.toString()}`
   const res = await apiFetch(`${API_URL}/farmers/${qs}`, { headers: authHeaders() })
   if (!res.ok) throw new Error('Failed to fetch farmers')
   return res.json()
@@ -15,7 +16,7 @@ export async function fetchFarmers(cooperativeId = null) {
 /**
  * Create a farmer identity or attach an existing identity to a cooperative.
  * The returned `id` is the cooperative membership ID; `farmer_id` is global.
- * @param {object} data - { name, phone, cooperative_id, email?, location?, crop_type?, acreage? }
+ * @param {object} data - Member identity plus crop/animal production profile.
  */
 export async function createFarmer(data) {
   const res = await apiFetch(`${API_URL}/farmers/`, {

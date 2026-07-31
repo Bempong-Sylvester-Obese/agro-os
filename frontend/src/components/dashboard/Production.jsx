@@ -1,53 +1,81 @@
-// src/components/dashboard/Production.jsx
 import React, { useCallback, useMemo, useState } from 'react'
-import { Plus, X, Loader2 } from 'lucide-react'
+import { Loader2, Plus } from 'lucide-react'
 import { logProduction } from '../../api/production'
 import { exportDashboardReport } from '../../api/reports'
+import {
+  formatProductionQuantity,
+  formatUnitTotals,
+  productionActivity,
+  productionDate,
+  productionExpected,
+  productionFocus,
+  productionKind,
+  productionProduct,
+  productionQuantity,
+  productionUnit,
+  PRODUCTION_ACTIVITIES,
+  PRODUCTION_KIND_OPTIONS,
+  PRODUCTION_UNITS,
+  totalsByUnit,
+} from '../../utils/production'
 import { TableSectionSkeleton } from './DashboardSkeleton'
+import DashboardModal, { ModalField } from './DashboardModal'
 import { DashboardPagination, DashboardTableToolbar, useDashboardTable } from './DashboardTableTools'
-import { useModal } from '../../hooks/useModal'
 import { ModalPresence } from '../Motion'
 
-function quantityKg(prod) {
-  const value = prod.quantity_kg ?? prod.yield_amount
-  return value == null || Number.isNaN(Number(value)) ? null : Number(value)
-}
-
-function expectedKg(prod) {
-  const value = prod.expected_kg ?? prod.acreage
-  return value == null || Number.isNaN(Number(value)) ? null : Number(value)
-}
-
-function formatKg(value) {
-  return value == null ? '—' : value.toLocaleString()
-}
-
-function formatHarvestDate(prod) {
-  if (!prod.harvest_date) return '—'
-  const date = new Date(prod.harvest_date)
+function formatProductionDate(record) {
+  const value = productionDate(record)
+  if (!value) return '—'
+  const date = new Date(value)
   if (Number.isNaN(date.getTime())) return '—'
   return date.toLocaleDateString('en-US', { month: 'short', day: '2-digit', year: 'numeric' })
 }
 
-// ── Log Production Modal ────────────────────────────────────────────────────────
 function LogProductionModal({ farmers, onClose, onSuccess }) {
-  const { onBackdropClick, dialogProps, titleId, closeButtonProps } = useModal(onClose, { label: 'production dialog' })
-  const [form, setForm] = useState({ farmerId: '', cropType: '', expectedKg: '', quantityKg: '', harvestDate: '' })
+  const [form, setForm] = useState({
+    farmerId: '',
+    productionKind: '',
+    productName: '',
+    activity: '',
+    unit: 'kg',
+    expectedQuantity: '',
+    quantity: '',
+    productionDate: '',
+  })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  
-  const activeFarmers = farmers.filter(f => f.membership_status === 'active')
+  const activeFarmers = farmers.filter(farmer => farmer.membership_status === 'active')
+  const selectedFarmer = activeFarmers.find(farmer => String(farmer.id) === String(form.farmerId))
+  const selectedFocus = selectedFarmer ? productionFocus(selectedFarmer) : null
+  const kind = selectedFocus === 'mixed' ? form.productionKind : selectedFocus
+  const activities = kind ? PRODUCTION_ACTIVITIES[kind] : []
+  const kindLabel = kind === 'animal' ? 'Animal' : 'Crop'
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!form.farmerId || !form.cropType || !form.expectedKg || !form.quantityKg || !form.harvestDate) {
-      setError('Please fill in all fields.')
+  const update = (key, value) => setForm(previous => ({ ...previous, [key]: value }))
+
+  const selectFarmer = event => {
+    const farmerId = event.target.value
+    const farmer = activeFarmers.find(item => String(item.id) === farmerId)
+    const focus = farmer ? productionFocus(farmer) : ''
+    setForm(previous => ({
+      ...previous,
+      farmerId,
+      productionKind: focus === 'mixed' ? '' : focus,
+      productName: '',
+      activity: '',
+    }))
+  }
+
+  const handleSubmit = async event => {
+    event.preventDefault()
+    if (!form.farmerId || !kind || !form.productName.trim() || !form.activity || !form.unit || !form.expectedQuantity || !form.quantity || !form.productionDate) {
+      setError('Fill in every field before saving this production log.')
       return
     }
     setLoading(true)
     setError(null)
     try {
-      await logProduction(form.farmerId, form.cropType, form.expectedKg, form.quantityKg, form.harvestDate)
+      await logProduction({ ...form, productionKind: kind })
       onSuccess()
     } catch (err) {
       setError(err.message)
@@ -56,118 +84,207 @@ function LogProductionModal({ farmers, onClose, onSuccess }) {
     }
   }
 
-  const input = {
-    width: '100%', padding: '10px 12px', border: '1.5px solid var(--border)',
-    borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif",
-    outline: 'none', background: '#fff', color: 'var(--text)', boxSizing: 'border-box',
-    marginTop: 6
-  }
-
   return (
-    <div
-      className="dashboard-modal-overlay"
-      onClick={onBackdropClick}
-      style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)',
-      backdropFilter: 'blur(4px)', zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-    }}>
-      <div
-        className="dashboard-modal"
-        {...dialogProps}
-        style={{
-        background: '#fff', borderRadius: 16, width: '100%', maxWidth: 400,
-        boxShadow: '0 32px 80px rgba(0,0,0,0.22)',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', padding: '24px 28px 20px', borderBottom: '1px solid var(--border)' }}>
-          <div>
-            <div id={titleId} className="serif" style={{ fontWeight: 700, fontSize: 19 }}>Log Production</div>
-            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>Record a member's harvest yield</div>
-          </div>
-          <button {...closeButtonProps} onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)' }}><X size={20} /></button>
-        </div>
+    <DashboardModal
+      title="Log production"
+      subtitle="Record crop harvest or animal output for one cooperative member."
+      onClose={onClose}
+      closeDisabled={loading}
+      closeOnBackdrop={!loading}
+      label="production dialog"
+      as="form"
+      bodyProps={{ onSubmit: handleSubmit }}
+    >
+      <div className="dashboard-modal-body">
+        {error && <div role="alert" className="dashboard-form-error">{error}</div>}
 
-        <form onSubmit={handleSubmit} style={{ padding: '24px 28px' }}>
-          {error && <div style={{ padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>{error}</div>}
-          
-          <div style={{ marginBottom: 16 }}>
-            <label htmlFor="production-member" style={{ fontSize: 13, fontWeight: 600 }}>Member</label>
-            <select id="production-member" style={input} value={form.farmerId} onChange={e => setForm({...form, farmerId: e.target.value})} required disabled={loading}>
-              <option value="">Select a member...</option>
-              {activeFarmers.map(f => <option key={f.id} value={f.id}>{f.name} ({f.phone})</option>)}
+        <ModalField htmlFor="production-member" label="Member">
+          <select
+            id="production-member"
+            className="dashboard-modal-select"
+            value={form.farmerId}
+            onChange={selectFarmer}
+            required
+            disabled={loading}
+          >
+            <option value="">Select a member…</option>
+            {activeFarmers.map(farmer => (
+              <option key={farmer.id} value={farmer.id}>
+                {farmer.name} ({farmer.phone})
+              </option>
+            ))}
+          </select>
+        </ModalField>
+
+        {selectedFocus === 'mixed' && (
+          <ModalField
+            htmlFor="production-kind"
+            label="Production type"
+            hint="This member grows crops and keeps animals. Choose which output you are logging."
+          >
+            <select
+              id="production-kind"
+              className="dashboard-modal-select"
+              value={form.productionKind}
+              onChange={event => {
+                setForm(previous => ({
+                  ...previous,
+                  productionKind: event.target.value,
+                  productName: '',
+                  activity: '',
+                }))
+              }}
+              required
+              disabled={loading}
+            >
+              <option value="">Select crop or animal…</option>
+              {PRODUCTION_KIND_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </select>
-          </div>
+          </ModalField>
+        )}
 
-          <div className="modal-row" style={{ marginBottom: 16 }}>
-            <div>
-              <label htmlFor="production-crop" style={{ fontSize: 13, fontWeight: 600 }}>Crop Type</label>
-              <input id="production-crop" style={input} type="text" value={form.cropType} onChange={e => setForm({...form, cropType: e.target.value})} placeholder="e.g. Maize" required disabled={loading}/>
+        {kind && (
+          <>
+            <div className="modal-row">
+              <ModalField
+                htmlFor="production-product"
+                label={`${kindLabel} product`}
+                hint={kind === 'animal' ? 'Species or product, such as eggs or milk.' : 'Crop name, such as maize or cocoa.'}
+              >
+                <input
+                  id="production-product"
+                  className="dashboard-modal-input"
+                  value={form.productName}
+                  onChange={event => update('productName', event.target.value)}
+                  placeholder={kind === 'animal' ? 'e.g. Eggs, Milk, Cattle' : 'e.g. Maize, Cocoa, Rice'}
+                  required
+                  disabled={loading}
+                />
+              </ModalField>
+              <ModalField htmlFor="production-activity" label="Activity">
+                <select
+                  id="production-activity"
+                  className="dashboard-modal-select"
+                  value={form.activity}
+                  onChange={event => update('activity', event.target.value)}
+                  required
+                  disabled={loading}
+                >
+                  <option value="">Select activity…</option>
+                  {activities.map(activity => (
+                    <option key={activity} value={activity}>{activity}</option>
+                  ))}
+                </select>
+              </ModalField>
             </div>
-            <div>
-              <label htmlFor="production-expected" style={{ fontSize: 13, fontWeight: 600 }}>Expected yield (kg)</label>
-              <input id="production-expected" style={input} type="number" min="0.1" step="0.1" value={form.expectedKg} onChange={e => setForm({...form, expectedKg: e.target.value})} placeholder="e.g. 600" required disabled={loading}/>
-            </div>
-          </div>
 
-          <div className="modal-row" style={{ marginBottom: 24 }}>
-            <div>
-              <label htmlFor="production-quantity" style={{ fontSize: 13, fontWeight: 600 }}>Harvest quantity (kg)</label>
-              <input id="production-quantity" style={input} type="number" min="1" step="1" value={form.quantityKg} onChange={e => setForm({...form, quantityKg: e.target.value})} placeholder="e.g. 500" required disabled={loading}/>
+            <div className="modal-row">
+              <ModalField htmlFor="production-expected" label="Expected output">
+                <input
+                  id="production-expected"
+                  className="dashboard-modal-input"
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={form.expectedQuantity}
+                  onChange={event => update('expectedQuantity', event.target.value)}
+                  required
+                  disabled={loading}
+                />
+              </ModalField>
+              <ModalField htmlFor="production-quantity" label="Actual output">
+                <input
+                  id="production-quantity"
+                  className="dashboard-modal-input"
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={form.quantity}
+                  onChange={event => update('quantity', event.target.value)}
+                  required
+                  disabled={loading}
+                />
+              </ModalField>
             </div>
-            <div>
-              <label htmlFor="production-date" style={{ fontSize: 13, fontWeight: 600 }}>Harvest Date</label>
-              <input id="production-date" style={input} type="date" value={form.harvestDate} onChange={e => setForm({...form, harvestDate: e.target.value})} required disabled={loading}/>
-            </div>
-          </div>
 
-          <button type="submit" className="btn-lg" disabled={loading} style={{ width: '100%', padding: 12, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-            {loading ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Submitting...</> : 'Save Production Log'}
+            <div className="modal-row">
+              <ModalField htmlFor="production-unit" label="Unit">
+                <select
+                  id="production-unit"
+                  className="dashboard-modal-select"
+                  value={form.unit}
+                  onChange={event => update('unit', event.target.value)}
+                  required
+                  disabled={loading}
+                >
+                  {PRODUCTION_UNITS.map(option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </ModalField>
+              <ModalField htmlFor="production-date" label="Production date">
+                <input
+                  id="production-date"
+                  className="dashboard-modal-input"
+                  type="date"
+                  value={form.productionDate}
+                  onChange={event => update('productionDate', event.target.value)}
+                  required
+                  disabled={loading}
+                />
+              </ModalField>
+            </div>
+          </>
+        )}
+
+        <div className="dashboard-modal-actions">
+          <button type="button" className="dashboard-modal-btn-secondary" onClick={onClose} disabled={loading}>
+            Cancel
           </button>
-        </form>
+          <button type="submit" className="btn-lg" disabled={loading || !kind}>
+            {loading
+              ? <><Loader2 size={16} className="spin" /> Saving…</>
+              : 'Save production log'}
+          </button>
+        </div>
       </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </div>
+      <style>{`.spin { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </DashboardModal>
   )
 }
 
-// ── Main Component ────────────────────────────────────────────────────────
 export default function Production({ farmers = [], productions = [], cooperativeId, loading, onRefresh }) {
   const [showModal, setShowModal] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState('')
-  const sorted = useMemo(() => [...productions].sort((a, b) => {
-    const aTime = a.harvest_date ? new Date(a.harvest_date).getTime() : 0
-    const bTime = b.harvest_date ? new Date(b.harvest_date).getTime() : 0
-    return (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime)
+  const sorted = useMemo(() => [...productions].sort((left, right) => {
+    const leftTime = productionDate(left) ? new Date(productionDate(left)).getTime() : 0
+    const rightTime = productionDate(right) ? new Date(productionDate(right)).getTime() : 0
+    return (Number.isNaN(rightTime) ? 0 : rightTime) - (Number.isNaN(leftTime) ? 0 : leftTime)
   }), [productions])
-
-  const totalExpected = productions.reduce((sum, p) => sum + (expectedKg(p) ?? 0), 0)
-  const totalYield = productions.reduce((sum, p) => sum + (quantityKg(p) ?? 0), 0)
-
-  const crops = {}
-  productions.forEach(p => {
-    const qty = quantityKg(p)
-    if (qty == null || !p.crop_type) return
-    crops[p.crop_type] = (crops[p.crop_type] || 0) + qty
-  })
-  const topCrop = Object.keys(crops).sort((a, b) => crops[b] - crops[a])[0]
+  const actualTotals = totalsByUnit(productions, productionQuantity)
+  const expectedTotals = totalsByUnit(productions, productionExpected)
+  const productCounts = productions.reduce((counts, record) => {
+    const product = productionProduct(record)
+    if (product !== '—') counts[product] = (counts[product] || 0) + 1
+    return counts
+  }, {})
+  const topProduct = Object.keys(productCounts).sort((left, right) => productCounts[right] - productCounts[left])[0]
 
   const farmerName = useCallback(
-    production => farmers.find(f => Number(f.id) === Number(production.farmer_id))?.name || `Farmer #${production.farmer_id}`,
+    record => farmers.find(farmer => Number(farmer.id) === Number(record.farmer_id))?.name || `Farmer #${record.farmer_id}`,
     [farmers],
   )
   const searchableText = useCallback(
-    production => `${farmerName(production)} ${production.crop_type || ''}`,
+    record => `${farmerName(record)} ${productionKind(record)} ${productionProduct(record)} ${productionActivity(record)} ${productionUnit(record)}`,
     [farmerName],
   )
-  const statusValue = useCallback(production => production.harvest_date ? 'harvested' : 'planned', [])
-  const dateValue = useCallback(production => production.created_at, [])
-  const table = useDashboardTable({
-    rows: sorted,
-    searchableText,
-    statusValue,
-    dateValue,
-  })
+  const statusValue = useCallback(record => productionDate(record) ? 'recorded' : 'planned', [])
+  const dateValue = useCallback(record => productionDate(record) || record.created_at, [])
+  const table = useDashboardTable({ rows: sorted, searchableText, statusValue, dateValue })
+
   const handleExport = async () => {
     setExporting(true)
     setExportError('')
@@ -181,51 +298,42 @@ export default function Production({ farmers = [], productions = [], cooperative
   }
 
   if (loading) {
-    return (
-      <TableSectionSkeleton
-        statCount={3}
-        rows={6}
-        columns={5}
-        gridStyle={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}
-      />
-    )
+    return <TableSectionSkeleton statCount={3} rows={6} columns={6} gridStyle={{ gridTemplateColumns: '1.5fr .7fr 1fr 1fr 1fr 1fr' }} />
   }
 
   return (
     <>
       <ModalPresence show={showModal}>
-        <LogProductionModal 
-          farmers={farmers} 
-          onClose={() => setShowModal(false)} 
-          onSuccess={() => { setShowModal(false); if (onRefresh) onRefresh(); }} 
-        />
+        <LogProductionModal farmers={farmers} onClose={() => setShowModal(false)} onSuccess={() => {
+          setShowModal(false)
+          onRefresh?.()
+        }} />
       </ModalPresence>
-
       <DashboardTableToolbar
         label="Production"
         table={table}
         statuses={[
-          { value: 'harvested', label: 'Harvested' },
+          { value: 'recorded', label: 'Recorded' },
           { value: 'planned', label: 'Planned' },
         ]}
-        onExport={handleExport}
         exporting={exporting}
-        exportError={exportError}
+        onExport={handleExport}
       >
         <button className="btn-nav" onClick={() => setShowModal(true)} style={{ fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, background: 'var(--text)', color: '#fff' }}>
-          <Plus size={15} /> Log Production
+          <Plus size={15} /> Log production
         </button>
       </DashboardTableToolbar>
+      {exportError && <div role="alert" className="dashboard-inline-error">{exportError}</div>}
 
       <div className="pay-stats">
         {[
-          ['Total harvest (kg)', totalYield > 0 ? formatKg(totalYield) : '—', 'Across all harvest logs'],
-          ['Total expected (kg)', totalExpected > 0 ? formatKg(totalExpected) : '—', 'Planned yield across members'],
-          ['Top producing crop', topCrop || '—', topCrop ? `${formatKg(crops[topCrop])} kg logged` : 'No data yet'],
-        ].map(([lbl, val, sub]) => (
-          <div key={lbl} className="stat-card">
-            <div className="stat-lbl">{lbl}</div>
-            <div className="stat-val serif">{val}</div>
+          ['Actual output', formatUnitTotals(actualTotals), 'Totals shown separately by unit'],
+          ['Expected output', formatUnitTotals(expectedTotals), 'No incompatible units combined'],
+          ['Most logged product', topProduct || '—', topProduct ? `${productCounts[topProduct]} record${productCounts[topProduct] === 1 ? '' : 's'}` : 'No logs yet'],
+        ].map(([label, value, sub]) => (
+          <div key={label} className="stat-card">
+            <div className="stat-lbl">{label}</div>
+            <div className="stat-val serif" style={{ fontSize: 22 }}>{value}</div>
             <div className="stat-sub">{sub}</div>
           </div>
         ))}
@@ -233,45 +341,37 @@ export default function Production({ farmers = [], productions = [], cooperative
 
       <div className="admin-card">
         <div className="admin-card-head">
-          <span className="admin-card-title serif">Production Logs</span>
-          <span className="admin-card-action">{productions.length} record{productions.length !== 1 ? 's' : ''}</span>
+          <span className="admin-card-title serif">Production logs</span>
+          <span className="admin-card-action">{table.filteredRows.length} record{table.filteredRows.length === 1 ? '' : 's'}</span>
         </div>
-
-        {table.filteredRows.length === 0 ? (
-          <div style={{ padding: '32px 20px', color: 'var(--muted)', fontSize: 14 }}>
-            {productions.length === 0
-              ? 'No production records found. Click "Log Production" to record a harvest.'
-              : 'No production records match the current filters.'}
+        <div className="table-scroll">
+          <div className="pay-head" style={{ gridTemplateColumns: '1.5fr .7fr 1fr 1fr 1fr 1fr' }}>
+            {['Member', 'Type', 'Product / activity', 'Expected', 'Actual', 'Date'].map(heading => (
+              <span key={heading} className="pt-lbl">{heading}</span>
+            ))}
           </div>
-        ) : (
-          <div className="table-scroll">
-            <div className="pay-head" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr' }}>
-              <span className="pt-lbl">Member</span>
-              <span className="pt-lbl">Crop Type</span>
-              <span className="pt-lbl">Expected (kg)</span>
-              <span className="pt-lbl">Harvest (kg)</span>
-              <span className="pt-lbl">Harvest Date</span>
+          {table.pageRows.length === 0 ? (
+            <div className="empty-state">{productions.length === 0 ? 'No production records found. Log crop or animal output to get started.' : 'No production records match the current filters.'}</div>
+          ) : table.pageRows.map(record => (
+            <div key={record.id} className="pay-row" style={{ gridTemplateColumns: '1.5fr .7fr 1fr 1fr 1fr 1fr', alignItems: 'center' }}>
+              <div>
+                <div className="pt-name">{farmerName(record)}</div>
+                <div className="pt-id">#{record.farmer_id}</div>
+              </div>
+              <span className="bdg bdg-green" style={{ textTransform: 'capitalize' }}>{productionKind(record)}</span>
+              <span className="pt-m">
+                {productionProduct(record)}
+                <span style={{ display: 'block', fontSize: 11 }}>{productionActivity(record)}</span>
+              </span>
+              <span className="pt-m">{formatProductionQuantity(productionExpected(record), productionUnit(record))}</span>
+              <span className="pt-v">{formatProductionQuantity(productionQuantity(record), productionUnit(record))}</span>
+              <span className="pt-m">{formatProductionDate(record)}</span>
             </div>
-            {table.pageRows.map(prod => {
-              const farmer = farmers.find(
-                f => Number(f.id) === Number(prod.farmer_id)
-              )
-              const name = farmer ? farmer.name : `Farmer #${prod.farmer_id}`
-
-              return (
-                <div key={prod.id} className="pay-row" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', alignItems: 'center' }}>
-                  <div><div className="pt-name">{name}</div><div className="pt-id">#{prod.id}</div></div>
-                  <span className="pt-m">{prod.crop_type || '—'}</span>
-                  <span className="pt-m">{formatKg(expectedKg(prod))}</span>
-                  <span className="pt-v">{formatKg(quantityKg(prod))}</span>
-                  <span className="pt-m">{formatHarvestDate(prod)}</span>
-                </div>
-              )
-            })}
-          </div>
-        )}
+          ))}
+        </div>
         <DashboardPagination label="Production" table={table} />
       </div>
+      <style>{`.spin { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </>
   )
 }

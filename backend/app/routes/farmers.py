@@ -14,6 +14,7 @@ from app.models.models import (
     CooperativeMembership,
     Farmer,
     MembershipStatus,
+    ProductionFocus,
     User,
 )
 from app.schemas.schemas import (
@@ -98,11 +99,25 @@ def create_farmer(
             detail="This farmer is already a member of your cooperative",
         )
 
+    import random
+    while True:
+        code = f"{random.randint(100000, 999999)}"
+        exists = db.query(CooperativeMembership).filter(
+            CooperativeMembership.cooperative_id == cooperative_id,
+            CooperativeMembership.farmer_code == code
+        ).first()
+        if not exists:
+            break
+
     membership = CooperativeMembership(
         farmer_id=farmer.id,
         cooperative_id=cooperative_id,
         crop_type=farmer_in.crop_type,
         acreage=farmer_in.acreage,
+        production_focus=farmer_in.production_focus,
+        animal_type=farmer_in.animal_type,
+        animal_scale=farmer_in.animal_scale,
+        farmer_code=code,
     )
     db.add(membership)
     try:
@@ -134,6 +149,7 @@ def create_farmer(
 def list_farmers(
     cooperative_id: int | None = None,
     membership_status: MembershipStatus | None = None,
+    production_focus: ProductionFocus | None = None,
     skip: int = 0,
     limit: int = Query(default=100, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
@@ -157,6 +173,10 @@ def list_farmers(
     if membership_status is not None:
         query = query.filter(
             CooperativeMembership.membership_status == membership_status
+        )
+    if production_focus is not None:
+        query = query.filter(
+            CooperativeMembership.production_focus == production_focus
         )
     return (
         query.join(Farmer)
@@ -205,9 +225,24 @@ def update_farmer(
     for field in ("name", "email", "location"):
         if field in values:
             setattr(membership.farmer, field, values[field])
-    for field in ("crop_type", "acreage", "membership_status"):
+    for field in (
+        "crop_type",
+        "acreage",
+        "production_focus",
+        "animal_type",
+        "animal_scale",
+        "membership_status",
+    ):
         if field in values:
             setattr(membership, field, values[field])
+
+    focus = membership.production_focus or ProductionFocus.crop
+    if focus == ProductionFocus.crop:
+        membership.animal_type = None
+        membership.animal_scale = None
+    elif focus == ProductionFocus.animal:
+        membership.crop_type = None
+        membership.acreage = None
 
     if current_user:
         db.add(

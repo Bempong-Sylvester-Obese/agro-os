@@ -40,7 +40,10 @@ from app.models.models import (
     User,
     UssdSession,
 )
-from app.routes.loans import resume_loan_repayment_customer_action
+from app.routes.loans import (
+    resume_loan_repayment_customer_action,
+    start_farmer_loan_repayment,
+)
 from app.routes.transactions import (
     _run_dues_collect,
     pending_customer_actions,
@@ -134,6 +137,31 @@ def _process_payment_payload(
         amount = float(amount_raw)
     except (TypeError, ValueError):
         amount = 0.0
+
+    if external_ref and external_ref.startswith("sub_upg_"):
+        if moolre_status == 1:
+            try:
+                # Format: sub_upg_{cooperative_id}_{timestamp}
+                parts = external_ref.split("_")
+                coop_id = int(parts[2])
+                from app.models.models import Cooperative
+                coop = db.query(Cooperative).filter(Cooperative.id == coop_id).first()
+                if coop:
+                    # In a real app we'd map amount to plan_key or get it from metadata
+                    coop.subscription_status = "active"
+                    # Add 30 days
+                    from datetime import timedelta
+                    now = datetime.utcnow()
+                    if not coop.subscription_expires_at or coop.subscription_expires_at < now:
+                        coop.subscription_expires_at = now + timedelta(days=30)
+                    else:
+                        coop.subscription_expires_at = coop.subscription_expires_at + timedelta(days=30)
+                    
+                    db.commit()
+                    logger.info(f"Subscription upgraded for cooperative {coop.id} via webhook")
+            except Exception as e:
+                logger.error(f"Failed to process subscription webhook: {e}")
+        return {"status": "ok", "message": "Subscription webhook processed"}
 
     tx: Transaction | None = None
     if external_ref:
@@ -283,8 +311,25 @@ async def _post_payment_tasks(farmer_id: int, amount: float, reference: str) -> 
             if farmer:
                 comms = CommunicationsService()
                 await comms.send_payment_confirmation(farmer, amount, reference, db)
+                
+                # Sweep platform fee (e.g., 2% of transaction)
+                # Only if the cooperative has a dedicated Moolre account
+                coop = farmer.cooperative
+                if coop and coop.moolre_account_number:
+                    fee_amount = round(amount * 0.02, 2)
+                    if fee_amount > 0:
+                        moolre = MoolreService()
+                        # Transfer from Coop sub-wallet to Platform Master wallet
+                        await moolre.internal_transfer(
+                            receiver_account=moolre.settings.moolre_account_number,
+                            amount=fee_amount,
+                            currency=coop.currency or "GHS",
+                            reference=f"Platform Fee for tx {reference}",
+                            from_account_number=coop.moolre_account_number
+                        )
+                        logger.info(f"Swept GHS {fee_amount} fee from coop {coop.id} to master wallet")
         except Exception as exc:  # noqa: BLE001
-            logger.error("Payment confirmation SMS failed for farmer %s: %s", farmer_id, exc)
+            logger.error("Payment confirmation or fee sweep failed for farmer %s: %s", farmer_id, exc)
     finally:
         db_gen.close()
 
@@ -366,7 +411,8 @@ USSD_MENU_MAIN = (
     "2. Pay Dues\n"
     "3. Request Loan\n"
     "4. Announcements\n"
-    "5. Complete Pending Payment"
+    "5. Complete Pending Payment\n"
+    "6. Repay Loan"
 )
 
 NOT_REGISTERED_MSG = "Phone not registered with AgroOS. Contact your cooperative."
@@ -598,9 +644,140 @@ async def handle_ussd_session(
                 "reply": True,
             }
 
+        if message == "6":
+            if not farmer:
+                _ussd_sessions.pop(session_id, None)
+                return {"message": NOT_REGISTERED_MSG, "reply": False}
+            loans = (
+                db.query(Loan)
+                .filter(
+                    Loan.farmer_id == farmer.id,
+                    Loan.status == LoanStatus.disbursed,
+                )
+                .order_by(Loan.expected_repayment_date, Loan.id)
+                .all()
+            )
+            if not loans:
+                _ussd_sessions.pop(session_id, None)
+                return {"message": "You have no active loans to repay.", "reply": False}
+            state["loan_ids"] = [loan.id for loan in loans]
+            if len(loans) > 1:
+                state["step"] = "repay_loan_select"
+                options = "\n".join(
+                    f"{index}. Loan #{loan.id} GHS {loan.amount:.2f}"
+                    for index, loan in enumerate(loans, start=1)
+                )
+                return {"message": f"Choose a loan to repay:\n{options}", "reply": True}
+            state["step"] = "repay_confirm"
+            state["loan_id"] = loans[0].id
+            return {
+                "message": (
+                    f"Repay loan #{loans[0].id} of GHS {loans[0].amount:.2f}?\n"
+                    "1. Confirm\n2. Cancel"
+                ),
+                "reply": True,
+            }
+
         msg = "Invalid option.\n" + USSD_MENU_MAIN
         _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
         return {"message": msg, "reply": True}
+
+    if state["step"] == "repay_loan_select":
+        try:
+            selected_index = int(message) - 1
+            loan_id = state["loan_ids"][selected_index]
+            if selected_index < 0:
+                raise IndexError
+        except (TypeError, ValueError, IndexError):
+            return {"message": "Choose a valid loan number:", "reply": True}
+        loan = db.query(Loan).filter(Loan.id == loan_id).first()
+        if not loan:
+            _ussd_sessions.pop(session_id, None)
+            return {"message": "Loan not found.", "reply": False}
+        state["step"] = "repay_confirm"
+        state["loan_id"] = loan.id
+        return {
+            "message": (
+                f"Repay loan #{loan.id} of GHS {loan.amount:.2f}?\n"
+                "1. Confirm\n2. Cancel"
+            ),
+            "reply": True,
+        }
+
+    if state["step"] == "repay_confirm":
+        if message != "1":
+            _ussd_sessions.pop(session_id, None)
+            return {"message": "Loan repayment cancelled.", "reply": False}
+        try:
+            loan = await start_farmer_loan_repayment(
+                loan_id=state["loan_id"],
+                farmer=farmer,
+                db=db,
+                initiation_channel="moolre_ussd",
+            )
+        except HTTPException as exc:
+            _ussd_sessions.pop(session_id, None)
+            return {"message": str(exc.detail), "reply": False}
+        tx = (
+            db.query(Transaction)
+            .filter(
+                Transaction.loan_id == loan.id,
+                Transaction.transaction_type == TransactionType.repayment,
+            )
+            .order_by(Transaction.created_at.desc())
+            .first()
+        )
+        if loan.status == LoanStatus.repaid:
+            _ussd_sessions.pop(session_id, None)
+            return {"message": "Loan repayment completed.", "reply": False}
+        if tx and tx.customer_action == "otp":
+            state["step"] = "repay_otp"
+            state["transaction_id"] = tx.id
+            return {
+                "message": "Enter the OTP Moolre sent to your phone:",
+                "reply": True,
+            }
+        _ussd_sessions.pop(session_id, None)
+        return {
+            "message": "Approve the repayment prompt on your phone to complete.",
+            "reply": False,
+        }
+
+    if state["step"] == "repay_otp":
+        tx = (
+            db.query(Transaction)
+            .filter(
+                Transaction.id == state["transaction_id"],
+                Transaction.farmer_id == farmer.id,
+            )
+            .first()
+        )
+        if not tx:
+            _ussd_sessions.pop(session_id, None)
+            return {"message": "Pending repayment not found.", "reply": False}
+        try:
+            loan = await resume_loan_repayment_customer_action(
+                transaction=tx,
+                farmer=farmer,
+                otp_code=message,
+                db=db,
+            )
+        except HTTPException as exc:
+            if exc.status_code in (404, 410):
+                _ussd_sessions.pop(session_id, None)
+                return {"message": str(exc.detail), "reply": False}
+            return {"message": str(exc.detail), "reply": True}
+        if loan.status == LoanStatus.repaid:
+            _ussd_sessions.pop(session_id, None)
+            return {"message": "Loan repayment completed.", "reply": False}
+        refreshed = db.query(Transaction).filter(Transaction.id == tx.id).first()
+        if refreshed and refreshed.customer_action == "otp":
+            return {"message": "OTP still required. Try again:", "reply": True}
+        _ussd_sessions.pop(session_id, None)
+        return {
+            "message": "OTP accepted. Approve the repayment prompt on your phone.",
+            "reply": False,
+        }
 
     if state["step"] == "pending_payment_select":
         try:

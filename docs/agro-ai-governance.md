@@ -46,14 +46,17 @@ score distributions. It is **not** derived from real farmer records.
 
 ### 2.2 Features used
 
-The model takes six numerical features per farmer:
+The v1 model takes nine numerical features per farmer in this fixed order:
 
 | Feature | Description |
 |---|---|
 | `dues_payment_rate` | Proportion of cooperative dues paid on time |
 | `on_time_payment_rate` | General on-time payment rate across obligations |
-| `yield_performance` | Farm harvest output relative to cooperative benchmark |
+| `yield_performance` | Actual crop or animal output relative to expected output; v1 name retained for artifact compatibility |
 | `attendance_rate` | Cooperative meeting attendance rate |
+| `acreage` | Crop acreage or normalized animal-production scale; v1 name retained for artifact compatibility |
+| `cooperative_tenure_months` | Length of cooperative membership |
+| `prior_loans_repaid` | Count of previously repaid loans |
 | `outstanding_balance_ratio` | Current outstanding balance as a proportion of credit limit |
 | `savings_rate` | Savings consistency over the assessment period |
 
@@ -183,7 +186,7 @@ The model is ready for promotion when the following conditions are met:
 
 ### Phase 2 — Governance (pre-production)
 - [ ] Replace heuristic explanations with SHAP or LIME
-- [ ] Complete a bias audit across cooperative regions and crop types
+- [ ] Complete a bias audit across cooperative regions and production focuses
 - [ ] Establish a model registry and promotion review process
 - [ ] Require two-person review for threshold changes
 - [ ] Publish a revised model card approved by the team
