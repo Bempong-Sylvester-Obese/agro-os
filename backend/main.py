@@ -86,7 +86,7 @@ async def lifespan(app: FastAPI):
         backend_dir = Path(__file__).resolve().parent
         alembic_config = Config(str(backend_dir / "alembic.ini"))
         alembic_config.set_main_option("script_location", str(backend_dir / "alembic"))
-        command.upgrade(alembic_config, "head")
+        command.upgrade(alembic_config, "heads")
 
     if settings.seed_demo_data:
         db = create_session()

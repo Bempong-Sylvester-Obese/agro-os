@@ -53,7 +53,7 @@ def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
     try:
         _reset_schema(admin_engine, schema)
         Base.metadata.create_all(engine)
-        command.upgrade(config, "head")
+        command.upgrade(config, "heads")
         assert inspect(engine).has_table("demo_bookings")
 
         _reset_schema(admin_engine, schema)
@@ -100,7 +100,7 @@ def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
                 {"cooperative_id": cooperative_id},
             )
         command.stamp(config, "004_user_active")
-        command.upgrade(config, "head")
+        command.upgrade(config, "heads")
 
         columns = {
             column["name"]: column
