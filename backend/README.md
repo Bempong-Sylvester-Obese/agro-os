@@ -238,13 +238,18 @@ Frontend–backend contract and response shapes: [`docs/api-contract.md`](../doc
 ### Production
 | Method | Path | Description |
 |---|---|---|
-| POST | `/production/` | Log a new crop/production cycle |
-| GET | `/production/` | List production records (filter by `farmer_id`, `crop_type`) |
+| POST | `/production/` | Log a crop or animal production record |
+| GET | `/production/` | List unified production records |
 | GET | `/production/{id}` | Get a production record |
-| PUT | `/production/{id}` | Update production record (log harvest data) |
+| PUT | `/production/{id}` | Update expected/actual output and completion data |
 | DELETE | `/production/{id}` | Delete a production record |
 | GET | `/production/farmer/{farmer_id}` | All production records for a farmer |
-| GET | `/production/farmer/{farmer_id}/summary` | Yield summary (total kg, completion rate) |
+| GET | `/production/farmer/{farmer_id}/summary` | Unit-aware output and completion summary |
+
+Unified records describe production kind, product, activity, expected and
+actual quantity, unit, and production date. Legacy crop fields remain available
+during migration. Commerce endpoints for intake, aggregation, buyer sales, and
+settlement still accept crop produce only.
 
 ### Communications
 | Method | Path | Description |
@@ -278,7 +283,7 @@ The AgroCredit Trust Score (0–100) is transparent and rules-based for the MVP:
 | Factor | Weight | How it's measured |
 |---|---|---|
 | Payment Compliance | 40% | % of dues transactions completed |
-| Production History | 25% | Harvest completion rate + volume bonuses |
+| Production History | 25% | Generic completion rate + reported-output bonuses |
 | Loan Repayment | 20% | % of disbursed loans repaid |
 | Attendance | 15% | % of cooperative events attended (last 12 months) |
 

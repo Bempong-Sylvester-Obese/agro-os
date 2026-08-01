@@ -2,8 +2,9 @@
 
 import csv
 import io
+from datetime import datetime
 
-from app.models.models import AdminAuditLog
+from app.models.models import AdminAuditLog, CooperativeMembership, Production
 
 
 def _rows(response):
@@ -36,6 +37,89 @@ def test_members_export_is_scoped_and_audited(client, db, farmer, cooperative):
     assert '"row_count": 1' in audit.details
     assert "Kofi" not in audit.details
     assert '"search_applied": true' in audit.details
+
+
+def test_unified_member_and_score_exports_include_production_focus(
+    client, db, farmer, cooperative
+):
+    membership = db.query(CooperativeMembership).filter_by(id=farmer["id"]).one()
+    membership.production_focus = "mixed"
+    membership.animal_type = "Goats"
+    membership.animal_scale = 12
+    db.flush()
+
+    members = _rows(
+        client.get(f"/reports/members.csv?cooperative_id={cooperative['id']}")
+    )
+    scores = _rows(
+        client.get(f"/reports/scores.csv?cooperative_id={cooperative['id']}")
+    )
+
+    assert members[0][5:10] == [
+        "Production Focus",
+        "Animal Type",
+        "Animal Scale",
+        "Crop",
+        "Acreage",
+    ]
+    assert members[1][5:8] == ["mixed", "Goats", "12"]
+    assert scores[0][2:6] == [
+        "Production Focus",
+        "Animal Type",
+        "Animal Scale",
+        "Crop",
+    ]
+    assert scores[1][2:5] == ["mixed", "Goats", "12"]
+
+
+def test_production_export_includes_unified_and_legacy_columns(
+    client, db, farmer, cooperative
+):
+    record = Production(
+        farmer_id=farmer["id"],
+        production_kind="animal",
+        product_name="Eggs",
+        activity="collection",
+        expected_quantity=80,
+        quantity=76,
+        unit="crates",
+        production_date=datetime.utcnow(),
+    )
+    legacy = Production(
+        farmer_id=farmer["id"],
+        crop_type="Poultry",
+        expected_kg=80,
+        quantity_kg=76,
+        harvest_date=datetime.utcnow(),
+    )
+    db.add_all([record, legacy])
+    db.flush()
+
+    animal_response = client.get(
+        f"/reports/production.csv?cooperative_id={cooperative['id']}"
+        "&status=completed&q=Eggs"
+    )
+    legacy_response = client.get(
+        f"/reports/production.csv?cooperative_id={cooperative['id']}"
+        "&status=completed&q=Poultry"
+    )
+
+    assert animal_response.status_code == 200
+    animal_rows = _rows(animal_response)
+    assert animal_rows[0][2:9] == [
+        "Production Kind",
+        "Product",
+        "Activity",
+        "Expected Quantity",
+        "Actual Quantity",
+        "Unit",
+        "Production Date",
+    ]
+    assert animal_rows[1][2:8] == ["animal", "Eggs", "collection", "80", "76", "crates"]
+
+    assert legacy_response.status_code == 200
+    legacy_rows = _rows(legacy_response)
+    assert legacy_rows[1][9:12] == ["Poultry", "80", "76"]
 
 
 def test_payment_export_filters_status_and_date(client, transaction, cooperative):

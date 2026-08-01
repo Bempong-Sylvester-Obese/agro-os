@@ -1,16 +1,16 @@
 // src/components/dashboard/Loans.jsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { X, Loader2, Check, XCircle, Send, RefreshCw, Banknote, Ban } from 'lucide-react'
+import { Loader2, Check, XCircle, Send, RefreshCw, Bell, Ban } from 'lucide-react'
 import {
   approveLoan,
   rejectLoan,
   disburseLoan,
   cancelLoan,
   fetchDisbursementStatus,
-  repayLoan,
+  sendLoanReminder,
 } from '../../api/loans'
 import { TableSectionSkeleton } from './DashboardSkeleton'
-import { useModal } from '../../hooks/useModal'
+import DashboardModal, { ModalField } from './DashboardModal'
 import { ModalPresence } from '../Motion'
 import { exportDashboardReport } from '../../api/reports'
 import { DashboardPagination, DashboardTableToolbar, useDashboardTable } from './DashboardTableTools'
@@ -28,85 +28,121 @@ function fmtRepaymentDate(raw) {
 }
 
 const ACTION_COPY = {
-  approve: ['Approve loan?', 'This loan will become eligible for disbursement.', 'Approve loan'],
-  reject: ['Reject loan?', 'This action closes the request and cannot be undone.', 'Reject loan'],
-  cancel: ['Cancel loan?', 'Provide a reason for cancelling this loan.', 'Cancel loan'],
-  disburse: ['Disburse loan?', 'This starts a payout to the member. Confirm the amount and member before continuing.', 'Start disbursement'],
-  retry: ['Retry payout?', 'This retries the failed payout using the existing loan details.', 'Retry payout'],
-  repay: ['Collect repayment?', 'This sends one repayment request to the member. They complete any OTP step on their own phone.', 'Send repayment request'],
-}
-
-const actionButtonStyle = {
-  border: 0,
-  borderRadius: 8,
-  padding: '9px 14px',
-  cursor: 'pointer',
-  fontSize: 13,
-  fontWeight: 700,
+  approve: ['Approve loan', 'Confirm this request so the loan becomes eligible for disbursement.', 'Approve loan'],
+  reject: ['Reject loan', 'Give the farmer a clear reason. AgroOS will send it by SMS.', 'Reject and notify'],
+  cancel: ['Cancel loan', 'Provide a reason for cancelling this loan.', 'Cancel loan'],
+  disburse: ['Disburse loan', 'Start a payout to the member. Confirm the amount before continuing.', 'Start disbursement'],
+  retry: ['Retry payout', 'Retry the failed payout using the existing loan details.', 'Retry payout'],
+  reminder: ['Send repayment reminder', 'Send an SMS reminder only. The member repays through AgroOS USSD.', 'Send reminder'],
 }
 
 function ConfirmationModal({ action, processing, error, onClose, onConfirm }) {
-  const { onBackdropClick, dialogProps, titleId, closeButtonProps } = useModal(onClose, {
-    closeOnBackdrop: !processing,
-    label: `${action.type} loan dialog`,
-  })
   const [reason, setReason] = useState('')
+  const [repaymentDate, setRepaymentDate] = useState('')
   const [validationError, setValidationError] = useState('')
   const [title, description, confirmLabel] = ACTION_COPY[action.type]
   const destructive = ['reject', 'cancel'].includes(action.type)
 
+  const minRepaymentDate = (() => {
+    const next = new Date()
+    next.setHours(0, 0, 0, 0)
+    next.setDate(next.getDate() + 1)
+    const year = next.getFullYear()
+    const month = String(next.getMonth() + 1).padStart(2, '0')
+    const day = String(next.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  })()
+
   const submit = (event) => {
     event.preventDefault()
-    if (action.type === 'cancel' && !reason.trim()) {
-      setValidationError('Enter a cancellation reason.')
+    if (action.type === 'approve') {
+      if (!repaymentDate || repaymentDate < minRepaymentDate) {
+        setValidationError('Choose a future repayment due date.')
+        return
+      }
+    }
+    if (['cancel', 'reject'].includes(action.type) && !reason.trim()) {
+      setValidationError(
+        action.type === 'reject'
+          ? 'Enter a rejection reason for the farmer.'
+          : 'Enter a cancellation reason.',
+      )
       return
     }
-    onConfirm(reason)
+    onConfirm({ reason, repaymentDate })
   }
 
   return (
-    <div className="dashboard-modal-overlay" onClick={onBackdropClick} style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.48)', backdropFilter: 'blur(4px)',
-      zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
-    }}>
-      <form className="dashboard-modal" {...dialogProps} onSubmit={submit} style={{
-        background: '#fff', borderRadius: 16, width: '100%', maxWidth: 430,
-        boxShadow: '0 32px 80px rgba(0,0,0,0.22)', padding: 24,
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
-          <div>
-            <h2 id={titleId} className="serif" style={{ fontSize: 20, margin: 0 }}>{title}</h2>
-            <p style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.5, margin: '8px 0 0' }}>{description}</p>
-          </div>
-          <button {...closeButtonProps} disabled={processing} onClick={onClose} style={{ background: 'none', border: 0, color: 'var(--muted)', cursor: 'pointer', height: 28 }}>
-            <X size={20} />
-          </button>
-        </div>
-        <div style={{ background: 'var(--sage)', borderRadius: 10, padding: 12, marginTop: 18, fontSize: 13 }}>
+    <DashboardModal
+      title={title}
+      subtitle={description}
+      onClose={onClose}
+      label={`${action.type} loan dialog`}
+      closeOnBackdrop={!processing}
+      closeDisabled={processing}
+      as="form"
+      bodyProps={{ onSubmit: submit, noValidate: true }}
+    >
+      <div className="dashboard-modal-body">
+        <div className="dashboard-modal-summary">
           <strong>Loan #{action.loan.id}</strong> · {fmtGHS(action.loan.amount)}
         </div>
-        {action.type === 'cancel' && (
-          <div style={{ marginTop: 16 }}>
-            <label htmlFor="loan-cancel-reason" style={{ fontSize: 13, fontWeight: 700 }}>Cancellation reason</label>
+
+        {['cancel', 'reject'].includes(action.type) && (
+          <ModalField
+            htmlFor="loan-decision-reason"
+            label={action.type === 'reject' ? 'Reason sent to farmer' : 'Cancellation reason'}
+          >
             <textarea
-              id="loan-cancel-reason"
+              id="loan-decision-reason"
+              className="dashboard-modal-textarea"
               value={reason}
               onChange={(event) => { setReason(event.target.value); setValidationError('') }}
               disabled={processing}
               rows={3}
-              style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 6, padding: 10, border: '1px solid var(--border)', borderRadius: 8, resize: 'vertical', font: 'inherit' }}
             />
-          </div>
+          </ModalField>
         )}
-        {(validationError || error) && <div role="alert" style={{ color: '#991B1B', fontSize: 13, marginTop: 14 }}>{validationError || error}</div>}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 22 }}>
-          <button type="button" disabled={processing} onClick={onClose} style={{ ...actionButtonStyle, background: '#fff', border: '1px solid var(--border)', color: 'var(--text)' }}>Go back</button>
-          <button type="submit" disabled={processing} style={{ ...actionButtonStyle, background: destructive ? '#991B1B' : 'var(--text)', color: '#fff' }}>
+
+        {action.type === 'approve' && (
+          <ModalField htmlFor="loan-repayment-date" label="Repayment due date">
+            <input
+              id="loan-repayment-date"
+              className="dashboard-modal-input"
+              type="date"
+              min={minRepaymentDate}
+              value={repaymentDate}
+              onChange={(event) => { setRepaymentDate(event.target.value); setValidationError('') }}
+              disabled={processing}
+              required
+            />
+          </ModalField>
+        )}
+
+        {(validationError || error) && (
+          <div role="alert" className="dashboard-form-error">{validationError || error}</div>
+        )}
+
+        <div className="dashboard-modal-actions">
+          <button
+            type="button"
+            className="dashboard-modal-btn-secondary"
+            disabled={processing}
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="btn-lg"
+            disabled={processing}
+            style={destructive ? { background: '#991B1B' } : undefined}
+          >
             {processing ? 'Working…' : confirmLabel}
           </button>
         </div>
-      </form>
-    </div>
+      </div>
+    </DashboardModal>
   )
 }
 
@@ -206,14 +242,21 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
     setActiveAction({ loan, type })
   }
 
-  const handleAction = async (reason = '') => {
+  const handleAction = async ({ reason = '', repaymentDate = '' } = {}) => {
     const { loan, type } = activeAction
     setProcessing(loan.id)
     setActionError(null)
     setActionMessage(null)
     try {
-      if (type === 'approve') await approveLoan(loan.id)
-      if (type === 'reject') await rejectLoan(loan.id)
+      if (type === 'approve') await approveLoan(loan.id, repaymentDate)
+      if (type === 'reject') {
+        const result = await rejectLoan(loan.id, reason)
+        setActionMessage(
+          result.notification_status === 'sent'
+            ? `Loan #${loan.id} rejected and the farmer was notified by SMS.`
+            : `Loan #${loan.id} rejected, but the SMS could not be delivered.`,
+        )
+      }
       if (type === 'cancel') await cancelLoan(loan.id, reason)
       if (type === 'disburse' || type === 'retry') {
         const result = await disburseLoan(loan.id)
@@ -222,13 +265,9 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
         }
         await reconcileLoan(loan.id, { quiet: true })
       }
-      if (type === 'repay') {
-        const result = await repayLoan(loan.id)
-        setActionMessage(
-          result.status === 'repaid'
-            ? `Repayment for loan #${loan.id} completed.`
-            : `Repayment request sent for loan #${loan.id}. The member must complete it on their phone.`
-        )
+      if (type === 'reminder') {
+        await sendLoanReminder(loan.id)
+        setActionMessage(`Repayment reminder sent for loan #${loan.id}.`)
       }
       setActiveAction(null)
       if (onRefresh) onRefresh()
@@ -341,6 +380,14 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
               const farmer = farmers.find(f => f.id === loan.farmer_id)
               const name = farmer ? farmer.name : `Farmer #${loan.farmer_id}`
               const repayDate = fmtRepaymentDate(loan.expected_repayment_date || loan.repayment_date)
+              const dueLabels = {
+                not_due: 'Not due',
+                scheduled: 'Scheduled',
+                due_soon: 'Due soon',
+                due_today: 'Due today',
+                overdue: `${loan.days_overdue || 0} days overdue`,
+                paid: 'Paid',
+              }
               const payout = payoutStatuses[loan.id]
               const payoutStatus = payout?.payout_status || 'none'
               const payoutLabels = {
@@ -365,7 +412,22 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
                   </div>
                   <span className="pt-v">{fmtGHS(loan.amount)}</span>
                   <span className="pt-m" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{loan.purpose}</span>
-                  <span className="pt-m">{repayDate}</span>
+                  <span className="pt-m">
+                    {repayDate}
+                    <span className={`bdg ${loan.due_state === 'overdue' ? 'bdg-red' : 'bdg-amber'}`} style={{ display: 'block', width: 'fit-content', marginTop: 5 }}>
+                      {dueLabels[loan.due_state] || 'Not due'}
+                    </span>
+                    {loan.last_reminder_at && (
+                      <small style={{ display: 'block', marginTop: 5 }}>
+                        Last reminder {new Date(loan.last_reminder_at).toLocaleDateString()}
+                      </small>
+                    )}
+                    {loan.next_reminder_date && (
+                      <small style={{ display: 'block' }}>
+                        Next reminder {fmtRepaymentDate(loan.next_reminder_date)}
+                      </small>
+                    )}
+                  </span>
                   <div>
                     <span className={`bdg ${cls}`} style={{ textTransform: 'capitalize' }}>{label}</span>
                     <div style={{ fontSize: 10, color: payoutStatus === 'failed' ? '#991B1B' : 'var(--muted)', marginTop: 5 }}>
@@ -409,8 +471,8 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
                       </button>
                     )}
                     {loan.status === 'disbursed' && (
-                      <button disabled={dataStale} onClick={() => openAction(loan, 'repay')} style={{ ...rowButton, background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE' }}>
-                        <Banknote size={12} /> Collect repayment
+                      <button disabled={dataStale} onClick={() => openAction(loan, 'reminder')} style={{ ...rowButton, background: '#EFF6FF', color: '#1E40AF', border: '1px solid #BFDBFE' }}>
+                        <Bell size={12} /> Send reminder
                       </button>
                     )}
                     {payout?.can_cancel && (

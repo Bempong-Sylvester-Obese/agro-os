@@ -2,16 +2,14 @@ import React, { useEffect, useState } from 'react'
 import { Loader2, Plus, RefreshCw, ShieldCheck } from 'lucide-react'
 import {
   fetchCooperativeUsers,
-  fetchIntegrationHealth,
   registerCooperativeUser,
   updateCooperativeUser,
 } from '../../api/governance'
 
 const emptyInvite = { email: '', password: '', role: 'finance_officer' }
 
-export default function GovernanceSettings() {
+export default function GovernanceSettings({ cooperativeId }) {
   const [users, setUsers] = useState([])
-  const [health, setHealth] = useState(null)
   const [invite, setInvite] = useState(emptyInvite)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(null)
@@ -21,20 +19,18 @@ export default function GovernanceSettings() {
   async function load() {
     setLoading(true)
     setError('')
-    const [usersResult, healthResult] = await Promise.allSettled([
-      fetchCooperativeUsers(),
-      fetchIntegrationHealth(),
-    ])
-    if (usersResult.status === 'fulfilled') {
-      setUsers(usersResult.value)
+    try {
+      const data = await fetchCooperativeUsers(cooperativeId)
+      setUsers(data)
       setRestricted(false)
-    } else if ([401, 403].includes(usersResult.reason?.status)) {
-      setRestricted(true)
-    } else {
-      setRestricted(false)
-      setError(usersResult.reason?.message || 'Could not load cooperative users.')
+    } catch (err) {
+      if ([401, 403].includes(err.status)) {
+        setRestricted(true)
+      } else {
+        setRestricted(false)
+        setError(err.message || 'Could not load cooperative users.')
+      }
     }
-    if (healthResult.status === 'fulfilled') setHealth(healthResult.value)
     setLoading(false)
   }
 
@@ -69,8 +65,6 @@ export default function GovernanceSettings() {
       setSaving(null)
     }
   }
-
-  const moolreChecks = health?.moolre ? Object.entries(health.moolre) : []
 
   return (
     <>
@@ -153,36 +147,6 @@ export default function GovernanceSettings() {
                 {saving === 'invite' ? 'Adding…' : 'Add user'}
               </button>
             </form>
-          </div>
-        )}
-      </section>
-
-      <section className="admin-card governance-settings-card" aria-labelledby="integration-health-title">
-        <div className="admin-card-head">
-          <div>
-            <h2 id="integration-health-title" className="admin-card-title serif">Moolre integration health</h2>
-            <p className="activity-subtitle">Configuration readiness and wallet policy. No credentials are displayed.</p>
-          </div>
-          {health && <span className="bdg bdg-green">{health.environment}</span>}
-        </div>
-        {health ? (
-          <div className="integration-health-grid">
-            {moolreChecks.map(([name, configured]) => (
-              <div key={name} className="integration-health-item">
-                <ShieldCheck size={17} />
-                <span>{name.replaceAll('_', ' ')}</span>
-                <strong className={configured ? 'is-ready' : 'is-missing'}>
-                  {configured ? 'Configured' : 'Action required'}
-                </strong>
-              </div>
-            ))}
-            <div className="integration-wallet-policy">
-              Loan payouts use the protected platform wallet. Repayment collections settle to the cooperative wallet.
-            </div>
-          </div>
-        ) : (
-          <div className="dashboard-empty">
-            {restricted ? 'Integration configuration is visible to administrators.' : 'Integration health is unavailable.'}
           </div>
         )}
       </section>

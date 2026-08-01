@@ -4,9 +4,11 @@ import json
 
 from app.agro_ai.audit import PredictionAuditLogger
 from app.agro_ai.evaluation import train_and_evaluate
-from app.agro_ai.model import AgroAiCreditModel, save_model_artifact
+from app.agro_ai.farmer_features import extract_features_from_farmer
+from app.agro_ai.model import AgroAiCreditModel, save_model_artifact, vectorize_features
 from app.agro_ai.runtime import create_agro_ai_model, prediction_audit
-from app.agro_ai.synthetic_data import DEMO_FARMERS
+from app.agro_ai.synthetic_data import DEMO_FARMERS, FEATURE_NAMES
+from app.models.models import CooperativeMembership, Production
 
 
 def test_train_and_evaluate_returns_enterprise_metrics() -> None:
@@ -39,6 +41,27 @@ def test_model_artifact_round_trip(tmp_path) -> None:
     assert model.artifact_source == str(artifact_path)
     assert prediction.model_version == "test-model"
     assert 0 <= prediction.score <= 100
+
+
+def test_unified_animal_records_preserve_v1_feature_contract(db, farmer) -> None:
+    membership = db.query(CooperativeMembership).filter_by(id=farmer["id"]).one()
+    membership.production_focus = "animal"
+    membership.animal_type = "Chickens"
+    membership.animal_scale = 250
+    production = Production(farmer_id=membership.id, crop_type="Poultry")
+    production.production_kind = "animal"
+    production.expected_quantity = 100.0
+    production.quantity = 80.0
+    production.production_date = membership.created_at
+    db.add(production)
+    db.flush()
+
+    features = extract_features_from_farmer(membership, db)
+
+    assert list(features) == FEATURE_NAMES
+    assert features["yield_performance"] == 0.8
+    assert features["acreage"] == 6.0
+    assert vectorize_features(features) == [features[name] for name in FEATURE_NAMES]
 
 
 def test_prediction_audit_logger_writes_jsonl(tmp_path) -> None:

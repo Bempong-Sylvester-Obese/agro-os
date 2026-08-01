@@ -12,8 +12,9 @@ export function fetchIntegrationHealth() {
   })
 }
 
-export function fetchCooperativeUsers() {
-  return fetchJson(`${API_URL}/auth/users`, {
+export function fetchCooperativeUsers(cooperativeId) {
+  const query = cooperativeId ? `?cooperative_id=${cooperativeId}` : ''
+  return fetchJson(`${API_URL}/auth/users${query}`, {
     headers: authHeaders(),
   })
 }

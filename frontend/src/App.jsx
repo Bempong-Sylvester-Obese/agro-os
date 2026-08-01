@@ -10,6 +10,7 @@ import FeaturesPage from './pages/FeaturesPage'
 import PricingPage from './pages/PricingPage'
 import BookDemoPage from './pages/BookDemoPage'
 import CompliancePage from './pages/CompliancePage'
+import InvestorRelationsPage from './pages/InvestorRelationsPage'
 import DashboardPage from './pages/DashboardPage'
 import { DashboardGateSkeleton } from './components/dashboard/DashboardSkeleton'
 import AuthPage from './pages/AuthPage'
@@ -78,6 +79,7 @@ function AppShell({ user, authReady, onAuth, onLogout }) {
             <Route path="/subscribe/:plan" element={<SubscriptionPage />} />
             <Route path="/book-demo" element={<BookDemoPage />} />
             <Route path="/compliance" element={<CompliancePage />} />
+            <Route path="/investors" element={<InvestorRelationsPage />} />
             <Route path="/login" element={<AuthPage onAuth={onAuth} />} />
             <Route path="/dashboard" element={<DashboardGate user={user} authReady={authReady} onLogout={onLogout} />} />
             <Route path="/dashboard/:section" element={<DashboardGate user={user} authReady={authReady} onLogout={onLogout} />} />

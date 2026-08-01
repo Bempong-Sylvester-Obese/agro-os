@@ -45,6 +45,7 @@ Copy from `backend/.env.example` before running locally or deploying.
 | `MOOLRE_API_KEY` | Moolre API key | `mk_live_...` |
 | `MOOLRE_API_PUBKEY` | Moolre live public key (required for live API calls) | `mpk_live_...` |
 | `MOOLRE_WEBHOOK_SECRET` | Secret for verifying webhook signatures | `whsec_...` |
+| `AGROOS_USSD_CODE` | Complete approved AgroOS menu dial string | `*919*4020#` |
 | `USSDK_HOOK_SECRET` | HMAC secret shared with USSDK hooks | `ussdk_...` |
 | `DEFAULT_SMS_SENDER_ID` | Approved SMS sender ID | `AgroOS` |
 | `SENTRY_DSN` | Optional Sentry DSN for backend error tracking | `https://...@sentry.io/...` |
@@ -210,6 +211,7 @@ Map the production menu screens to these signed hooks:
 | Check Loan Balance | `POST /ussdk/loan-balance` |
 | Pay Dues | `POST /ussdk/pay-dues` |
 | Request Loan | `POST /ussdk/loan-request` |
+| Repay Loan | `POST /ussdk/loan-repayment` |
 | Complete Pending Payment | `POST /ussdk/pending-payment` |
 | Announcements | `POST /ussdk/announcements` |
 
@@ -217,6 +219,43 @@ The loan request screen sends `amount`, `purpose`, and, when needed,
 `membership_id`. The pending-payment screen first stores the returned
 `transaction_id`, then sends `otp_code` only from the farmer's USSD session.
 Never add an OTP field to the dashboard.
+
+### Render loan-reminder cron
+
+Create a Render Cron Job with root directory `backend/`, the same
+`DATABASE_URL`, Moolre SMS credentials, and `AGROOS_USSD_CODE` as the API.
+Run it daily with:
+
+```bash
+python -m app.jobs.send_loan_reminders
+```
+
+The job sends idempotent reminders seven, three, and one day before the
+repayment date, on the due date, and at controlled overdue intervals. It never
+creates a transaction or initiates a Moolre debit.
+
+### Commerce and settlement rollout
+
+Run the latest Alembic migration before enabling Commerce navigation. The
+commerce tables store intake, aggregation, buyer sales, verified receipts,
+settlement snapshots, deductions, and payout attempts.
+
+Before rollout, back up the production database and confirm Alembic reports
+`009_market_settlement` as the active revision. This migration introduces
+financial records and its downgrade removes the commerce tables, so production
+rollback should restore the pre-deployment backup rather than run a destructive
+downgrade after live intake or settlement data has been recorded.
+
+Production access must include at least two active authorized users because:
+
+- the user recording buyer-payment evidence cannot verify the same receipt;
+- the user preparing/reviewing a settlement cannot provide every approval
+  required to release farmer payouts.
+
+Use the same verified Moolre transfer account as loan disbursement. Settlement
+payout references are durable and must not be altered between retries. After
+deployment, smoke-test one failed transfer and confirm only that line is
+eligible for retry.
 
 ---
 

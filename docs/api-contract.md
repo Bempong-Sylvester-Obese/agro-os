@@ -35,7 +35,10 @@ When the database is seeded, Agro-AI assessments are built from DB farmer record
   "name": "Abena Mensah",
   "phone": "+233552341234",
   "location": "Ashanti",
+  "production_focus": "mixed",
   "crop_type": "Maize",
+  "animal_type": "Goats",
+  "animal_scale": 12,
   "cooperative_id": 1,
   "membership_status": "active",
   "trust_score": 58.0,
@@ -65,14 +68,13 @@ When the database is seeded, Agro-AI assessments are built from DB farmer record
 | Payment history | GET | `/transactions/` | `TransactionResponse[]` |
 | Wallet balance | GET | `/transactions/moolre/wallet-balance` | Moolre wallet object |
 | Webhook audit | GET | `/transactions/webhook-events` | `PaymentWebhookEventResponse[]` |
-| Payment link | POST | `/transactions/payment-link` | `PaymentLinkResponse` |
-| Collect dues | POST | `/transactions/dues/collect` | `DuesCollectResponse` |
+| Reconcile payment | POST | `/transactions/{transaction_id}/reconcile` | Reconciliation result |
 
 **TransactionResponse** statuses: `pending`, `completed`, `failed`. Channel `13` = MoMo.
 Pending collections also expose `customer_action` (`initiating`, `otp`,
 `processing_otp`, `approval`, or `none`), `action_expires_at`, and
-`initiation_channel`. The dashboard initiates a collect once and never accepts
-a member OTP.
+`initiation_channel`. Production debits originate only from the farmer's
+signed USSD session. The dashboard never initiates a debit or accepts an OTP.
 
 ### Loans, Production, SMS
 
@@ -80,9 +82,20 @@ a member OTP.
 |----|--------|------|
 | Loans tab | GET | `/loans/` |
 | Approve/reject request | POST | `/loans/{loan_id}/approve`, `/loans/{loan_id}/reject` |
-| Disburse/collect repayment | POST | `/loans/{loan_id}/disburse`, `/loans/{loan_id}/repay` |
+| Disburse loan | POST | `/loans/{loan_id}/disburse` |
+| Send repayment reminder | POST | `/loans/{loan_id}/reminders` |
 | Production tab | GET | `/production/` |
 | SMS tab | GET/POST | `/communications/logs`, `/communications/sms/broadcast` |
+
+Members use `production_focus` (`crop`, `animal`, or `mixed`). Animal and mixed
+members may include `animal_type` and `animal_scale`; legacy `crop_type` and
+`acreage` remain available for crop compatibility.
+
+Production records use `production_kind`, `product_name`, `activity`,
+`expected_quantity`, `quantity`, `unit`, and `production_date`. Legacy
+`crop_type`, `expected_kg`, `quantity_kg`, and harvest fields remain in the
+contract during migration. Expected and actual quantities must be compared
+within the record's own unit; quantities with different units are not summed.
 
 ### USSD & webhooks
 
@@ -94,14 +107,15 @@ a member OTP.
 | USSDK loan request | POST | `/ussdk/loan-request` |
 | USSDK pending payment | POST | `/ussdk/pending-payment` |
 | USSDK dues payment | POST | `/ussdk/pay-dues` |
+| USSDK loan repayment | POST | `/ussdk/loan-repayment` |
 
 Farmers originate loan requests from the Moolre menu or signed USSDK
 `/loan-request` hook. Staff do not create requests; they only review the
-resulting `requested` loan. If a staff-initiated dues or repayment request
-returns Moolre `TP14`, the farmer selects **Complete Pending Payment** in their
-own USSD session. AgroOS resolves the transaction from the caller's registered
-phone and reuses its original Moolre reference. OTP values are never stored in
-transactions or USSD logs.
+resulting `requested` loan. Farmers also initiate dues and loan repayments in
+their own signed USSD session. Moolre sends and verifies any required OTP;
+AgroOS reuses the original payment reference and never stores OTP values in
+transactions or USSD logs. **Complete Pending Payment** is a recovery path for
+an interrupted farmer session, not a staff-started collection flow.
 
 ### Cooperative profile
 
@@ -110,6 +124,46 @@ transactions or USSD logs.
 | Settings sidebar | GET | `/cooperatives/` or `/cooperatives/{id}` |
 
 Optional env: `VITE_COOPERATIVE_ID`.
+
+### Cooperative commerce
+
+Commerce records are cooperative-scoped and follow explicit state transitions.
+Unlike production tracking and scoring, this release's intake, aggregation,
+buyer-sale, and settlement workflow remains crop-only:
+
+- Produce intake: record, accept or reject, then assign accepted weight to one
+  open aggregation batch.
+- Aggregation: close a batch before recording its buyer sale.
+- Buyer sale: confirm the commercial terms, record buyer-payment evidence, and
+  require a different authorized user to verify receipt of funds.
+- Settlement: calculate a snapshot of farmer gross amounts and deductions,
+  review it, approve it under maker-checker controls, then execute Moolre
+  farmer payouts.
+
+Settlement APIs expose every farmer line with accepted quantity, unit price,
+gross amount, itemized deductions, and net payable. Payout retries operate only
+on failed lines and preserve the original idempotent references. Loan payouts,
+settlement payouts, dues payments, and loan repayments remain separate
+transaction purposes.
+
+Core endpoints:
+
+- `POST/GET /intakes/`, then `POST /intakes/{id}/accept|reject|cancel`
+- `POST/GET /aggregation-batches/`, `POST /aggregation-batches/{id}/intakes`,
+  and `POST /aggregation-batches/{id}/close`
+- `POST/GET/PATCH /buyers/`
+- `POST/GET /sales/`, `POST /sales/{id}/confirm`, and buyer receipt
+  submission plus independent `verify|reject` decisions
+- `POST /settlements/sales/{sale_id}/calculate`, `GET /settlements/`,
+  and settlement `submit|approve|disburse|retry-failed|reconcile` actions
+- CSV exports under `/reports/intake.csv`, `/reports/aggregation.csv`,
+  `/reports/buyers.csv`, `/reports/sales.csv`, `/reports/settlements.csv`, and
+  `/reports/payout-exceptions.csv`
+
+The core operational exports are `/reports/members.csv`,
+`/reports/production.csv`, and `/reports/scores.csv`. They include unified
+focus/kind/product/activity/quantity/unit columns while retaining useful legacy
+crop columns.
 
 ### Authentication and cooperative roles
 
@@ -152,6 +206,6 @@ On backend startup in development, `seed_golden_path()` inserts:
 
 - Cooperative: **Kuapa Kokoo Demo Cooperative**
 - Farmer: **Abena Mensah** (pending dues transaction for webhook demo)
-- Supporting farmers, loans, production, and attendance records
+- Supporting crop, animal, and mixed members plus production and attendance records
 
 Set `SEED_DEMO_DATA=true` to force seeding in other environments.

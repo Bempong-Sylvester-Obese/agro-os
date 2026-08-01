@@ -10,6 +10,7 @@ import { fetchCooperative } from '../api/cooperatives'
 import { fetchTransactions } from '../api/transactions'
 import { fetchLoans } from '../api/loans'
 import { fetchProductions } from '../api/production'
+import { fetchAggregation, fetchBuyers, fetchIntake, fetchSales, fetchSettlements } from '../api/commerce'
 import Overview from '../components/dashboard/Overview'
 import Members  from '../components/dashboard/Members'
 import Payments from '../components/dashboard/Payments'
@@ -25,9 +26,14 @@ import Workers from '../components/dashboard/Workers'
 import Tasks from '../components/dashboard/Tasks'
 import Attendance from '../components/dashboard/Attendance'
 import Payroll from '../components/dashboard/Payroll'
+import Intake from '../components/dashboard/Intake'
+import Aggregation from '../components/dashboard/Aggregation'
+import Buyers from '../components/dashboard/Buyers'
+import Sales from '../components/dashboard/Sales'
+import Settlements from '../components/dashboard/Settlements'
 import DashboardUserMenu from '../components/dashboard/DashboardUserMenu'
 import { SidebarCoopSkeleton } from '../components/dashboard/DashboardSkeleton'
-import { BarChart3, Users, CreditCard, Star, MessageSquare, Settings, Sprout, Banknote, Tractor, Phone, RefreshCw, ClipboardList } from 'lucide-react'
+import { BarChart3, Users, CreditCard, Star, MessageSquare, Settings, Sprout, Banknote, Tractor, Phone, RefreshCw, ClipboardList, Inbox, Boxes, Store, ShoppingCart, WalletCards } from 'lucide-react'
 
 function getNavGroups(organizationType) {
   if (organizationType === 'solo_farm') {
@@ -76,6 +82,16 @@ function getNavGroups(organizationType) {
         { key: 'loans', icon: <Banknote size={18} />, label: 'Loans' },
       ],
     },
+  {
+    label: 'Commerce',
+    items: [
+      { key: 'intake', icon: <Inbox size={18} />, label: 'Produce intake' },
+      { key: 'aggregation', icon: <Boxes size={18} />, label: 'Aggregation' },
+      { key: 'buyers', icon: <Store size={18} />, label: 'Buyers' },
+      { key: 'sales', icon: <ShoppingCart size={18} />, label: 'Buyer sales' },
+      { key: 'settlements', icon: <WalletCards size={18} />, label: 'Settlements' },
+    ],
+  },
     {
       label: 'Communications',
       items: [
@@ -106,6 +122,11 @@ const TITLES = {
   sms:      'SMS broadcasts',
   ussd:     'USSD activity',
   activity: 'Administrator activity',
+  intake: 'Produce intake',
+  aggregation: 'Aggregation batches',
+  buyers: 'Produce buyers',
+  sales: 'Buyer sales',
+  settlements: 'Farmer settlements',
   settings: 'Settings',
 }
 
@@ -115,6 +136,11 @@ const SECTION_RESOURCES = {
   payments: ['farmers', 'transactions'],
   loans: ['farmers', 'loans'],
   production: ['farmers', 'productions'],
+  intake: ['intake', 'aggregation'],
+  aggregation: ['aggregation'],
+  buyers: ['buyers'],
+  sales: ['sales', 'buyers', 'aggregation'],
+  settlements: ['settlements', 'sales'],
   scores: ['farmers'],
   settings: ['cooperative'],
 }
@@ -128,6 +154,14 @@ export default function DashboardPage({ user, onLogout }) {
   const [transactions, setTransactions] = useState([])
   const [loans, setLoans]               = useState([])
   const [productions, setProductions]   = useState([])
+  const [commerce, setCommerce] = useState({
+    intake: [],
+    aggregation: [],
+    buyers: [],
+    sales: [],
+    settlements: [],
+  })
+  const [commerceLoading, setCommerceLoading] = useState(false)
   const [cooperative, setCooperative]   = useState(null)
   const [cooperativeId, setCooperativeId] = useState(() => resolveCooperativeId(user))
   const [loading, setLoading]           = useState(true)
@@ -180,6 +214,36 @@ export default function DashboardPage({ user, onLogout }) {
     setRefreshing(false)
   }
 
+  const loadCommerce = async () => {
+    const idHint = cooperativeId ?? resolveCooperativeId(user)
+    setCommerceLoading(true)
+    const names = ['intake', 'aggregation', 'buyers', 'sales', 'settlements']
+    const results = await Promise.allSettled([
+      fetchIntake(idHint),
+      fetchAggregation(idHint),
+      fetchBuyers(idHint),
+      fetchSales(idHint),
+      fetchSettlements(idHint),
+    ])
+    setCommerce(current => {
+      const next = { ...current }
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled') next[names[index]] = result.value
+      })
+      return next
+    })
+    setResourceErrors(current => {
+      const next = { ...current }
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') next[names[index]] = formatTransportError(result.reason)
+        else delete next[names[index]]
+      })
+      return next
+    })
+    if (results.some(result => result.status === 'fulfilled')) setLastUpdated(new Date())
+    setCommerceLoading(false)
+  }
+
   const refreshLoans = async () => {
     const idHint = cooperativeId ?? resolveCooperativeId(user)
     try {
@@ -208,6 +272,12 @@ export default function DashboardPage({ user, onLogout }) {
     setSection(sectionFromUrl)
   }, [sectionFromUrl])
 
+  useEffect(() => {
+    if (['intake', 'aggregation', 'buyers', 'sales', 'settlements'].includes(section)) {
+      loadCommerce()
+    }
+  }, [section, cooperativeId])
+
   function goToSection(key) {
     setSection(key)
     navigate(dashboardPath(key))
@@ -217,6 +287,7 @@ export default function DashboardPage({ user, onLogout }) {
     .filter((resource) => resourceErrors[resource])
     .map((resource) => `${resource}: ${resourceErrors[resource]}`)
   const hasStaleSectionData = sectionErrors.length > 0
+  const isCommerceSection = ['intake', 'aggregation', 'buyers', 'sales', 'settlements'].includes(section)
 
   // Called after a member is added — refreshes only the farmers list
   const handleMemberAdded = () => {
@@ -305,12 +376,12 @@ export default function DashboardPage({ user, onLogout }) {
             <button
               type="button"
               className="admin-refresh"
-              onClick={loadAll}
-              disabled={loading || refreshing}
+              onClick={isCommerceSection ? loadCommerce : loadAll}
+              disabled={loading || refreshing || commerceLoading}
               aria-label="Refresh all dashboard data"
             >
               <RefreshCw size={15} className={refreshing ? 'spin' : ''} />
-              <span>{refreshing ? 'Refreshing' : 'Refresh'}</span>
+              <span>{refreshing || commerceLoading ? 'Refreshing' : 'Refresh'}</span>
             </button>
             <DashboardUserMenu user={user} onLogout={onLogout} />
           </div>
@@ -345,7 +416,7 @@ export default function DashboardPage({ user, onLogout }) {
                 type="button"
                 className="btn-lg"
                 style={{ padding: '8px 16px', fontSize: 13, flexShrink: 0 }}
-                onClick={loadAll}
+                onClick={isCommerceSection ? loadCommerce : loadAll}
               >
                 Retry
               </button>
@@ -418,6 +489,42 @@ export default function DashboardPage({ user, onLogout }) {
               cooperativeId={cooperativeId}
               loading={loading}
               onRefresh={loadAll}
+            />
+          )}
+          {section === 'intake' && (
+            <Intake
+              records={commerce.intake}
+              farmers={farmers}
+              batches={commerce.aggregation}
+              cooperativeId={cooperativeId}
+              loading={commerceLoading}
+              onRefresh={loadCommerce}
+            />
+          )}
+          {section === 'aggregation' && (
+            <Aggregation batches={commerce.aggregation} cooperativeId={cooperativeId} loading={commerceLoading} onRefresh={loadCommerce} />
+          )}
+          {section === 'buyers' && (
+            <Buyers buyers={commerce.buyers} cooperativeId={cooperativeId} loading={commerceLoading} onRefresh={loadCommerce} />
+          )}
+          {section === 'sales' && (
+            <Sales
+              sales={commerce.sales}
+              buyers={commerce.buyers}
+              batches={commerce.aggregation}
+              cooperativeId={cooperativeId}
+              loading={commerceLoading}
+              onRefresh={loadCommerce}
+            />
+          )}
+          {section === 'settlements' && (
+            <Settlements
+              settlements={commerce.settlements}
+              sales={commerce.sales}
+              farmers={farmers}
+              cooperativeId={cooperativeId}
+              loading={commerceLoading}
+              onRefresh={loadCommerce}
             />
           )}
           {section === 'settings' && (

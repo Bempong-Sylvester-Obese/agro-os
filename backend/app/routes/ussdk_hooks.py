@@ -36,7 +36,10 @@ from app.models.models import (
     TransactionStatus,
     TransactionType,
 )
-from app.routes.loans import resume_loan_repayment_customer_action
+from app.routes.loans import (
+    resume_loan_repayment_customer_action,
+    start_farmer_loan_repayment,
+)
 from app.routes.transactions import (
     _run_dues_collect,
     expire_customer_actions,
@@ -240,6 +243,121 @@ async def pay_dues(
     return {
         "action": "end",
         "message": result.message or "Payment could not be started. Try again later.",
+    }
+
+
+@router.post("/loan-repayment")
+async def loan_repayment(
+    request: Request,
+    db: Session = Depends(get_db),
+    x_ussdk_signature: str | None = Header(default=None),
+):
+    """Start or resume a full loan repayment from the farmer's USSD session."""
+    payload = await _parsed_and_verified(request, x_ussdk_signature)
+    session = payload.get("props", {}).get("session", {})
+    values = payload.get("props", {}).get("values", {})
+    farmer, memberships = resolve_phone_membership(
+        session.get("msisdn", ""),
+        db,
+        membership_id=values.get("membership_id"),
+    )
+    if not farmer:
+        if len(memberships) > 1:
+            return cooperative_selection_payload(memberships)
+        return {"action": "end", "message": "Phone not registered with AgroOS."}
+
+    transaction_id = values.get("transaction_id")
+    otp_code = str(values.get("otp_code", "")).strip()
+    if transaction_id and otp_code:
+        try:
+            selected_transaction_id = int(transaction_id)
+        except (TypeError, ValueError):
+            return {"action": "retry", "message": "Choose a valid repayment."}
+        tx = (
+            db.query(Transaction)
+            .filter(
+                Transaction.id == selected_transaction_id,
+                Transaction.farmer_id == farmer.id,
+                Transaction.transaction_type == TransactionType.repayment,
+            )
+            .first()
+        )
+        if not tx:
+            return {"action": "end", "message": "Pending repayment not found."}
+        loan = await resume_loan_repayment_customer_action(
+            transaction=tx,
+            farmer=farmer,
+            otp_code=otp_code,
+            db=db,
+        )
+        return {
+            "action": "end" if loan.status == LoanStatus.repaid else "pending",
+            "message": (
+                "Loan repayment completed."
+                if loan.status == LoanStatus.repaid
+                else "OTP accepted. Approve the repayment prompt on your phone."
+            ),
+        }
+
+    loan_id = values.get("loan_id")
+    if not loan_id:
+        loans = (
+            db.query(Loan)
+            .filter(
+                Loan.farmer_id == farmer.id,
+                Loan.status == LoanStatus.disbursed,
+            )
+            .order_by(Loan.expected_repayment_date, Loan.id)
+            .all()
+        )
+        return {
+            "action": "select_loan" if loans else "end",
+            "message": "Choose a loan to repay." if loans else "You have no active loans.",
+            "loans": [
+                {
+                    "loan_id": loan.id,
+                    "amount": loan.amount,
+                    "due_date": (
+                        loan.expected_repayment_date.isoformat()
+                        if loan.expected_repayment_date
+                        else None
+                    ),
+                }
+                for loan in loans
+            ],
+        }
+
+    try:
+        selected_loan_id = int(loan_id)
+    except (TypeError, ValueError):
+        return {"action": "retry", "message": "Choose a valid loan."}
+
+    loan = await start_farmer_loan_repayment(
+        loan_id=selected_loan_id,
+        farmer=farmer,
+        db=db,
+        initiation_channel="ussdk",
+    )
+    tx = (
+        db.query(Transaction)
+        .filter(
+            Transaction.loan_id == loan.id,
+            Transaction.transaction_type == TransactionType.repayment,
+        )
+        .order_by(Transaction.created_at.desc())
+        .first()
+    )
+    if loan.status == LoanStatus.repaid:
+        return {"action": "end", "message": "Loan repayment completed."}
+    if tx and tx.customer_action == "otp":
+        return {
+            "action": "request_otp",
+            "transaction_id": tx.id,
+            "message": "Enter the OTP Moolre sent to your phone.",
+        }
+    return {
+        "action": "end",
+        "message": "Approve the repayment prompt on your phone to complete.",
     }
 
 

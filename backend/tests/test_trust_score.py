@@ -1,7 +1,8 @@
 """Unit tests for TrustScoreService sub-score formulas"""
 
-import pytest
 from datetime import datetime, timedelta
+
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -152,6 +153,47 @@ def test_production_none_harvested(session, seeded):
     session.flush()
     score = TrustScoreService._production_history(seeded.id, session)
     assert score == 0.0  # No harvests, no bonus
+
+
+def test_animal_production_uses_generic_completion_and_output(session, seeded):
+    incomplete = Production(
+        farmer_id=seeded.id,
+        production_kind="animal",
+        product_name="Eggs",
+        unit="crates",
+    )
+    production = Production(
+        farmer_id=seeded.id,
+        production_kind="animal",
+        product_name="Eggs",
+        unit="crates",
+        expected_quantity=40.0,
+        quantity=38.0,
+        production_date=datetime.utcnow(),
+    )
+    session.add_all([incomplete, production])
+    session.flush()
+
+    # 50% completion + 5 multi-record bonus + 5 output bonus.
+    # Without generic quantity handling this stays at 55.0.
+    assert TrustScoreService._production_history(seeded.id, session) == 60.0
+
+
+def test_mixed_production_counts_generic_and_legacy_records(session, seeded):
+    animal = Production(farmer_id=seeded.id, crop_type="Goats")
+    animal.production_kind = "animal"
+    animal.quantity = 8.0
+    animal.production_date = datetime.utcnow()
+    crop = Production(
+        farmer_id=seeded.id,
+        crop_type="Cassava",
+        quantity_kg=500.0,
+        harvest_date=datetime.utcnow(),
+    )
+    session.add_all([animal, crop])
+    session.flush()
+
+    assert TrustScoreService._production_history(seeded.id, session) == 100.0
 
 
 # ---------------------------------------------------------------------------

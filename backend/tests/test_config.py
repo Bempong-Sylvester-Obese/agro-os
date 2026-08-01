@@ -3,6 +3,27 @@ import pytest
 from app.config import Settings
 
 
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://agro-os-git-dev-sylvester-bempong.vercel.app",
+        "https://agro-reo64wx52-sylvester-bempong.vercel.app",
+    ],
+)
+def test_vercel_preview_origins_are_allowed(client, origin):
+    response = client.options(
+        "/auth/signup",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin
+
+
 def test_auth_disabled_allows_demo_defaults(monkeypatch):
     monkeypatch.delenv("SECRET_KEY", raising=False)
     monkeypatch.delenv("ADMIN_PASSWORD", raising=False)

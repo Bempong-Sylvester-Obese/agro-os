@@ -6,13 +6,17 @@ persists all outbound messages to CommunicationLog.
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
 from app.models.models import (
     CommunicationLog,
+    Loan,
+    LoanReminder,
     MessageType,
+    SettlementLine,
+    SettlementRun,
 )
 from app.models.models import (
     CooperativeMembership as Farmer,
@@ -38,18 +42,15 @@ class CommunicationsService:
         db: Session,
         sent_by: str | None = None,
     ) -> dict:
-        """
-        Send a dues payment reminder to a single farmer.
-        Template: "Dear {name}, your cooperative dues of GHS {amount} are due by {due_date}.
-                   Dial *203#{merchant_code}# to pay via mobile money. - AgroOS"
-        """
+        """Send a dues reminder with the configured AgroOS menu code."""
         from app.config import get_settings
+
         settings = get_settings()
-        merchant = settings.moolre_merchant_code or "AgroOS"
+        ussd_code = settings.agroos_ussd_code.strip() or "*919*4020#"
 
         message = (
             f"Dear {farmer.name}, your cooperative dues of GHS {amount:.2f} are due by {due_date}. "
-            f"Dial *203*{merchant}# to pay via mobile money. - AgroOS"
+            f"Dial {ussd_code} and choose Pay Dues. - AgroOS"
         )
 
         result = await self.moolre.send_single_sms(
@@ -103,6 +104,113 @@ class CommunicationsService:
         )
         return {"success": result["success"], "log_id": log.id}
 
+    async def send_loan_rejection(
+        self,
+        *,
+        loan: Loan,
+        farmer: Farmer,
+        reason: str,
+        db: Session,
+        sent_by: str | None = None,
+    ) -> dict:
+        """Tell a farmer why a loan request was rejected."""
+        message = (
+            f"AgroOS: Your loan request #{loan.id} for GHS {loan.amount:.2f} "
+            f"was not approved. Reason: {reason}"
+        )
+        result = await self.moolre.send_single_sms(
+            phone=farmer.phone,
+            message=message[:160],
+            ref=f"loan-rejected-{loan.id}",
+        )
+        log = self._log(
+            db=db,
+            message_type=MessageType.sms,
+            cooperative_id=farmer.cooperative_id,
+            recipients_count=1,
+            body=message[:160],
+            moolre_ref=result.get("raw", {}).get("data"),
+            sent_by=sent_by,
+            status="sent" if result["success"] else "failed",
+        )
+        return {
+            "success": result["success"],
+            "message": result.get("message", ""),
+            "log_id": log.id,
+        }
+
+    async def send_loan_repayment_reminder(
+        self,
+        *,
+        loan: Loan,
+        farmer: Farmer,
+        reminder_kind: str,
+        scheduled_for: date,
+        db: Session,
+        manual: bool = False,
+        sent_by: str | None = None,
+    ) -> LoanReminder:
+        """Send an idempotent reminder without initiating a payment."""
+        existing = (
+            db.query(LoanReminder)
+            .filter(
+                LoanReminder.loan_id == loan.id,
+                LoanReminder.reminder_kind == reminder_kind,
+                LoanReminder.scheduled_for == scheduled_for,
+            )
+            .first()
+        )
+        if existing and existing.status == "sent":
+            return existing
+        reminder = existing or LoanReminder(
+            loan_id=loan.id,
+            reminder_kind=reminder_kind,
+            scheduled_for=scheduled_for,
+            status="pending",
+            manual=manual,
+        )
+        if not existing:
+            db.add(reminder)
+            db.commit()
+            db.refresh(reminder)
+
+        from app.config import get_settings
+
+        ussd_code = get_settings().agroos_ussd_code.strip() or "*919*4020#"
+        due_date = (
+            loan.expected_repayment_date.strftime("%d %b %Y")
+            if loan.expected_repayment_date
+            else "the agreed date"
+        )
+        message = (
+            f"AgroOS: Loan #{loan.id} repayment of GHS {loan.amount:.2f} is due "
+            f"{due_date}. Dial {ussd_code} and choose Repay Loan. Never share your OTP."
+        )
+        reminder.attempts += 1
+        result = await self.moolre.send_single_sms(
+            phone=farmer.phone,
+            message=message,
+            ref=f"loan-reminder-{loan.id}-{scheduled_for.isoformat()}-{reminder_kind}",
+        )
+        reminder.status = "sent" if result["success"] else "failed"
+        reminder.sent_at = datetime.utcnow() if result["success"] else None
+        reminder.error = None if result["success"] else result.get("message")
+        provider_ref = result.get("raw", {}).get("data")
+        reminder.provider_reference = str(provider_ref) if provider_ref else None
+        self._log(
+            db=db,
+            message_type=MessageType.sms,
+            cooperative_id=farmer.cooperative_id,
+            recipients_count=1,
+            body=message,
+            moolre_ref=reminder.provider_reference,
+            sent_by=sent_by,
+            status=reminder.status,
+        )
+        db.commit()
+        db.refresh(reminder)
+        return reminder
+
     async def send_payment_action_required(
         self,
         farmer: Farmer,
@@ -114,10 +222,10 @@ class CommunicationsService:
         """Tell the payer how to resume an OTP-gated request on their phone."""
         from app.config import get_settings
 
-        merchant = get_settings().moolre_merchant_code or "AgroOS"
+        ussd_code = get_settings().agroos_ussd_code.strip() or "*919*4020#"
         message = (
             f"AgroOS: Complete your GHS {amount:.2f} payment on your phone. "
-            f"Dial *203*{merchant}# and choose Complete Pending Payment. "
+            f"Dial {ussd_code} and choose Complete Pending Payment. "
             "Never share your OTP with cooperative staff."
         )
         result = await self.moolre.send_single_sms(
@@ -136,6 +244,43 @@ class CommunicationsService:
             status="sent" if result["success"] else "failed",
         )
         return {"success": result["success"], "log_id": log.id}
+
+    async def send_settlement_statement(
+        self,
+        *,
+        settlement: SettlementRun,
+        line: SettlementLine,
+        db: Session,
+        sent_by: str | None = None,
+    ) -> dict:
+        """Send the immutable gross/deduction/net statement after payout."""
+        farmer = line.membership
+        message = (
+            f"AgroOS settlement #{settlement.id}: Gross GHS "
+            f"{line.gross_amount:.2f}, deductions GHS "
+            f"{line.deductions_total:.2f}, paid GHS {line.net_amount:.2f}. "
+            f"Ref: {line.payout_reference}"
+        )[:160]
+        result = await self.moolre.send_single_sms(
+            phone=farmer.phone,
+            message=message,
+            ref=f"settlement-statement-{line.id}",
+        )
+        log = self._log(
+            db=db,
+            message_type=MessageType.sms,
+            cooperative_id=settlement.cooperative_id,
+            recipients_count=1,
+            body=message,
+            moolre_ref=result.get("moolre_ref"),
+            sent_by=sent_by,
+            status="sent" if result["success"] else "failed",
+        )
+        return {
+            "success": result["success"],
+            "message": result.get("message", ""),
+            "log_id": log.id,
+        }
 
     async def broadcast_to_cooperative(
         self,
@@ -201,7 +346,7 @@ class CommunicationsService:
         from app.models.models import MembershipStatus
 
         settings = get_settings()
-        merchant = settings.moolre_merchant_code or "AgroOS"
+        ussd_code = settings.agroos_ussd_code.strip() or "*919*4020#"
 
         farmers = (
             db.query(Farmer)
@@ -219,7 +364,7 @@ class CommunicationsService:
                 "recipient": f.phone,
                 "message": (
                     f"Dear {f.name}, your cooperative dues of GHS {amount:.2f} are due by {due_date}. "
-                    f"Dial *203*{merchant}# to pay. - AgroOS"
+                    f"Dial {ussd_code} and choose Pay Dues. - AgroOS"
                 ),
                 "ref": str(uuid.uuid4()),
             }

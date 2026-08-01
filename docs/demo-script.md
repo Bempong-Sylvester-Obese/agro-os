@@ -16,6 +16,7 @@ Show how AgroOS helps a farmer cooperative collect dues, reconcile payments, imp
 ## Pre-Demo State
 
 - Abena is an active cooperative member.
+- Supporting records include an animal producer and a mixed crop/animal producer.
 - Her monthly dues are outstanding.
 - Her current Trust Score is below the preferred loan approval threshold.
 - The cooperative dashboard shows pending dues and pending input loan requests.
@@ -24,7 +25,7 @@ Show how AgroOS helps a farmer cooperative collect dues, reconcile payments, imp
 
 ### 1. Admin Sends Reminder
 
-The admin sends an SMS dues reminder to Abena and other farmers.
+The cooperative has created the dues obligation; the admin only sends Abena and other farmers an SMS reminder. Each farmer initiates their own payment.
 
 What to show:
 
@@ -44,6 +45,7 @@ Welcome to AgroOS (Kuapa Kokoo)
 3. Request Input Loan
 4. View Latest Announcements
 5. Complete Pending Payment
+6. Repay Loan
 Select option: 2
 ```
 
@@ -51,7 +53,7 @@ What to show:
 
 - USSD menu mock or event log.
 - Farmer selects dues payment.
-- Payment is initiated through Moolre.
+- The farmer—not dashboard staff—initiates payment through Moolre.
 - If Moolre requests OTP verification, the farmer completes it in the same
   phone channel; the dashboard never displays an OTP field.
 
@@ -94,7 +96,7 @@ What to show:
 
 - Farmer profile.
 - USSD-originated loan request details.
-- Approval action.
+- Approval action with the agreed repayment due date.
 
 ### 6. Moolre Disburses Loan
 
@@ -106,9 +108,36 @@ What to show:
 - Recipient, amount, and status.
 - Final successful payout confirmation.
 
+### 7. AgroOS Reminds; Farmer Repays
+
+AgroOS sends due-date reminders without creating a debit. Abena dials the
+AgroOS code, chooses **Repay Loan**, and authorizes the Moolre payment on her
+own phone. Staff monitor and reconcile the result from the dashboard.
+
+### 8. Cooperative Sells Produce and Pays Farmers
+
+Record deliveries from two farmers, including accepted weight and grade, then
+place them in one aggregation batch. Record the buyer sale and buyer-payment
+reference. A second authorized officer verifies that funds were received.
+
+State the product boundary clearly: production tracking and scoring cover crop,
+animal, and mixed members, while this commerce demonstration remains crop-only.
+
+Preview the settlement before approval:
+
+- accepted kilograms and gross entitlement for each farmer;
+- cooperative fee, transport or quality adjustments, and any optional loan
+  recovery;
+- each farmer's final net payable;
+- control totals proving sale proceeds reconcile to deductions and payouts.
+
+Approve the settlement and execute the Moolre payout batch. Show that a failed
+farmer transfer can be retried while successful transfers remain protected
+from duplicate payment.
+
 ## Closing Message
 
-AgroOS is not just a payment app. It is cooperative infrastructure: member records, payment collection, USSD access, SMS communication, production tracking, and credit scoring working together for farmers who are often excluded from formal financial systems.
+AgroOS is not just a payment app. It is cooperative infrastructure: member records, payment collection, USSD access, SMS communication, unified crop and animal production tracking, and credit scoring working together for producers who are often excluded from formal financial systems.
 
 ## Demo Fallbacks
 
@@ -144,7 +173,7 @@ Set `VITE_API_URL=http://localhost:8000` in `frontend/.env` for local wiring.
 | Step | Tab | Action | Judge one-liner |
 |------|-----|--------|-----------------|
 | 1 | SMS broadcasts | Send dues reminder to cooperative | "AgroOS nudges farmers to pay through familiar SMS channels." |
-| 2 | USSD activity | Show menu log or describe *203* flow | "Farmers without smartphones reach the cooperative through USSD." |
+| 2 | USSD activity | Show menu log or dial *919*4020# | "Farmers without smartphones reach the cooperative through USSD." |
 | 3 | USSD activity | Complete a live Moolre payment and refresh | "Moolre confirms payment and AgroOS updates records instantly." |
 | 4 | Overview / Scores | Explain the API-backed Trust Score and dashboard Agro-AI score | "Every payment builds alternative credit data for farmers." |
 | 5 | Loans | Approve Abena's input loan | "Cooperative admins review farmer-originated requests before funds move." |

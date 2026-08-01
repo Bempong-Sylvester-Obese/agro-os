@@ -56,7 +56,8 @@ describe('marketing refresh', () => {
     expect(menu.textContent).toContain('3. Request Loan')
     expect(menu.textContent).toContain('4. Announcements')
     expect(menu.textContent).toContain('5. Complete Pending Payment')
-    expect(menu.textContent).toContain('Reply 1–5')
+    expect(menu.textContent).toContain('6. Repay Loan')
+    expect(menu.textContent).toContain('Reply 1–6')
     expect(menu.textContent).not.toContain('*920#')
 
     fireEvent.click(screen.getByRole('button', { name: /Discuss enterprise rollout/i }))

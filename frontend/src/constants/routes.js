@@ -8,6 +8,11 @@ export const DASHBOARD_SECTIONS = [
   'payments',
   'loans',
   'production',
+  'intake',
+  'aggregation',
+  'buyers',
+  'sales',
+  'settlements',
   'scores',
   'sms',
   'ussd',
@@ -22,6 +27,7 @@ export const MARKETING_PATHS = {
   pricing: '/pricing',
   bookDemo: '/book-demo',
   compliance: '/compliance',
+  investors: '/investors',
 }
 
 export function dashboardPath(section = 'overview') {

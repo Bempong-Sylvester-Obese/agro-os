@@ -49,7 +49,8 @@ class Settings(BaseSettings):
     moolre_merchant_code: str = ""
     moolre_webhook_secret: str = ""
 
-    # USSDK hook verification
+    # Farmer-facing AgroOS USSD menu and USSDK hook verification
+    agroos_ussd_code: str = "*919*4020#"
     ussdk_hook_secret: str = ""
 
     # Cooperative defaults
