@@ -40,10 +40,19 @@ export function getAuthInfo() {
       cooperative_id: payload.cooperative_id ?? null,
       user_id: payload.user_id ?? null,
       email: payload.sub ?? null,
+      organization_type: payload.organization_type ?? null,
     }
   } catch {
     return { cooperative_id: null, email: null, user_id: null }
   }
+}
+
+/** Resolve the stored organization type from JWT or stored user. */
+export function getOrganizationType(user = null) {
+  const fromAuthInfo = getAuthInfo().organization_type
+  if (fromAuthInfo) return fromAuthInfo
+  if (user?.organization_type) return user.organization_type
+  return 'cooperative'
 }
 
 /** Returns 1–2 uppercase initials from an email address. */

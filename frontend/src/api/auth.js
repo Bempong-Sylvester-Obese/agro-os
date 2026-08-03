@@ -125,6 +125,7 @@ export function userFromSignupResponse(data, email) {
     role: data.user?.role || 'admin',
     cooperative_id: data.cooperative_id ?? data.user?.cooperative_id ?? null,
     cooperative: cooperativeName,
+    organization_type: data.organization_type || 'cooperative',
   }
 }
 
@@ -224,6 +225,7 @@ export function userFromAuthToken(token) {
       role: 'admin',
       cooperative_id: payload.cooperative_id ?? null,
       cooperative: 'Kuapa Kokoo Demo Cooperative',
+      organization_type: payload.organization_type || 'cooperative',
     }
   } catch {
     return null

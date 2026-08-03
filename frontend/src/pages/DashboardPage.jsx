@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
-import { resolveCooperativeId } from '../utils/auth'
+import { getOrganizationType, resolveCooperativeId } from '../utils/auth'
 import { formatTransportError } from '../api/config'
 import { DASHBOARD_SECTIONS, dashboardPath } from '../constants/routes'
 import { fetchFarmers } from '../api/farmers'
@@ -168,7 +168,7 @@ export default function DashboardPage({ user, onLogout }) {
   const [resourceErrors, setResourceErrors] = useState({})
   const [lastUpdated, setLastUpdated] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
-  const [organizationType, setOrganizationType] = useState('cooperative')
+  const [organizationType, setOrganizationType] = useState(() => getOrganizationType(user))
   const reduceMotion = useReducedMotion()
 
   const loadAll = async () => {
