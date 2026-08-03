@@ -21,26 +21,33 @@ from app.routes import (
     admin,
     aggregation,
     agro_ai,
+    attendance,
     auth,
     buyers,
     communications,
     cooperatives,
     farmers,
+    farm_production,
     intake,
     loans,
     marketing,
+    payroll,
     production,
     reports,
     sales,
     settlements,
     subscriptions,
+    tasks,
     transactions,
     ussd,
     ussdk_hooks,
     webhooks,
     workers,
+    worker_ussd,
 )
 from app.models import worker  # noqa: F401
+from app.models import farm_production as farm_production_model  # noqa: F401
+from app.models import wage_payout  # noqa: F401
 from app.services.auth_service import decode_access_token
 
 logging.basicConfig(level=logging.INFO)
@@ -66,6 +73,7 @@ _PUBLIC_PATHS = frozenset({
     "/ussdk/pending-payment",
     "/ussdk/wallet-balance",
     "/ussdk/announcements",
+    "/ussd/worker/menu",
     "/docs",
     "/redoc",
     "/openapi.json",
@@ -195,6 +203,11 @@ app.include_router(webhooks.router)
 app.include_router(ussd.router)
 app.include_router(ussdk_hooks.router)
 app.include_router(workers.router)
+app.include_router(worker_ussd.router)
+app.include_router(tasks.router)
+app.include_router(attendance.router)
+app.include_router(farm_production.router)
+app.include_router(payroll.router)
 app.include_router(agro_ai.router)
 
 @app.get("/", tags=["health"])

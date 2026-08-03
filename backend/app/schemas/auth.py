@@ -32,6 +32,7 @@ class Token(BaseModel):
     access_token: str
     token_type: str
     user: UserResponse | None = None
+    organization_type: str | None = None
 
 class SignupRequest(BaseModel):
     """Combined cooperative + user registration in one step."""
@@ -40,7 +41,7 @@ class SignupRequest(BaseModel):
     cooperative_name: str
     location: Optional[str] = None
     member_count: Optional[int] = None  # stored as cooperative description hint
-    subscription_plan: Literal["starter", "growth"] = "starter"
+    subscription_plan: Literal["starter", "growth", "solo"] = "starter"
     organization_type: Literal["cooperative", "solo_farm"] = "cooperative"
     onboarding_role: str | None = Field(default=None, max_length=80)
 
@@ -49,6 +50,6 @@ class SignupResponse(BaseModel):
     token_type: str
     cooperative_id: int
     cooperative_name: str
-    subscription_plan: Literal["starter", "growth"]
+    subscription_plan: Literal["starter", "growth", "solo"]
     organization_type: str = "cooperative"
     onboarding_role: str | None = None

@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
-import { resolveCooperativeId } from '../utils/auth'
+import { getOrganizationType, resolveCooperativeId } from '../utils/auth'
 import { formatTransportError } from '../api/config'
 import { DASHBOARD_SECTIONS, dashboardPath } from '../constants/routes'
 import { fetchFarmers } from '../api/farmers'
@@ -18,9 +18,14 @@ import Scores   from '../components/dashboard/Scores'
 import SMS      from '../components/dashboard/SMS'
 import Loans    from '../components/dashboard/Loans'
 import Production from '../components/dashboard/Production'
+import FarmProduction from '../components/dashboard/FarmProduction'
 import SettingsView from '../components/dashboard/Settings'
 import USSD from '../components/dashboard/USSD'
 import Activity from '../components/dashboard/Activity'
+import Workers from '../components/dashboard/Workers'
+import Tasks from '../components/dashboard/Tasks'
+import Attendance from '../components/dashboard/Attendance'
+import Payroll from '../components/dashboard/Payroll'
 import Intake from '../components/dashboard/Intake'
 import Aggregation from '../components/dashboard/Aggregation'
 import Buyers from '../components/dashboard/Buyers'
@@ -38,6 +43,9 @@ function getNavGroups(organizationType) {
         items: [
           { key: 'overview', icon: <BarChart3 size={18} />, label: 'Overview' },
           { key: 'workers', icon: <Users size={18} />, label: 'Workers' },
+          { key: 'tasks', icon: <ClipboardList size={18} />, label: 'Tasks' },
+          { key: 'attendance', icon: <Users size={18} />, label: 'Attendance' },
+          { key: 'payroll', icon: <CreditCard size={18} />, label: 'Payroll' },
           { key: 'production', icon: <Tractor size={18} />, label: 'Production' },
         ],
       },
@@ -104,6 +112,9 @@ const TITLES = {
   overview: 'Overview',
   members:  'Members',
   workers:  'Workers',
+  tasks:    'Tasks',
+  attendance: 'Attendance',
+  payroll: 'Payroll',
   payments: 'Payments',
   loans:    'Loans',
   production: 'Production',
@@ -157,7 +168,7 @@ export default function DashboardPage({ user, onLogout }) {
   const [resourceErrors, setResourceErrors] = useState({})
   const [lastUpdated, setLastUpdated] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
-  const [organizationType, setOrganizationType] = useState('cooperative')
+  const [organizationType, setOrganizationType] = useState(() => getOrganizationType(user))
   const reduceMotion = useReducedMotion()
 
   const loadAll = async () => {
@@ -430,6 +441,15 @@ export default function DashboardPage({ user, onLogout }) {
           {section === 'workers' && (
             <Workers cooperativeId={cooperativeId} />
           )}
+          {section === 'tasks' && (
+            <Tasks cooperativeId={cooperativeId} />
+          )}
+          {section === 'attendance' && (
+            <Attendance cooperativeId={cooperativeId} />
+          )}
+          {section === 'payroll' && (
+            <Payroll cooperativeId={cooperativeId} />
+          )}
           {section === 'payments' && (
             <Payments
               farmers={farmers}
@@ -459,7 +479,10 @@ export default function DashboardPage({ user, onLogout }) {
               dataStale={hasStaleSectionData}
             />
           )}
-          {section === 'production' && (
+          {section === 'production' && organizationType === 'solo_farm' && (
+            <FarmProduction cooperativeId={cooperativeId} />
+          )}
+          {section === 'production' && organizationType !== 'solo_farm' && (
             <Production
               farmers={farmers}
               productions={productions}

@@ -1,0 +1,108 @@
+"""add work_tasks, worker_assignments, worker_attendance tables
+
+Revision ID: 007_phase1
+Revises: 007_organization_type
+"""
+
+from typing import Sequence, Union
+
+from alembic import op
+import sqlalchemy as sa
+
+revision: str = "007_phase1"
+down_revision: Union[str, None] = "007_organization_type"
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    table_names = inspector.get_table_names()
+
+    if "work_tasks" not in table_names:
+        op.create_table(
+            "work_tasks",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("cooperative_id", sa.Integer(), sa.ForeignKey("cooperatives.id"), nullable=False, index=True),
+            sa.Column("title", sa.String(), nullable=False),
+            sa.Column("description", sa.Text(), nullable=True),
+            sa.Column("task_type", sa.String(), nullable=False),
+            sa.Column("location", sa.String(), nullable=True),
+            sa.Column("scheduled_date", sa.Date(), nullable=False),
+            sa.Column("assigned_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
+            sa.Column("status", sa.String(), server_default="open"),
+            sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
+        )
+
+    if "worker_assignments" not in table_names:
+        op.create_table(
+            "worker_assignments",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("work_task_id", sa.Integer(), sa.ForeignKey("work_tasks.id"), nullable=False, index=True),
+            sa.Column("worker_id", sa.Integer(), sa.ForeignKey("workers.id"), nullable=False, index=True),
+            sa.Column("assigned_at", sa.DateTime(), server_default=sa.func.now()),
+        )
+
+    if "worker_attendance" not in table_names:
+        op.create_table(
+            "worker_attendance",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("worker_id", sa.Integer(), sa.ForeignKey("workers.id"), nullable=False, index=True),
+            sa.Column("work_task_id", sa.Integer(), sa.ForeignKey("work_tasks.id"), nullable=True, index=True),
+            sa.Column("cooperative_id", sa.Integer(), sa.ForeignKey("cooperatives.id"), nullable=False, index=True),
+            sa.Column("date", sa.Date(), nullable=False),
+            sa.Column("hours_worked", sa.Float(), nullable=True),
+            sa.Column("shift", sa.String(), nullable=False),
+            sa.Column("logged_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
+            sa.Column("notes", sa.Text(), nullable=True),
+            sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
+        )
+
+    if "wage_payouts" not in table_names:
+        op.create_table(
+            "wage_payouts",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("cooperative_id", sa.Integer(), sa.ForeignKey("cooperatives.id"), nullable=False, index=True),
+            sa.Column("worker_id", sa.Integer(), sa.ForeignKey("workers.id"), nullable=False, index=True),
+            sa.Column("period_start", sa.Date(), nullable=False),
+            sa.Column("period_end", sa.Date(), nullable=False),
+            sa.Column("total_hours", sa.Float(), server_default="0.0"),
+            sa.Column("total_shifts", sa.Integer(), server_default="0"),
+            sa.Column("wage_rate", sa.Float(), nullable=False),
+            sa.Column("gross_amount", sa.Float(), nullable=False),
+            sa.Column("status", sa.String(), server_default="pending"),
+            sa.Column("approved_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
+            sa.Column("approved_at", sa.DateTime(), nullable=True),
+            sa.Column("paid_at", sa.DateTime(), nullable=True),
+            sa.Column("moolre_reference", sa.String(), nullable=True),
+            sa.Column("failure_reason", sa.Text(), nullable=True),
+            sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
+        )
+
+    if "farm_productions" not in table_names:
+        op.create_table(
+            "farm_productions",
+            sa.Column("id", sa.Integer(), primary_key=True),
+            sa.Column("cooperative_id", sa.Integer(), sa.ForeignKey("cooperatives.id"), nullable=False, index=True),
+            sa.Column("crop_type", sa.String(), nullable=False),
+            sa.Column("season", sa.String(), nullable=False),
+            sa.Column("location", sa.String(), nullable=True),
+            sa.Column("planted_date", sa.Date(), nullable=False),
+            sa.Column("expected_harvest_date", sa.Date(), nullable=True),
+            sa.Column("actual_harvest_date", sa.Date(), nullable=True),
+            sa.Column("expected_quantity_kg", sa.Float(), nullable=False),
+            sa.Column("actual_quantity_kg", sa.Float(), nullable=True),
+            sa.Column("quality_grade", sa.String(), nullable=True),
+            sa.Column("notes", sa.Text(), nullable=True),
+            sa.Column("logged_by", sa.Integer(), sa.ForeignKey("users.id"), nullable=True),
+            sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
+        )
+
+
+def downgrade() -> None:
+    op.drop_table("wage_payouts")
+    op.drop_table("farm_productions")
+    op.drop_table("worker_attendance")
+    op.drop_table("worker_assignments")
+    op.drop_table("work_tasks")

@@ -15,6 +15,16 @@ const PLANS = [
     cta: 'Create free workspace',
   },
   {
+    key: 'solo',
+    name: 'Solo Farm',
+    eyebrow: 'For independent farmers',
+    price: 'GHS 99',
+    cadence: 'per farm / month',
+    description: 'Manage farm workers, track tasks and attendance, run payroll.',
+    features: ['Up to 20 workers', 'Task management', 'Attendance tracking', 'Wage payroll', '200 SMS messages per month', 'Worker USSD access'],
+    cta: 'Start Solo Farm onboarding',
+  },
+  {
     key: 'growth',
     name: 'Growth',
     eyebrow: 'For operating cooperatives',
