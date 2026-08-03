@@ -69,7 +69,7 @@ markupsafe==3.0.3
     # via mako
 narwhals==2.22.1
     # via scikit-learn
-numpy==2.4.6
+numpy==2.5.1
     # via
     #   scikit-learn
     #   scipy
