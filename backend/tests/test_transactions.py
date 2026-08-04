@@ -151,6 +151,7 @@ def test_update_transaction_status_hidden_in_production(client, transaction, dem
     monkeypatch.setenv("AUTH_ENABLED", "true")
     monkeypatch.setenv("SECRET_KEY", "strong-production-test-secret-key")
     monkeypatch.setenv("ADMIN_PASSWORD", "strong-production-test-password")
+    monkeypatch.setenv("MOOLRE_WEBHOOK_SECRET", "test-secret")
     from app.config import get_settings
     from app.services.auth_service import create_access_token
 
