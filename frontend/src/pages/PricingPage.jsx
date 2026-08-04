@@ -11,7 +11,7 @@ const PLANS = [
     price: 'Free',
     cadence: 'No card required',
     description: 'Establish a reliable digital member register and start collecting dues.',
-    features: ['Up to 50 members', 'MoMo payment collection', 'Member and dues dashboard', '100 SMS messages per month', 'Email support'],
+    features: ['Up to 10 members', 'MoMo payment collection', 'Member and dues dashboard', '100 SMS messages per month', 'Email support'],
     cta: 'Create free workspace',
   },
   {
@@ -49,7 +49,7 @@ const PLANS = [
 ]
 
 const COMPARISON = [
-  ['Member / worker capacity', '50 members', '20 workers', '500 members', 'Custom'],
+  ['Member / worker capacity', '10 members', '20 workers', '500 members', 'Custom'],
   ['MoMo collections', 'Included', '—', 'Included', 'Included'],
   ['Worker payroll', '—', 'Included', '—', 'Included'],
   ['AgroCredit scoring', '—', '—', 'Included', 'Included'],
