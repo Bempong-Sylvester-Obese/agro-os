@@ -89,7 +89,7 @@ def test_disburse_payroll_uses_stable_external_ref(auth_client, test_cooperative
     payout_id = approved[0]["id"]
     seen_refs = []
 
-    async def fake_transfer(*, receiver_phone, amount, reference, external_ref=None, **kwargs):
+    async def fake_transfer(self, *, receiver_phone, amount, reference, external_ref=None, **kwargs):
         seen_refs.append(external_ref)
         return {
             "success": True,
@@ -99,7 +99,7 @@ def test_disburse_payroll_uses_stable_external_ref(auth_client, test_cooperative
             "raw": {},
         }
 
-    async def fake_sms(*args, **kwargs):
+    async def fake_sms(self, *args, **kwargs):
         return {"success": True}
 
     monkeypatch.setattr(
