@@ -117,6 +117,9 @@ def preview_demo_reset(
     db: Session = Depends(get_db),
     current_user: User | None = Depends(require_roles("admin")),
 ):
+    settings = get_settings()
+    if settings.app_env in ("production", "prod"):
+        raise HTTPException(status_code=404, detail="Not available in production")
     if current_user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     cooperative = _demo_cooperative(current_user, db)
@@ -169,6 +172,9 @@ def confirm_demo_reset(
     db: Session = Depends(get_db),
     current_user: User | None = Depends(require_roles("admin")),
 ):
+    settings = get_settings()
+    if settings.app_env in ("production", "prod"):
+        raise HTTPException(status_code=404, detail="Not available in production")
     if current_user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
     cooperative = _demo_cooperative(current_user, db)

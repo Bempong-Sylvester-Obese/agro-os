@@ -12,6 +12,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    JSON,
     Numeric,
     String,
     Text,
@@ -604,6 +605,7 @@ class UssdSession(Base):
         ForeignKey("cooperative_memberships.id"),
         nullable=True,
     )
+    session_state = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
