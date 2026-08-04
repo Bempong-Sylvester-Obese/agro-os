@@ -4,6 +4,13 @@ Moolre Webhook Routes
 Handles:
   - POST /webhooks/moolre/payment  — real-time payment confirmation
   - POST /webhooks/moolre/ussd     — USSD session menu handler
+
+Domain logic note (M2 decoupling): _process_payment_payload currently does
+payment processing inline. The domain model lives in app.domain.payment_event
+and the extracted service scaffolding in app.services.payment_service.
+In a future milestone the webhook handler should normalize the raw Moolre
+payload into a PaymentEvent and delegate to process_payment_event() so that
+new payment providers can reuse the same domain logic.
 """
 
 import hashlib
