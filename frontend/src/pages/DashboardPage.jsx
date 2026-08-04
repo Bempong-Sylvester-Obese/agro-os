@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
-import { getOrganizationType, resolveCooperativeId } from '../utils/auth'
+import { getOrganizationType, getUserRole, resolveCooperativeId } from '../utils/auth'
 import { formatTransportError } from '../api/config'
 import { DASHBOARD_SECTIONS, dashboardPath } from '../constants/routes'
 import { fetchFarmers } from '../api/farmers'
@@ -169,6 +169,7 @@ export default function DashboardPage({ user, onLogout }) {
   const [lastUpdated, setLastUpdated] = useState(null)
   const [refreshing, setRefreshing] = useState(false)
   const [organizationType, setOrganizationType] = useState(() => getOrganizationType(user))
+  const [userRole, setUserRole] = useState(() => getUserRole())
   const reduceMotion = useReducedMotion()
 
   const loadAll = async () => {
@@ -204,6 +205,8 @@ export default function DashboardPage({ user, onLogout }) {
         if (resolvedCoop?.organization_type) {
           setOrganizationType(resolvedCoop.organization_type)
         }
+        const role = getUserRole()
+        if (role) setUserRole(role)
       } catch (error) {
         errors.cooperative = formatTransportError(error)
       }
@@ -295,7 +298,24 @@ export default function DashboardPage({ user, onLogout }) {
   }
 
   const navGroups = getNavGroups(organizationType)
-  const NAV_ITEMS = navGroups.flatMap((group) => group.items)
+  const filteredNavGroups = organizationType === 'solo_farm' && userRole === 'supervisor'
+    ? [
+        {
+          label: 'Operations',
+          items: [
+            { key: 'overview', icon: <BarChart3 size={18} />, label: 'Overview' },
+            { key: 'attendance', icon: <Users size={18} />, label: 'Attendance' },
+          ],
+        },
+        {
+          label: 'Governance',
+          items: [
+            { key: 'activity', icon: <ClipboardList size={18} />, label: 'Activity log' },
+          ],
+        },
+      ]
+    : navGroups
+  const NAV_ITEMS = filteredNavGroups.flatMap((group) => group.items)
 
   if (urlSection && !DASHBOARD_SECTIONS.includes(urlSection)) {
     return <Navigate to={dashboardPath('overview')} replace />
@@ -305,6 +325,12 @@ export default function DashboardPage({ user, onLogout }) {
   }
   if (organizationType !== 'solo_farm' && section === 'workers') {
     return <Navigate to={dashboardPath('members')} replace />
+  }
+  if (organizationType === 'solo_farm' && userRole === 'supervisor') {
+    const supervisorSections = ['overview', 'attendance', 'activity', 'settings']
+    if (!supervisorSections.includes(section)) {
+      return <Navigate to={dashboardPath('attendance')} replace />
+    }
   }
 
   return (
@@ -334,7 +360,7 @@ export default function DashboardPage({ user, onLogout }) {
         </label>
 
         <nav className="admin-nav" aria-label="Dashboard sections">
-          {navGroups.map((group) => (
+          {filteredNavGroups.map((group) => (
             <div className="admin-nav-group" key={group.label}>
               <div className="admin-nav-lbl">{group.label}</div>
               {group.items.map(({ key, icon, label }) => (
