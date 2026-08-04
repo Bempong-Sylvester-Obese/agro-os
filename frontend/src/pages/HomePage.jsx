@@ -1,7 +1,6 @@
 // src/pages/HomePage.jsx
 import React from 'react'
 import Footer from '../components/Footer'
-import DashboardMock from '../components/DashboardMock'
 import CTASection from '../components/CTASection'
 import { Reveal } from '../components/Motion'
 import { useAppNavigate } from '../hooks/useAppNavigate'
@@ -125,7 +124,7 @@ export default function HomePage({ user }) {
             )}
           </Reveal>
           <Reveal delay={0.08} id="product-preview">
-            <DashboardMock />
+
           </Reveal>
         </div>
       </section>
