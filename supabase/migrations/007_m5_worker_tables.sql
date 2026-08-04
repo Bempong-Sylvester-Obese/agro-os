@@ -1,3 +1,6 @@
+-- ⚠️ REFERENCE ONLY — actual schema is managed by Alembic (backend/alembic/versions/).
+-- Do NOT apply this SQL directly. Use `alembic upgrade head` instead.
+--
 -- M5 Solo Farm / Worker Platform tables
 -- Mirrors Alembic migrations 007_organization_type.py and 007_phase1.py
 

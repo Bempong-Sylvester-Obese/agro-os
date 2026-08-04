@@ -13,6 +13,7 @@ router = APIRouter(prefix="/ussd", tags=["ussd"])
 
 @router.post("/callback")
 async def ussd_callback(
+    request: Request,
     sessionId: str = Form(...),
     serviceCode: str = Form(...),
     phoneNumber: str = Form(...),
@@ -23,6 +24,13 @@ async def ussd_callback(
     Native USSD Gateway Router using Africa's Talking format.
     State is managed by the `text` string which contains inputs separated by '*'.
     """
+    from app.config import get_settings
+    settings = get_settings()
+    if settings.ussd_callback_secret:
+        secret = request.query_params.get("secret", "")
+        if secret != settings.ussd_callback_secret:
+            return Response(content="END Invalid request", media_type="text/plain")
+
     inputs = text.split("*") if text else []
     
     # 1. Resolve phone membership
