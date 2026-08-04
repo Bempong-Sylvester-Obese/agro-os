@@ -15,6 +15,16 @@ const PLANS = [
     cta: 'Create free workspace',
   },
   {
+    key: 'solo',
+    name: 'Solo Farm',
+    eyebrow: 'For independent farmers',
+    price: 'GHS 99',
+    cadence: 'per farm / month',
+    description: 'Manage farm workers, track tasks and attendance, run payroll.',
+    features: ['Up to 20 workers', 'Task management', 'Attendance tracking', 'Wage payroll', '200 SMS messages per month', 'Worker USSD access'],
+    cta: 'Start Solo Farm onboarding',
+  },
+  {
     key: 'growth',
     name: 'Growth',
     eyebrow: 'For operating cooperatives',
@@ -39,12 +49,13 @@ const PLANS = [
 ]
 
 const COMPARISON = [
-  ['Member capacity', '50', '500', 'Custom'],
-  ['MoMo collections', 'Included', 'Included', 'Included'],
-  ['AgroCredit scoring', '—', 'Included', 'Included'],
-  ['USSD access', '—', 'Included', 'Custom'],
-  ['API and integrations', '—', '—', 'Included'],
-  ['Support', 'Email', 'Priority', 'Dedicated team'],
+  ['Member / worker capacity', '50 members', '20 workers', '500 members', 'Custom'],
+  ['MoMo collections', 'Included', '—', 'Included', 'Included'],
+  ['Worker payroll', '—', 'Included', '—', 'Included'],
+  ['AgroCredit scoring', '—', '—', 'Included', 'Included'],
+  ['USSD access', '—', 'Worker portal', 'Included', 'Custom'],
+  ['API and integrations', '—', '—', '—', 'Included'],
+  ['Support', 'Email', 'Email', 'Priority', 'Dedicated team'],
 ]
 
 export default function PricingPage() {
@@ -135,15 +146,17 @@ export default function PricingPage() {
                   <tr>
                     <th>Capability</th>
                     <th>Starter</th>
+                    <th>Solo Farm</th>
                     <th>Growth</th>
                     <th>Enterprise</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {COMPARISON.map(([capability, starter, growth, enterprise]) => (
+                  {COMPARISON.map(([capability, starter, solo, growth, enterprise]) => (
                     <tr key={capability}>
                       <th>{capability}</th>
                       <td>{starter}</td>
+                      <td>{solo}</td>
                       <td>{growth}</td>
                       <td>{enterprise}</td>
                     </tr>
@@ -161,7 +174,11 @@ export default function PricingPage() {
               <h2 className="serif">Planning a multi-cooperative rollout?</h2>
               <p>Discuss migration, security review, API access, service levels, and programme governance with our team.</p>
             </div>
-            <button type="button" className="btn-gold" onClick={() => choosePlan(PLANS[2])}>
+            <button
+              type="button"
+              className="btn-gold"
+              onClick={() => choosePlan(PLANS.find((plan) => plan.key === 'enterprise'))}
+            >
               Start an enterprise conversation <ArrowRight size={16} />
             </button>
             <div className="pricing-enterprise-assurance"><ShieldCheck size={16} /> No generic signup. Your requirements are reviewed first.</div>

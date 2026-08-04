@@ -1,0 +1,173 @@
+﻿# Review: b743677..d5698df
+
+## Commits
+d5698df feat: add organization_type selector to signup flow
+
+## Files changed
+ frontend/src/api/auth.js        |  4 ++++
+ frontend/src/pages/AuthPage.jsx | 29 +++++++++++++++++++++++++++++
+ 2 files changed, 33 insertions(+)
+
+## Diff
+diff --git a/frontend/src/api/auth.js b/frontend/src/api/auth.js
+index 055d17a..ea62554 100644
+--- a/frontend/src/api/auth.js
++++ b/frontend/src/api/auth.js
+@@ -58,57 +58,61 @@ async function authFetch(path, body, { retries = 2 } = {}) {
+ }
+ 
+ export async function signupAdmin({
+   email,
+   password,
+   cooperative_name,
+   location,
+   member_count,
+   subscription_plan,
+   onboarding_role,
++  organization_type,
+ }) {
+   return authFetch('/auth/signup', {
+     email,
+     password,
+     cooperative_name,
+     location: location || null,
+     member_count: member_count ?? null,
+     subscription_plan: subscription_plan || 'starter',
+     onboarding_role: onboarding_role || null,
++    organization_type: organization_type || 'cooperative',
+   }, { retries: 0 })
+ }
+ 
+ export async function loginAdmin(email, password) {
+   return authFetch('/auth/login', { email, password })
+ }
+ 
+ export async function login(email, password) {
+   return loginAdmin(email, password)
+ }
+ 
+ export async function signup({
+   email,
+   password,
+   cooperativeName,
+   location,
+   memberCount,
+   subscriptionPlan,
+   onboardingRole,
++  organizationType,
+ }) {
+   const data = await signupAdmin({
+     email,
+     password,
+     cooperative_name: cooperativeName,
+     location,
+     member_count: memberCount ? parseInt(memberCount, 10) : null,
+     subscription_plan: subscriptionPlan,
+     onboarding_role: onboardingRole,
++    organization_type: organizationType || 'cooperative',
+   })
+   return {
+     ...data,
+     user: userFromSignupResponse(data, email),
+   }
+ }
+ 
+ export function userFromSignupResponse(data, email) {
+   const cooperativeName = data.cooperative_name || 'My Cooperative'
+   const resolvedEmail = data.user?.email || email?.trim() || ''
+diff --git a/frontend/src/pages/AuthPage.jsx b/frontend/src/pages/AuthPage.jsx
+index bc34c91..cc238ea 100644
+--- a/frontend/src/pages/AuthPage.jsx
++++ b/frontend/src/pages/AuthPage.jsx
+@@ -139,20 +139,21 @@ export default function AuthPage({ onAuth }) {
+   const [showPw, setShowPw] = useState(false)
+ 
+   // Signup-specific fields
+   const [cooperativeName, setCooperativeName] = useState('')
+   const [location, setLocation] = useState('')
+   const [memberCount, setMemberCount] = useState(null)
+   const [signupEmail, setSignupEmail] = useState('')
+   const [signupPassword, setSignupPassword] = useState('')
+   const [showSignupPw, setShowSignupPw] = useState(false)
+   const [subscriptionIntent, setSubscriptionIntent] = useState(null)
++  const [organizationType, setOrganizationType] = useState('cooperative')
+ 
+   const [error, setError] = useState(null)
+   const [loading, setLoading] = useState(false)
+   const [success, setSuccess] = useState(false)
+   const [backendWarming, setBackendWarming] = useState(false)
+ 
+   useEffect(() => {
+     let mounted = true
+     setBackendWarming(true)
+     warmAuthBackend().finally(() => {
+@@ -231,20 +232,21 @@ export default function AuthPage({ onAuth }) {
+     setLoading(true)
+     try {
+       const data = await signup({
+         email: signupEmail,
+         password: signupPassword,
+         cooperativeName,
+         location: location || undefined,
+         memberCount: memberCount || undefined,
+         subscriptionPlan: subscriptionIntent?.plan || 'starter',
+         onboardingRole: subscriptionIntent?.role || 'Cooperative administrator',
++        organizationType,
+       })
+       storeAuthToken(data.access_token)
+       if (subscriptionIntent) window.sessionStorage.removeItem('agroos-subscription-intent')
+       setSuccess(true)
+       setTimeout(() => {
+         completeAuth(data, userFromSignupResponse(data, signupEmail.trim()))
+       }, 1200)
+     } catch (err) {
+       setError(err.message)
+     } finally {
+@@ -486,20 +488,47 @@ export default function AuthPage({ onAuth }) {
+ 
+               <form onSubmit={handleNextStep}>
+                 <Field
+                   label="Cooperative / farm name *"
+                   icon={Building2}
+                   value={cooperativeName}
+                   onChange={e => setCooperativeName(e.target.value)}
+                   placeholder="e.g. Tamale Farmers Union"
+                   required
+                 />
++                <div className="form-group">
++                  <label htmlFor="org-type">Organization type</label>
++                  <div style={{ position: 'relative' }}>
++                    <Building2 size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }} />
++                    <select
++                      id="org-type"
++                      className="auth-input"
++                      value={organizationType}
++                      onChange={e => setOrganizationType(e.target.value)}
++                      style={{
++                        width: '100%',
++                        padding: '11px 12px 11px 38px',
++                        border: '1.5px solid var(--border)',
++                        borderRadius: 8,
++                        fontSize: 14,
++                        fontFamily: "'DM Sans', sans-serif",
++                        background: '#fff',
++                        color: 'var(--text)',
++                        outline: 'none',
++                        appearance: 'auto',
++                      }}
++                    >
++                      <option value="cooperative">Cooperative</option>
++                      <option value="solo_farm">Solo Farm</option>
++                    </select>
++                  </div>
++                </div>
+                 <Field
+                   label="Location (optional)"
+                   icon={MapPin}
+                   value={location}
+                   onChange={e => setLocation(e.target.value)}
+                   placeholder="e.g. Northern Region, Ghana"
+                 />
+                 <SizePills value={memberCount} onChange={setMemberCount} />
+ 
+                 <button

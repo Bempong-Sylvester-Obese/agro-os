@@ -7,7 +7,7 @@
  */
 import { clearAuthSession, getAuthToken } from './auth'
 
-export const API_URL = import.meta.env.VITE_API_URL || 'https://previewbackendagro-os.onrender.com'
+export const API_URL = import.meta.env.VITE_API_URL || 'https://api-agroos-company.onrender.com'
 /** General API calls (dashboard data). Render cold starts can exceed 10s. */
 export const FETCH_TIMEOUT_MS = 45000
 /** Login/signup — allow time for free-tier backend wake + DB connect. */

@@ -64,6 +64,9 @@ def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
             connection.execute(
                 text("ALTER TABLE cooperatives DROP COLUMN subscription_plan")
             )
+            connection.execute(
+                text("ALTER TABLE cooperatives DROP COLUMN organization_type")
+            )
             connection.execute(text("ALTER TABLE users DROP COLUMN onboarding_role"))
             connection.execute(
                 text(

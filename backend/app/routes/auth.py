@@ -52,6 +52,7 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
         description=description,
         currency="GHS",
         subscription_plan=data.subscription_plan,
+        organization_type=data.organization_type,
         ussd_code=code,
     )
 
@@ -100,6 +101,7 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
             "user_id": new_user.id,
             "cooperative_id": new_coop.id,
             "role": new_user.role,
+            "organization_type": new_coop.organization_type,
         },
         expires_delta=access_token_expires,
     )
@@ -110,6 +112,7 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
         "cooperative_id": new_coop.id,
         "cooperative_name": new_coop.name,
         "subscription_plan": new_coop.subscription_plan,
+        "organization_type": data.organization_type,
         "onboarding_role": new_user.onboarding_role,
     }
 
@@ -250,6 +253,7 @@ def login(user_in: UserLogin, db: Session = Depends(get_db)):
             "user_id": user.id,
             "cooperative_id": user.cooperative_id,
             "role": user.role,
+            "organization_type": user.cooperative.organization_type if user.cooperative else None,
         },
         expires_delta=access_token_expires,
     )
@@ -257,4 +261,5 @@ def login(user_in: UserLogin, db: Session = Depends(get_db)):
         "access_token": access_token,
         "token_type": "bearer",
         "user": UserResponse.model_validate(user),
+        "organization_type": user.cooperative.organization_type if user.cooperative else None,
     }

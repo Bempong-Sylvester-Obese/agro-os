@@ -170,6 +170,31 @@ def farmer(client, cooperative):
 
 
 @pytest.fixture()
+def auth_client(client):
+    return client
+
+
+@pytest.fixture()
+def test_cooperative(db):
+    from app.models.models import Cooperative
+
+    coop = Cooperative(name="Test Coop", currency="GHS")
+    db.add(coop)
+    db.commit()
+    return coop
+
+
+@pytest.fixture()
+def another_cooperative(db):
+    from app.models.models import Cooperative
+
+    coop = Cooperative(name="Another Coop", currency="GHS")
+    db.add(coop)
+    db.commit()
+    return coop
+
+
+@pytest.fixture()
 def transaction(client, farmer):
     resp = client.post(
         "/transactions/",
