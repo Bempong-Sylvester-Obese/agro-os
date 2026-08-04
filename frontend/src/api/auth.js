@@ -1,4 +1,4 @@
-import { API_URL, AUTH_FETCH_TIMEOUT_MS, formatTransportError } from './config'
+import { API_URL, AUTH_FETCH_TIMEOUT_MS, formatTransportError, fetchJson } from './config'
 
 export const TOKEN_KEY = 'agro_os_token'
 const USER_KEY = 'agro_os_user'
@@ -26,6 +26,30 @@ export function clearProfileAvatar(email) {
 }
 
 export { MAX_AVATAR_BYTES }
+
+export async function requestPasswordReset(email) {
+  await fetchJson(`${API_URL}/auth/password-reset-request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+}
+
+export async function confirmPasswordReset(resetToken, newPassword) {
+  await fetchJson(`${API_URL}/auth/password-reset-confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reset_token: resetToken, new_password: newPassword }),
+  })
+}
+
+export async function acceptInvite(inviteToken, password) {
+  await fetchJson(`${API_URL}/auth/accept-invite`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ invite_token: inviteToken, password }),
+  })
+}
 
 async function authFetch(path, body, { retries = 2 } = {}) {
   let lastError

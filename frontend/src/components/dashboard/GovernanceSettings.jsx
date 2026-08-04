@@ -2,11 +2,11 @@ import React, { useEffect, useState } from 'react'
 import { Loader2, Plus, RefreshCw, ShieldCheck } from 'lucide-react'
 import {
   fetchCooperativeUsers,
-  registerCooperativeUser,
   updateCooperativeUser,
+  inviteCooperativeUser,
 } from '../../api/governance'
 
-const emptyInvite = { email: '', password: '', role: 'finance_officer' }
+const emptyInvite = { email: '', role: 'finance_officer' }
 
 export default function GovernanceSettings({ cooperativeId }) {
   const [users, setUsers] = useState([])
@@ -43,11 +43,12 @@ export default function GovernanceSettings({ cooperativeId }) {
     setSaving('invite')
     setError('')
     try {
-      await registerCooperativeUser(invite)
+      await inviteCooperativeUser(invite.email, invite.role)
       setInvite(emptyInvite)
+      setError('Invite sent. Share the invite link from the backend logs with the user.')
       await load()
     } catch (err) {
-      setError(err.message || 'Could not add this user.')
+      setError(err.message || 'Could not invite this user.')
     } finally {
       setSaving(null)
     }
@@ -120,22 +121,13 @@ export default function GovernanceSettings({ cooperativeId }) {
               ))}
             </div>
             <form className="settings-invite-form" onSubmit={handleInvite}>
-              <h3><Plus size={15} /> Add team member</h3>
+              <h3><Plus size={15} /> Invite team member</h3>
               <input
                 type="email"
                 value={invite.email}
                 onChange={(event) => setInvite({ ...invite, email: event.target.value })}
                 placeholder="name@cooperative.org"
                 aria-label="New user email"
-                required
-              />
-              <input
-                type="password"
-                minLength={8}
-                value={invite.password}
-                onChange={(event) => setInvite({ ...invite, password: event.target.value })}
-                placeholder="Temporary password"
-                aria-label="Temporary password"
                 required
               />
               <select
@@ -150,7 +142,7 @@ export default function GovernanceSettings({ cooperativeId }) {
                 <option value="supervisor">Supervisor</option>
               </select>
               <button type="submit" className="btn-lg" disabled={saving === 'invite'}>
-                {saving === 'invite' ? 'Adding…' : 'Add user'}
+                {saving === 'invite' ? 'Sending…' : 'Send invite'}
               </button>
             </form>
           </div>
