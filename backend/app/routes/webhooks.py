@@ -79,7 +79,10 @@ def _verify_signature(body: bytes, signature_header: str | None) -> bool:
     If no secret is configured (dev/sandbox), skip verification.
     """
     if not settings.moolre_webhook_secret:
-        logger.warning("MOOLRE_WEBHOOK_SECRET not set — skipping signature verification")
+        if get_settings().app_env in ("production", "prod"):
+            logger.critical("MOOLRE_WEBHOOK_SECRET not set in production — rejecting webhook")
+            return False
+        logger.warning("MOOLRE_WEBHOOK_SECRET not set — skipping signature verification (non-production)")
         return True
 
     if not signature_header:
@@ -417,8 +420,28 @@ USSD_MENU_MAIN = (
 
 NOT_REGISTERED_MSG = "Phone not registered with AgroOS. Contact your cooperative."
 
-# In-memory USSD session state: {sessionId: {...}}. See module docstring above.
-_ussd_sessions: dict[str, dict] = {}
+_USSD_SESSION_TTL_SECONDS = 3600
+
+
+def _get_ussd_state(db: Session, session_id: str) -> dict | None:
+    row = (
+        db.query(UssdSession)
+        .filter(UssdSession.session_id == session_id, UssdSession.session_state.isnot(None))
+        .order_by(UssdSession.created_at.desc())
+        .first()
+    )
+    if not row:
+        return None
+    if (datetime.utcnow() - row.created_at).total_seconds() > _USSD_SESSION_TTL_SECONDS:
+        return None
+    return row.session_state
+
+
+def _clear_ussd_state(db: Session, session_id: str) -> None:
+    db.query(UssdSession).filter(
+        UssdSession.session_id == session_id
+    ).update({UssdSession.session_state: None}, synchronize_session=False)
+    db.commit()
 
 
 def _log_ussd_session(
@@ -429,6 +452,7 @@ def _log_ussd_session(
     input_path: str,
     response_text: str,
     farmer: Farmer | None,
+    state: dict | None = None,
 ) -> None:
     db.add(
         UssdSession(
@@ -437,6 +461,7 @@ def _log_ussd_session(
             input_path=input_path or None,
             response_text=response_text,
             farmer_id=farmer.id if farmer else None,
+            session_state=state,
         )
     )
     db.commit()
@@ -469,6 +494,11 @@ async def handle_ussd_session(
 ):
     """Handle USSD session callbacks from Moolre. See module docstring above
     for the request/response contract."""
+    if settings.moolre_ussd_secret:
+        secret = request.query_params.get("secret", "")
+        if secret != settings.moolre_ussd_secret:
+            return {"message": "END Invalid request", "reply": False}
+
     body = await request.body()
     try:
         payload = json.loads(body)
