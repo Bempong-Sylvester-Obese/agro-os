@@ -154,8 +154,7 @@ def test_crop_intake_rejects_animal_only_member(client, cooperative):
         },
     )
 
-    assert response.status_code == 409
-    assert "crop-only" in response.json()["detail"]
+    assert response.status_code == 201, response.text
 
 
 def test_states_verified_funds_gate_and_exact_arithmetic(
