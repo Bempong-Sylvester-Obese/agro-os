@@ -1,6 +1,7 @@
 """AgroOS Backend API — Main Application"""
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -89,16 +90,30 @@ if settings.sentry_dsn:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialise DB and create tables on startup."""
-    _init_db()
-    Base.metadata.create_all(bind=engine)
-    if get_settings().app_env.lower() != "test":
-        backend_dir = Path(__file__).resolve().parent
-        alembic_config = Config(str(backend_dir / "alembic.ini"))
-        alembic_config.set_main_option("script_location", str(backend_dir / "alembic"))
-        command.upgrade(alembic_config, "head")
+    """Initialise DB connections; optionally bootstrap schema on startup.
 
-    if settings.seed_demo_data:
+    Hosted deploys should run `alembic upgrade head` in a Render pre-deploy
+    command and set AUTO_MIGRATE_ON_STARTUP=false so uvicorn can bind before
+    migrations finish (avoids "no open ports" deploy failures).
+    """
+    _init_db()
+    runtime_settings = get_settings()
+    app_env = runtime_settings.app_env.lower()
+
+    if runtime_settings.auto_migrate_on_startup:
+        # create_all is local/dev convenience only — it contends on enum/table
+        # locks when multiple Render services share one Postgres database.
+        # Render injects RENDER=true; never run create_all there.
+        on_render = os.getenv("RENDER", "").lower() in {"true", "1", "yes"}
+        if app_env in {"development", "dev", "test"} and not on_render:
+            Base.metadata.create_all(bind=engine)
+        if app_env != "test":
+            backend_dir = Path(__file__).resolve().parent
+            alembic_config = Config(str(backend_dir / "alembic.ini"))
+            alembic_config.set_main_option("script_location", str(backend_dir / "alembic"))
+            command.upgrade(alembic_config, "head")
+
+    if runtime_settings.seed_demo_data:
         db = create_session()
         try:
             seed_golden_path(db)

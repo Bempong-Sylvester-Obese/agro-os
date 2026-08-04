@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     auth_enabled: bool = False
     sentry_dsn: str = ""
     seed_demo_data: bool = False
+    # When false, schema changes must run via Render pre-deploy / alembic CLI.
+    # Production defaults to false so uvicorn can bind before migrations finish.
+    auto_migrate_on_startup: bool = True
     rate_limit_enabled: bool = True
     rate_limit_login_per_minute: int = 10
     rate_limit_webhook_per_minute: int = 120
@@ -89,6 +92,8 @@ class Settings(BaseSettings):
             raise ValueError("APP_ENV=production cannot run with SEED_DEMO_DATA=true")
         if not self.auth_enabled:
             raise ValueError("APP_ENV=production requires AUTH_ENABLED=true")
+        # Prefer Render pre-deploy / release-phase migrations in production.
+        self.auto_migrate_on_startup = False
         return self
 
     class Config:
