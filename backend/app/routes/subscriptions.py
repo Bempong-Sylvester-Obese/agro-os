@@ -9,6 +9,7 @@ from app.database.db import get_db
 from app.models.models import Cooperative, User
 from app.services.auth_service import enforce_cooperative_scope, get_current_user
 from app.services.moolre_service import MoolreService
+from app.services.plans import get_plan_price
 
 router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
 
@@ -31,23 +32,18 @@ async def create_checkout(
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
 
-    plan_prices = {
-        "growth": 299.0,
-    }
-
-    amount = plan_prices.get(req.plan_key.lower())
-    if not amount:
-        raise HTTPException(status_code=400, detail="Invalid paid plan selected")
+    plan_key = req.plan_key.lower()
+    price = get_plan_price(plan_key)
+    if price == 0:
+        raise HTTPException(status_code=400, detail=f"Plan '{plan_key}' requires custom pricing")
 
     moolre = MoolreService()
-    ext_ref = f"sub_upg_{coop.id}_{int(datetime.utcnow().timestamp())}"
+    ext_ref = f"sub_upg_{coop.id}_{plan_key}_{int(datetime.utcnow().timestamp())}"
     
     user_email = current_user.email if current_user else f"admin@{coop.name.replace(' ', '').lower()}.com"
 
-    # We want the subscription to be paid to the Master Wallet, not the sub-wallet!
-    # generate_payment_link without account_number defaults to the Master account.
     result = await moolre.generate_payment_link(
-        amount=amount,
+        amount=price,
         email=user_email,
         currency=coop.currency or "GHS",
         external_ref=ext_ref,

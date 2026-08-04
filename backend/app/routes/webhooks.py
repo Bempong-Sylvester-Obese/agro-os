@@ -11,7 +11,7 @@ import hmac
 import json
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import (
     APIRouter,
@@ -58,6 +58,7 @@ from app.services.loan_request_service import (
 )
 from app.services.membership_service import memberships_for_phone
 from app.services.moolre_service import MoolreService
+from app.services.plans import get_plan_price
 from app.services.trust_score_service import TrustScoreService
 
 logger = logging.getLogger(__name__)
@@ -141,24 +142,44 @@ def _process_payment_payload(
     if external_ref and external_ref.startswith("sub_upg_"):
         if moolre_status == 1:
             try:
-                # Format: sub_upg_{cooperative_id}_{timestamp}
                 parts = external_ref.split("_")
                 coop_id = int(parts[2])
+                plan_key = parts[3]
+
                 from app.models.models import Cooperative
+
                 coop = db.query(Cooperative).filter(Cooperative.id == coop_id).first()
-                if coop:
-                    # In a real app we'd map amount to plan_key or get it from metadata
-                    coop.subscription_status = "active"
-                    # Add 30 days
-                    from datetime import timedelta
-                    now = datetime.utcnow()
-                    if not coop.subscription_expires_at or coop.subscription_expires_at < now:
-                        coop.subscription_expires_at = now + timedelta(days=30)
-                    else:
-                        coop.subscription_expires_at = coop.subscription_expires_at + timedelta(days=30)
-                    
-                    db.commit()
-                    logger.info(f"Subscription upgraded for cooperative {coop.id} via webhook")
+                if not coop:
+                    return {"status": "ok", "message": "Cooperative not found"}
+
+                now = datetime.utcnow()
+                cutoff = now + timedelta(days=25)
+                if (
+                    coop.subscription_plan == plan_key
+                    and coop.subscription_status == "active"
+                    and coop.subscription_expires_at
+                    and coop.subscription_expires_at > cutoff
+                ):
+                    logger.info(
+                        f"Subscription already active for cooperative {coop_id}, plan {plan_key}"
+                    )
+                    return {"status": "ok", "message": "Subscription already active"}
+
+                expected_amount = get_plan_price(plan_key)
+                if amount < expected_amount * 0.99:
+                    logger.warning(
+                        f"Payment amount {amount} below expected {expected_amount} for {plan_key}"
+                    )
+
+                coop.subscription_plan = plan_key
+                coop.subscription_status = "active"
+                if not coop.subscription_expires_at or coop.subscription_expires_at < now:
+                    coop.subscription_expires_at = now + timedelta(days=30)
+                else:
+                    coop.subscription_expires_at = coop.subscription_expires_at + timedelta(days=30)
+
+                db.commit()
+                logger.info(f"Subscription upgraded for cooperative {coop.id} to {plan_key}")
             except Exception as e:
                 logger.error(f"Failed to process subscription webhook: {e}")
         return {"status": "ok", "message": "Subscription webhook processed"}
