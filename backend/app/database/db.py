@@ -17,14 +17,15 @@ def _engine_kwargs(database_url: str, *, echo: bool) -> dict:
     kwargs: dict = {
         "echo": echo,
         "pool_pre_ping": True,
-        "pool_size": 5,
-        "max_overflow": 5,
     }
     try:
         backend = make_url(database_url).get_backend_name()
     except Exception:
         backend = ""
     if backend.startswith("postgresql"):
+        # QueuePool options are Postgres-only; SQLite tests use SingletonThreadPool.
+        kwargs["pool_size"] = 5
+        kwargs["max_overflow"] = 5
         # Avoid Render boot loops that hang forever on unreachable DB / lock waits.
         kwargs["connect_args"] = {
             "connect_timeout": 10,
