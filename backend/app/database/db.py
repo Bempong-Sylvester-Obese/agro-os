@@ -1,6 +1,7 @@
 """Database Connection and Session Management"""
 
 from sqlalchemy import create_engine
+from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 # Base class shared by all models
@@ -9,6 +10,27 @@ Base = declarative_base()
 # Module-level placeholders — populated lazily by _init_db()
 _engine = None
 _SessionLocal = None
+
+
+def _engine_kwargs(database_url: str, *, echo: bool) -> dict:
+    """Build create_engine kwargs with fail-fast timeouts for hosted Postgres."""
+    kwargs: dict = {
+        "echo": echo,
+        "pool_pre_ping": True,
+        "pool_size": 5,
+        "max_overflow": 5,
+    }
+    try:
+        backend = make_url(database_url).get_backend_name()
+    except Exception:
+        backend = ""
+    if backend.startswith("postgresql"):
+        # Avoid Render boot loops that hang forever on unreachable DB / lock waits.
+        kwargs["connect_args"] = {
+            "connect_timeout": 10,
+            "options": "-c lock_timeout=10000 -c statement_timeout=60000",
+        }
+    return kwargs
 
 
 def _init_db():
@@ -20,8 +42,7 @@ def _init_db():
         settings = get_settings()
         _engine = create_engine(
             settings.database_url,
-            echo=settings.debug,
-            pool_pre_ping=True,
+            **_engine_kwargs(settings.database_url, echo=settings.debug),
         )
         _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
 
