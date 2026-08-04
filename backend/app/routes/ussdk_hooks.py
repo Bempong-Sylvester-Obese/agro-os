@@ -550,7 +550,22 @@ async def announcements(
     farmer, memberships = resolve_phone_membership(
         msisdn, db, membership_id=values.get("membership_id")
     )
-    announcement_text = "No new announcements. Check with your cooperative leader."
+    from app.models.models import Announcement
+    coop_id = farmer.cooperative_id if farmer else None
+    announcements = (
+        db.query(Announcement)
+        .filter(Announcement.cooperative_id == coop_id)
+        .order_by(Announcement.created_at.desc())
+        .limit(3)
+        .all()
+    ) if coop_id is not None else []
+    if announcements:
+        lines = []
+        for a in announcements:
+            lines.append(f"{a.title}: {a.body[:120]}")
+        announcement_text = "\n---\n".join(lines)
+    else:
+        announcement_text = "No announcements yet. Check with your cooperative leader."
 
     if not farmer and len(memberships) > 1:
         return cooperative_selection_payload(memberships)

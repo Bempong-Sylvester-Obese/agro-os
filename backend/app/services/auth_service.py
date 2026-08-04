@@ -12,7 +12,7 @@ from app.database.db import get_db
 from app.models.models import User
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7  # 1 week
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60 * 24 * 7))
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
 optional_bearer = HTTPBearer(auto_error=False)
@@ -133,3 +133,18 @@ def enforce_cooperative_scope(current_user: User | None, cooperative_id: int) ->
     """Reject authenticated cross-cooperative access without leaking tenant data."""
     if current_user is not None and current_user.cooperative_id != cooperative_id:
         raise HTTPException(status_code=404, detail="Resource not found")
+
+import secrets
+
+def generate_reset_or_invite_token() -> str:
+    return secrets.token_hex(32)
+
+def reset_token_valid(user) -> bool:
+    if not user.reset_token or not user.reset_token_expires_at:
+        return False
+    return datetime.utcnow() < user.reset_token_expires_at
+
+def invite_token_valid(user) -> bool:
+    if not user.invite_token or not user.invite_token_expires_at:
+        return False
+    return datetime.utcnow() < user.invite_token_expires_at

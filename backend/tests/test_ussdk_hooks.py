@@ -320,7 +320,7 @@ def test_announcements_unregistered_phone_still_answers(client):
         json=_hook_payload("0200000000"),
     )
     assert resp.status_code == 200
-    assert "No new announcements" in resp.json()["message"]
+    assert "No announcements yet" in resp.json()["message"]
 
 
 def test_announcements_sends_sms_for_registered_farmer(client, farmer):

@@ -161,5 +161,6 @@ def predict_creditworthiness(
             str(scoped_id)
         ),
         "features": payload.features.model_dump(),
+        "is_synthetic": getattr(agro_ai, 'is_synthetic_fallback', False),
         **prediction.__dict__,
     }

@@ -53,3 +53,18 @@ class SignupResponse(BaseModel):
     subscription_plan: Literal["starter", "growth", "solo"]
     organization_type: str = "cooperative"
     onboarding_role: str | None = None
+
+class PasswordResetRequest(BaseModel):
+    email: str
+
+class PasswordResetConfirm(BaseModel):
+    reset_token: str
+    new_password: str
+
+class InviteUserRequest(BaseModel):
+    email: str
+    role: str
+
+class AcceptInviteRequest(BaseModel):
+    invite_token: str
+    password: str

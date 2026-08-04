@@ -149,6 +149,11 @@ class User(Base):
     cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    reset_token = Column(String, nullable=True)
+    reset_token_expires_at = Column(DateTime, nullable=True)
+    invite_token = Column(String, nullable=True)
+    invite_token_expires_at = Column(DateTime, nullable=True)
+    must_change_password = Column(Boolean, default=False, nullable=False)
 
     # Relationship to cooperative
     cooperative = relationship("Cooperative")
@@ -241,6 +246,7 @@ class CooperativeMembership(Base):
     trust_score = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    sms_consent = Column(Boolean, default=True, nullable=False)
 
     farmer = relationship("Farmer", back_populates="memberships")
     cooperative = relationship("Cooperative", back_populates="memberships")
@@ -926,3 +932,23 @@ class DisbursementBatch(Base):
     transactions = relationship(
         "Transaction", foreign_keys="Transaction.disbursement_batch_id"
     )
+
+
+# ---------------------------------------------------------------------------
+# Announcements
+# ---------------------------------------------------------------------------
+
+
+class Announcement(Base):
+    __tablename__ = "announcements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=False)
+    title = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    send_sms = Column(Boolean, default=False, nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    cooperative = relationship("Cooperative")
+    creator = relationship("User")
