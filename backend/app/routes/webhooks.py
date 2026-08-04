@@ -4,6 +4,7 @@ Moolre Webhook Routes
 Handles:
   - POST /webhooks/moolre/payment  — real-time payment confirmation
   - POST /webhooks/moolre/ussd     — USSD session menu handler
+# USSD Gateway (Moolre webhook format) — delegates to app.services.ussd_service
 
 Domain logic note (M2 decoupling): _process_payment_payload currently does
 payment processing inline. The domain model lives in app.domain.payment_event
@@ -63,7 +64,7 @@ from app.services.loan_request_service import (
     PendingLoanRequestError,
     create_farmer_loan_request,
 )
-from app.services.membership_service import memberships_for_phone
+from app.services.ussd_service import resolve_farmer_by_phone
 from app.services.moolre_service import MoolreService
 from app.services.trust_score_service import TrustScoreService
 
@@ -492,7 +493,7 @@ async def handle_ussd_session(
 
     # ---- Fresh session: silently resolve the farmer's membership, then show the menu
     if is_new or session_id not in _ussd_sessions:
-        memberships = memberships_for_phone(msisdn, db)
+        farmer_obj, memberships = resolve_farmer_by_phone(msisdn, db)
         if len(memberships) > 1:
             options = "\n".join(
                 f"{index}. {membership.cooperative.name}"
@@ -513,12 +514,12 @@ async def handle_ussd_session(
             )
             return {"message": msg, "reply": True}
 
-        farmer = memberships[0] if memberships else None
+        primary_membership = memberships[0] if memberships else None
         _ussd_sessions[session_id] = {
             "step": "main",
-            "farmer_id": farmer.id if farmer else None,
+            "farmer_id": primary_membership.id if primary_membership else None,
         }
-        _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path="new", response_text=USSD_MENU_MAIN, farmer=farmer)
+        _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path="new", response_text=USSD_MENU_MAIN, farmer=primary_membership)
         return {"message": USSD_MENU_MAIN, "reply": True}
 
     state = _ussd_sessions[session_id]
