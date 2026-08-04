@@ -101,6 +101,9 @@ export default function GovernanceSettings({ cooperativeId }) {
                     >
                       <option value="admin">Administrator</option>
                       <option value="finance_officer">Finance officer</option>
+                      <option value="farm_owner">Farm owner</option>
+                      <option value="farm_manager">Farm manager</option>
+                      <option value="supervisor">Supervisor</option>
                     </select>
                   </label>
                   <button
@@ -142,6 +145,9 @@ export default function GovernanceSettings({ cooperativeId }) {
               >
                 <option value="finance_officer">Finance officer</option>
                 <option value="admin">Administrator</option>
+                <option value="farm_owner">Farm owner</option>
+                <option value="farm_manager">Farm manager</option>
+                <option value="supervisor">Supervisor</option>
               </select>
               <button type="submit" className="btn-lg" disabled={saving === 'invite'}>
                 {saving === 'invite' ? 'Adding…' : 'Add user'}

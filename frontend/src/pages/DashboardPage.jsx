@@ -315,7 +315,66 @@ export default function DashboardPage({ user, onLogout }) {
         },
       ]
     : navGroups
-  const NAV_ITEMS = filteredNavGroups.flatMap((group) => group.items)
+  const coopedNavGroups = organizationType !== 'solo_farm' && userRole === 'finance_officer'
+    ? [
+        {
+          label: 'Operations',
+          items: [
+            { key: 'overview', icon: <BarChart3 size={18} />, label: 'Overview' },
+            { key: 'members', icon: <Users size={18} />, label: 'Members' },
+            { key: 'production', icon: <Tractor size={18} />, label: 'Production' },
+            { key: 'scores', icon: <Star size={18} />, label: 'Agro-AI scores' },
+          ],
+        },
+        {
+          label: 'Finance',
+          items: [
+            { key: 'payments', icon: <CreditCard size={18} />, label: 'Payments' },
+            { key: 'loans', icon: <Banknote size={18} />, label: 'Loans' },
+          ],
+        },
+        {
+          label: 'Communications',
+          items: [
+            { key: 'sms', icon: <MessageSquare size={18} />, label: 'SMS broadcasts' },
+            { key: 'ussd', icon: <Phone size={18} />, label: 'USSD activity' },
+          ],
+        },
+        {
+          label: 'Governance',
+          items: [
+            { key: 'activity', icon: <ClipboardList size={18} />, label: 'Activity log' },
+          ],
+        },
+      ]
+    : organizationType !== 'solo_farm' && userRole && ['farm_owner', 'farm_manager', 'supervisor'].includes(userRole)
+    ? [
+        {
+          label: 'Operations',
+          items: [
+            { key: 'overview', icon: <BarChart3 size={18} />, label: 'Overview' },
+            { key: 'members', icon: <Users size={18} />, label: 'Members' },
+            { key: 'production', icon: <Tractor size={18} />, label: 'Production' },
+            { key: 'scores', icon: <Star size={18} />, label: 'Agro-AI scores' },
+          ],
+        },
+        {
+          label: 'Communications',
+          items: [
+            { key: 'sms', icon: <MessageSquare size={18} />, label: 'SMS broadcasts' },
+            { key: 'ussd', icon: <Phone size={18} />, label: 'USSD activity' },
+          ],
+        },
+        {
+          label: 'Governance',
+          items: [
+            { key: 'activity', icon: <ClipboardList size={18} />, label: 'Activity log' },
+          ],
+        },
+      ]
+    : null
+  const displayNavGroups = filteredNavGroups || coopedNavGroups || navGroups
+  const NAV_ITEMS = displayNavGroups.flatMap((group) => group.items)
 
   if (urlSection && !DASHBOARD_SECTIONS.includes(urlSection)) {
     return <Navigate to={dashboardPath('overview')} replace />
@@ -330,6 +389,12 @@ export default function DashboardPage({ user, onLogout }) {
     const supervisorSections = ['overview', 'attendance', 'activity', 'settings']
     if (!supervisorSections.includes(section)) {
       return <Navigate to={dashboardPath('attendance')} replace />
+    }
+  }
+  if (organizationType !== 'solo_farm' && userRole && ['farm_owner', 'farm_manager', 'supervisor'].includes(userRole)) {
+    const allowedSections = ['overview', 'members', 'production', 'scores', 'sms', 'ussd', 'activity', 'settings']
+    if (!allowedSections.includes(section)) {
+      return <Navigate to={dashboardPath('overview')} replace />
     }
   }
 
@@ -360,7 +425,7 @@ export default function DashboardPage({ user, onLogout }) {
         </label>
 
         <nav className="admin-nav" aria-label="Dashboard sections">
-          {filteredNavGroups.map((group) => (
+          {displayNavGroups.map((group) => (
             <div className="admin-nav-group" key={group.label}>
               <div className="admin-nav-lbl">{group.label}</div>
               {group.items.map(({ key, icon, label }) => (
