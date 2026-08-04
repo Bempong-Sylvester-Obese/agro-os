@@ -80,3 +80,42 @@ def test_task_cross_coop_not_found(auth_client, test_cooperative, another_cooper
     res = auth_client.get(f"/tasks/?cooperative_id={another_cooperative.id}")
     assert res.status_code == 200
     assert len(res.json()) == 0
+
+
+def test_create_task_rejects_cross_tenant_worker(
+    auth_client, test_cooperative, another_cooperative
+):
+    foreign_worker = auth_client.post(
+        f"/workers/?cooperative_id={another_cooperative.id}",
+        json={"name": "Foreign Worker", "phone": "0241112299"},
+    ).json()
+    res = auth_client.post(
+        f"/tasks/?cooperative_id={test_cooperative.id}",
+        json={
+            "title": "Should fail",
+            "task_type": "general",
+            "scheduled_date": "2026-09-02",
+            "worker_ids": [foreign_worker["id"]],
+        },
+    )
+    assert res.status_code == 404
+    assert res.json()["detail"] == "One or more workers not found"
+
+
+def test_assign_workers_rejects_cross_tenant_worker(
+    auth_client, test_cooperative, another_cooperative
+):
+    task = auth_client.post(
+        f"/tasks/?cooperative_id={test_cooperative.id}",
+        json={"title": "Local task", "task_type": "general", "scheduled_date": "2026-09-03"},
+    ).json()
+    foreign_worker = auth_client.post(
+        f"/workers/?cooperative_id={another_cooperative.id}",
+        json={"name": "Other Coop Worker", "phone": "0241112298"},
+    ).json()
+    res = auth_client.post(
+        f"/tasks/{task['id']}/assign?cooperative_id={test_cooperative.id}",
+        json={"worker_ids": [foreign_worker["id"]]},
+    )
+    assert res.status_code == 404
+    assert res.json()["detail"] == "One or more workers not found"

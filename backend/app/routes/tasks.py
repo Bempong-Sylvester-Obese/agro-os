@@ -16,6 +16,30 @@ from app.services.communications_service import CommunicationsService
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
+def _load_cooperative_workers(
+    db: Session,
+    *,
+    cooperative_id: int,
+    worker_ids: list[int],
+) -> list[Worker]:
+    """Load workers by ID, scoped to the caller's cooperative."""
+    if not worker_ids:
+        return []
+
+    unique_ids = list(dict.fromkeys(worker_ids))
+    workers = (
+        db.query(Worker)
+        .filter(
+            Worker.id.in_(unique_ids),
+            Worker.cooperative_id == cooperative_id,
+        )
+        .all()
+    )
+    if len(workers) != len(unique_ids):
+        raise HTTPException(status_code=404, detail="One or more workers not found")
+    return workers
+
+
 @router.get("/", response_model=list[TaskResponse])
 def list_tasks(
     cooperative_id: int = Query(...),
@@ -47,6 +71,12 @@ async def create_task(
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
 
+    workers = _load_cooperative_workers(
+        db,
+        cooperative_id=cooperative_id,
+        worker_ids=data.worker_ids,
+    )
+
     task = WorkTask(
         cooperative_id=cooperative_id,
         title=data.title,
@@ -59,23 +89,22 @@ async def create_task(
     db.add(task)
     db.flush()
 
-    for worker_id in data.worker_ids:
-        assignment = WorkerAssignment(work_task_id=task.id, worker_id=worker_id)
-        db.add(assignment)
+    for worker in workers:
+        db.add(WorkerAssignment(work_task_id=task.id, worker_id=worker.id))
 
     db.commit()
     db.refresh(task)
 
-    comm = CommunicationsService()
-    for worker_id in data.worker_ids:
-        worker = db.query(Worker).filter(Worker.id == worker_id).first()
-        if worker and worker.phone:
-            await comm.send_single_sms(
-                recipient=worker.phone,
-                message=f"New task assigned: {task.title} on {task.scheduled_date}",
-                db=db,
-                cooperative_id=cooperative_id,
-            )
+    if workers:
+        comm = CommunicationsService()
+        for worker in workers:
+            if worker.phone:
+                await comm.send_single_sms(
+                    recipient=worker.phone,
+                    message=f"New task assigned: {task.title} on {task.scheduled_date}",
+                    db=db,
+                    cooperative_id=cooperative_id,
+                )
 
     return db.query(WorkTask).options(joinedload(WorkTask.assignments)).filter(WorkTask.id == task.id).first()
 
@@ -120,22 +149,23 @@ async def assign_workers(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    workers = _load_cooperative_workers(
+        db,
+        cooperative_id=cooperative_id,
+        worker_ids=data.worker_ids,
+    )
     existing_ids = {a.worker_id for a in task.assignments}
-    new_ids = []
-    for worker_id in data.worker_ids:
-        if worker_id not in existing_ids:
-            assignment = WorkerAssignment(work_task_id=task_id, worker_id=worker_id)
-            db.add(assignment)
-            new_ids.append(worker_id)
+    new_workers = [worker for worker in workers if worker.id not in existing_ids]
+    for worker in new_workers:
+        db.add(WorkerAssignment(work_task_id=task_id, worker_id=worker.id))
 
     db.commit()
     db.refresh(task)
 
-    if new_ids:
+    if new_workers:
         comm = CommunicationsService()
-        for worker_id in new_ids:
-            worker = db.query(Worker).filter(Worker.id == worker_id).first()
-            if worker and worker.phone:
+        for worker in new_workers:
+            if worker.phone:
                 await comm.send_single_sms(
                     recipient=worker.phone,
                     message=f"New task assigned: {task.title} on {task.scheduled_date}",

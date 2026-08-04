@@ -166,67 +166,128 @@ async def disburse_payroll(
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
 
-    payouts = (
-        db.query(WagePayout)
-        .filter(
-            WagePayout.cooperative_id == cooperative_id,
-            WagePayout.period_start == data.period_start,
-            WagePayout.period_end == data.period_end,
-            WagePayout.status == PayoutStatus.approved,
+    payout_ids = [
+        payout_id
+        for (payout_id,) in (
+            db.query(WagePayout.id)
+            .filter(
+                WagePayout.cooperative_id == cooperative_id,
+                WagePayout.period_start == data.period_start,
+                WagePayout.period_end == data.period_end,
+                WagePayout.status == PayoutStatus.approved,
+            )
+            .all()
         )
-        .all()
-    )
+    ]
 
-    if not payouts:
+    if not payout_ids:
         raise HTTPException(status_code=404, detail="No approved payouts found for this period")
 
     from app.services.moolre_service import MoolreService
 
     moolre = MoolreService()
     results = []
-    for payout in payouts:
-        worker = db.query(Worker).filter(Worker.id == payout.worker_id).first()
+    paid_notifications: list[tuple[float, date, date, str]] = []
+
+    for payout_id in payout_ids:
+        payout = (
+            db.query(WagePayout)
+            .filter(
+                WagePayout.id == payout_id,
+                WagePayout.cooperative_id == cooperative_id,
+                WagePayout.status == PayoutStatus.approved,
+            )
+            .with_for_update()
+            .first()
+        )
+        if not payout:
+            # Another request already moved this payout out of approved.
+            finalized = db.query(WagePayout).filter(WagePayout.id == payout_id).first()
+            if finalized:
+                results.append(finalized)
+            continue
+
+        worker = (
+            db.query(Worker)
+            .filter(
+                Worker.id == payout.worker_id,
+                Worker.cooperative_id == cooperative_id,
+            )
+            .first()
+        )
         if not worker:
             payout.status = PayoutStatus.failed
             payout.failure_reason = "Worker not found"
+            db.commit()
+            db.refresh(payout)
             results.append(payout)
             continue
 
+        external_ref = payout.moolre_reference or f"wage-payout-{payout.id}"
+        payout.moolre_reference = external_ref
+        amount = payout.gross_amount
+        period_start = payout.period_start
+        period_end = payout.period_end
+        worker_phone = worker.phone
+        db.commit()
+
         try:
             transfer = await moolre.initiate_transfer(
-                receiver_phone=worker.phone,
-                amount=payout.gross_amount,
-                reference=f"Wage payout #{payout.id}",
+                receiver_phone=worker_phone,
+                amount=amount,
+                reference=f"Wage payout #{payout_id}",
+                external_ref=external_ref,
+            )
+            payout = (
+                db.query(WagePayout)
+                .filter(WagePayout.id == payout_id)
+                .with_for_update()
+                .one()
             )
             if transfer.get("success"):
                 payout.status = PayoutStatus.paid
                 payout.paid_at = datetime.utcnow()
-                payout.moolre_reference = transfer.get("moolre_transfer_ref") or transfer.get("external_ref")
+                payout.moolre_reference = (
+                    transfer.get("moolre_transfer_ref")
+                    or transfer.get("external_ref")
+                    or external_ref
+                )
+                payout.failure_reason = None
+                if worker_phone:
+                    paid_notifications.append(
+                        (amount, period_start, period_end, worker_phone)
+                    )
             else:
                 payout.status = PayoutStatus.failed
                 payout.failure_reason = transfer.get("message", "Moolre transfer failed")
         except Exception as e:
-            logger.exception("Moolre transfer failed for payout %s", payout.id)
+            logger.exception("Moolre transfer failed for payout %s", payout_id)
+            payout = (
+                db.query(WagePayout)
+                .filter(WagePayout.id == payout_id)
+                .with_for_update()
+                .one()
+            )
             payout.status = PayoutStatus.failed
             payout.failure_reason = str(e)
 
+        db.commit()
+        db.refresh(payout)
         results.append(payout)
 
-    db.commit()
-    for p in results:
-        db.refresh(p)
-
-    comm = CommunicationsService()
-    for payout in results:
-        if payout.status == PayoutStatus.paid:
-            worker = db.query(Worker).filter(Worker.id == payout.worker_id).first()
-            if worker and worker.phone:
-                await comm.send_single_sms(
-                    recipient=worker.phone,
-                    message=f"Payment of GHS {payout.gross_amount:.2f} for {payout.period_start} to {payout.period_end} has been sent to your mobile money wallet.",
-                    db=db,
-                    cooperative_id=cooperative_id,
-                )
+    if paid_notifications:
+        comm = CommunicationsService()
+        for amount, period_start, period_end, phone in paid_notifications:
+            await comm.send_single_sms(
+                recipient=phone,
+                message=(
+                    f"Payment of GHS {amount:.2f} for "
+                    f"{period_start} to {period_end} has been sent "
+                    f"to your mobile money wallet."
+                ),
+                db=db,
+                cooperative_id=cooperative_id,
+            )
 
     return results
 

@@ -142,7 +142,7 @@ cd backend && alembic upgrade head
 import enum
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, String, Float
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Integer, String, Float, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.database.db import Base
@@ -174,7 +174,7 @@ class Worker(Base):
     cooperative = relationship("Cooperative")
 
     __table_args__ = (
-        sa.UniqueConstraint("cooperative_id", "phone", name="uq_worker_phone_per_coop"),
+        UniqueConstraint("cooperative_id", "phone", name="uq_worker_phone_per_coop"),
     )
 ```
 
@@ -921,8 +921,9 @@ def upgrade():
         sa.Column("status", sa.String(), server_default="active"),
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now()),
         sa.Column("updated_at", sa.DateTime(), server_default=sa.func.now()),
+        # Keep uniqueness inside create_table for SQLite compatibility.
+        sa.UniqueConstraint("cooperative_id", "phone", name="uq_worker_phone_per_coop"),
     )
-    op.create_unique_constraint("uq_worker_phone_per_coop", "workers", ["cooperative_id", "phone"])
 ```
 
 ---
