@@ -1,5 +1,7 @@
 """Plan catalog and pricing — single source of truth for all plan metadata."""
 
+from datetime import datetime, timedelta
+
 PLANS = {
     "starter": {
         "name": "Starter",
@@ -62,3 +64,31 @@ def get_plan_features(plan_key: str) -> list:
 def has_feature(plan_key: str, feature: str) -> bool:
     features = get_plan_features(plan_key)
     return feature in features or "all" in features
+
+
+SUBSCRIPTION_STATUSES = ["trial", "active", "past_due", "expired", "cancelled"]
+
+
+def activate_subscription(cooperative, plan_key: str, days: int = 30):
+    cooperative.subscription_plan = plan_key
+    cooperative.subscription_status = "active"
+    if cooperative.subscription_expires_at and cooperative.subscription_expires_at > datetime.utcnow():
+        cooperative.subscription_expires_at += timedelta(days=days)
+    else:
+        cooperative.subscription_expires_at = datetime.utcnow() + timedelta(days=days)
+
+
+def check_subscription_active(cooperative) -> bool:
+    if cooperative.subscription_status == "active" and cooperative.subscription_expires_at:
+        return datetime.utcnow() < cooperative.subscription_expires_at
+    if cooperative.subscription_status == "trial":
+        return True
+    return False
+
+
+def expire_if_needed(cooperative):
+    if cooperative.subscription_status == "active" and cooperative.subscription_expires_at:
+        if datetime.utcnow() > cooperative.subscription_expires_at:
+            cooperative.subscription_status = "expired"
+            return True
+    return False

@@ -58,7 +58,7 @@ from app.services.loan_request_service import (
 )
 from app.services.membership_service import memberships_for_phone
 from app.services.moolre_service import MoolreService
-from app.services.plans import get_plan_price
+from app.services.plans import activate_subscription, get_plan_price
 from app.services.trust_score_service import TrustScoreService
 
 logger = logging.getLogger(__name__)
@@ -171,12 +171,7 @@ def _process_payment_payload(
                         f"Payment amount {amount} below expected {expected_amount} for {plan_key}"
                     )
 
-                coop.subscription_plan = plan_key
-                coop.subscription_status = "active"
-                if not coop.subscription_expires_at or coop.subscription_expires_at < now:
-                    coop.subscription_expires_at = now + timedelta(days=30)
-                else:
-                    coop.subscription_expires_at = coop.subscription_expires_at + timedelta(days=30)
+                activate_subscription(coop, plan_key)
 
                 db.commit()
                 logger.info(f"Subscription upgraded for cooperative {coop.id} to {plan_key}")
