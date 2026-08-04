@@ -83,7 +83,7 @@ def test_pay_dues_missing_amount_returns_retry(client, farmer):
 
 def test_pay_dues_success_prompts_phone_approval(client, farmer):
     with patch(
-        "app.routes.transactions.MoolreService.initiate_payment",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
         new_callable=AsyncMock,
     ) as mock_pay:
         mock_pay.return_value = _tr099_result("ussd-ref-1")
@@ -101,7 +101,7 @@ def test_pay_dues_success_prompts_phone_approval(client, farmer):
 
 def test_pay_dues_otp_required_returns_external_ref_for_retry(client, farmer):
     with patch(
-        "app.routes.transactions.MoolreService.initiate_payment",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
         new_callable=AsyncMock,
     ) as mock_pay:
         mock_pay.return_value = _tp14_result("ussd-ref-2")
@@ -282,7 +282,7 @@ def test_wallet_balance_unregistered_phone_ends_session(client):
 
 def test_wallet_balance_success(client, farmer):
     with patch(
-        "app.routes.ussdk_hooks.MoolreService.account_status",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.account_status",
         new_callable=AsyncMock,
     ) as mock_status:
         mock_status.return_value = {
@@ -301,7 +301,7 @@ def test_wallet_balance_success(client, farmer):
 
 def test_wallet_balance_moolre_failure_ends_session(client, farmer):
     with patch(
-        "app.routes.ussdk_hooks.MoolreService.account_status",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.account_status",
         new_callable=AsyncMock,
     ) as mock_status:
         mock_status.return_value = {"success": False}
@@ -325,7 +325,7 @@ def test_announcements_unregistered_phone_still_answers(client):
 
 def test_announcements_sends_sms_for_registered_farmer(client, farmer):
     with patch(
-        "app.routes.ussdk_hooks.MoolreService.send_single_sms",
+        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
         new_callable=AsyncMock,
     ) as mock_sms:
         mock_sms.return_value = {"success": True}

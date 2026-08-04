@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models.models import (
     CooperativeMembership as Farmer,
-    Farmer as FarmerModel,
+    Farmer as LegacyFarmer,
     Transaction,
     TransactionStatus,
     TransactionType,
@@ -36,8 +36,8 @@ def expire_customer_actions(
     if farmer_id is not None:
         query = query.filter(Transaction.farmer_id == farmer_id)
     if cooperative_id is not None:
-        query = query.join(FarmerModel, Transaction.farmer_id == FarmerModel.id).filter(
-            FarmerModel.cooperative_id == cooperative_id
+        query = query.join(Farmer, Transaction.farmer_id == Farmer.id).filter(
+            Farmer.cooperative_id == cooperative_id
         )
     if loan_id is not None:
         query = query.filter(Transaction.loan_id == loan_id)

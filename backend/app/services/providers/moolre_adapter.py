@@ -82,7 +82,7 @@ class MoolreSmsAdapter(SmsProvider):
 
     async def send_sms(self, **kwargs):
         return await self._service.send_single_sms(
-            recipient=kwargs["recipient"],
+            phone=kwargs["recipient"],
             message=kwargs["message"],
         )
 

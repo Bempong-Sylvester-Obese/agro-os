@@ -48,7 +48,7 @@ from app.services.customer_action_service import (
     pending_customer_actions,
     resume_dues_customer_action,
 )
-from app.services.dues_service import run_dues_collect
+from app.services.dues_service import _dues_collect_response, run_dues_collect
 from app.services.providers.factory import get_payment_provider
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
