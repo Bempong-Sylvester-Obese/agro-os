@@ -12,7 +12,7 @@ def _mock_sms_success(*_args, **_kwargs):
 
 
 @patch(
-    "app.services.communications_service.MoolreService.send_sms",
+    "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_bulk_sms",
     new_callable=AsyncMock,
     side_effect=_mock_sms_success,
 )
@@ -34,7 +34,7 @@ def test_broadcast_sms(mock_send, client, cooperative, farmer):
 
 
 @patch(
-    "app.services.communications_service.MoolreService.send_sms",
+    "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_bulk_sms",
     new_callable=AsyncMock,
     side_effect=_mock_sms_success,
 )
@@ -53,7 +53,7 @@ def test_send_dues_reminder(mock_send, client, cooperative, farmer):
     assert data["status"] == "success"
     assert data["recipients_count"] == 1
     mock_send.assert_awaited_once()
-    message = mock_send.await_args.args[0][0]["message"]
+    message = mock_send.await_args.kwargs["message"]
     assert "Dial *919*4020# and choose Pay Dues" in message
     assert "*203*" not in message
 
@@ -65,7 +65,7 @@ def test_payment_action_sms_uses_agroos_ussd_code(db, farmer):
         .one()
     )
     with patch(
-        "app.services.communications_service.MoolreService.send_single_sms",
+        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
         new_callable=AsyncMock,
         return_value={"success": True, "message": "SMS queued", "raw": {}},
     ) as mock_send:
@@ -92,7 +92,7 @@ def test_broadcast_cooperative_not_found(client):
 
 
 @patch(
-    "app.services.communications_service.MoolreService.send_sms",
+    "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_bulk_sms",
     new_callable=AsyncMock,
     side_effect=_mock_sms_success,
 )
@@ -114,7 +114,7 @@ def test_list_communication_logs(mock_send, client, cooperative, farmer):
 
 
 @patch(
-    "app.services.communications_service.MoolreService.send_sms",
+    "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_bulk_sms",
     new_callable=AsyncMock,
 )
 def test_broadcast_sms_moolre_failure_returns_502(mock_send, client, cooperative, farmer):

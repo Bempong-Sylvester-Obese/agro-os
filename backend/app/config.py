@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     supabase_service_role_key: str = ""
     supabase_anon_key: str = ""
 
+    # AgroOS deployment
+    agroos_base_url: str = ""
+
     # Moolre API
     moolre_env: str = "sandbox"
     moolre_api_url: str = "https://sandbox.moolre.com"

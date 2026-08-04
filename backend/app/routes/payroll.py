@@ -183,9 +183,9 @@ async def disburse_payroll(
     if not payout_ids:
         raise HTTPException(status_code=404, detail="No approved payouts found for this period")
 
-    from app.services.moolre_service import MoolreService
+    from app.services.providers.factory import get_payment_provider
 
-    moolre = MoolreService()
+    moolre = get_payment_provider()
     results = []
     paid_notifications: list[tuple[float, date, date, str]] = []
 

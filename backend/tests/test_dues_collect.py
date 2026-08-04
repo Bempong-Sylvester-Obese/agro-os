@@ -51,7 +51,7 @@ def test_collect_dues_uses_cooperative_account(client, farmer, cooperative):
     )
 
     with patch(
-        "app.routes.transactions.MoolreService.initiate_payment",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
         new_callable=AsyncMock,
     ) as mock_pay:
         mock_pay.return_value = _tr099_result("coop-dues-ref")
@@ -84,7 +84,7 @@ def test_initiate_payment_rejects_missing_moolre_user(monkeypatch):
 
 def test_collect_dues_tp14_verification_required(client, farmer):
     with patch(
-        "app.routes.transactions.MoolreService.initiate_payment",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
         new_callable=AsyncMock,
     ) as mock_pay:
         mock_pay.return_value = _tp14_result("test-ref-tp14")
@@ -111,7 +111,7 @@ def test_collect_dues_tp14_verification_required(client, farmer):
 
 def test_collect_dues_tr099_pending(client, farmer):
     with patch(
-        "app.routes.transactions.MoolreService.initiate_payment",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
         new_callable=AsyncMock,
     ) as mock_pay:
         mock_pay.return_value = _tr099_result("test-ref-tr099")
@@ -131,7 +131,7 @@ def test_collect_dues_tr099_pending(client, farmer):
 
 def test_dashboard_collect_is_idempotent_while_member_action_is_pending(client, farmer):
     with patch(
-        "app.routes.transactions.MoolreService.initiate_payment",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
         new_callable=AsyncMock,
         return_value=_tp14_result("idempotent-ref"),
     ) as mock_pay:
@@ -159,7 +159,7 @@ def test_ambiguous_dues_initiation_preserves_reference_and_blocks_retry(
     client, farmer, db
 ):
     with patch(
-        "app.routes.transactions.MoolreService.initiate_payment",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
         new_callable=AsyncMock,
         side_effect=RuntimeError("provider timeout"),
     ) as mock_pay:
@@ -212,7 +212,7 @@ def test_expired_customer_action_becomes_terminal_on_dashboard_read(
 
 def test_collect_dues_moolre_failure(client, farmer):
     with patch(
-        "app.routes.transactions.MoolreService.initiate_payment",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
         new_callable=AsyncMock,
     ) as mock_pay:
         mock_pay.return_value = _failed_result("test-ref-fail")
@@ -230,7 +230,7 @@ def test_collect_dues_moolre_failure(client, farmer):
 
 def test_farmer_resumes_dashboard_dues_otp_from_ussdk(client, farmer, db):
     with patch(
-        "app.routes.transactions.MoolreService.initiate_payment",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
         new_callable=AsyncMock,
     ) as mock_pay:
         mock_pay.return_value = _tp14_result("verify-ref-001")
@@ -285,7 +285,7 @@ def test_farmer_resumes_dashboard_dues_otp_from_ussdk(client, farmer, db):
 
 def test_otp_attempt_is_claimed_before_provider_call(client, farmer, db):
     with patch(
-        "app.routes.transactions.MoolreService.initiate_payment",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
         new_callable=AsyncMock,
     ) as mock_pay:
         mock_pay.return_value = _tp14_result("claimed-otp-ref")
@@ -338,7 +338,7 @@ def test_pending_payment_cannot_be_resumed_by_another_phone(
         },
     ).json()
     with patch(
-        "app.routes.transactions.MoolreService.initiate_payment",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
         new_callable=AsyncMock,
         return_value=_tp14_result("phone-scope-ref"),
     ) as mock_pay:
