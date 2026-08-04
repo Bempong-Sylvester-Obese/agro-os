@@ -133,3 +133,19 @@ def enforce_cooperative_scope(current_user: User | None, cooperative_id: int) ->
     """Reject authenticated cross-cooperative access without leaking tenant data."""
     if current_user is not None and current_user.cooperative_id != cooperative_id:
         raise HTTPException(status_code=404, detail="Resource not found")
+
+
+def require_active_subscription():
+    from app.models.models import Cooperative
+    from app.services.plans import check_subscription_active
+
+    def dependency(current_user: User | None = Depends(get_current_user), db: Session = Depends(get_db)) -> User | None:
+        if not get_settings().auth_enabled:
+            return None
+        if current_user is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        coop = db.query(Cooperative).filter(Cooperative.id == current_user.cooperative_id).first()
+        if coop and not check_subscription_active(coop):
+            raise HTTPException(status_code=402, detail="Subscription expired. Please renew your plan.")
+        return current_user
+    return dependency

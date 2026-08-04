@@ -177,6 +177,8 @@ class Cooperative(Base):
         String, default="active", nullable=False, server_default="active"
     )
     subscription_expires_at = Column(DateTime, nullable=True)
+    sms_sent_this_month = Column(Integer, default=0, server_default="0", nullable=False)
+    sms_month_reset = Column(DateTime, nullable=True)
     # Moolre wallet that holds cooperative funds
     moolre_account_number = Column(String, nullable=True)
     # 4-digit code for USSD onboarding

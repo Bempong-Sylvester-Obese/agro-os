@@ -71,6 +71,19 @@ def create_farmer(
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
 
+    from app.services.plans import get_plan_limit
+
+    active_count = db.query(CooperativeMembership).filter(
+        CooperativeMembership.membership_status == MembershipStatus.active,
+        CooperativeMembership.cooperative_id == cooperative_id,
+    ).count()
+    max_members = get_plan_limit(coop.subscription_plan, "max_members")
+    if max_members > 0 and active_count >= max_members:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Member limit of {max_members} reached for the {coop.subscription_plan} plan. Upgrade to add more members."
+        )
+
     normalized_phone = normalize_ghana_phone(farmer_in.phone)
     farmer = db.query(Farmer).filter(Farmer.phone == normalized_phone).first()
     existing_farmer = farmer is not None

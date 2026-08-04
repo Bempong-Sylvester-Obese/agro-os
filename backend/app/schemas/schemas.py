@@ -25,6 +25,9 @@ class CooperativeBase(BaseModel):
     location: Optional[str] = None
     currency: str = "GHS"
     moolre_account_number: Optional[str] = None
+    subscription_plan: str | None = None
+    subscription_status: str | None = None
+    subscription_expires_at: datetime | None = None
 
 
 class CooperativeCreate(CooperativeBase):
@@ -38,6 +41,9 @@ class CooperativeUpdate(BaseModel):
     currency: Optional[str] = None
     moolre_account_number: Optional[str] = None
     organization_type: Optional[str] = None
+    subscription_plan: str | None = None
+    subscription_status: str | None = None
+    subscription_expires_at: datetime | None = None
 
 
 class CooperativeResponse(CooperativeBase):
