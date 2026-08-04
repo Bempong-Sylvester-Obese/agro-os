@@ -38,23 +38,16 @@ from app.models.models import (
     TransactionStatus,
     TransactionType,
 )
-from app.routes.loans import (
-    resume_loan_repayment_customer_action,
-    start_farmer_loan_repayment,
-)
-from app.routes.transactions import (
-    _run_dues_collect,
-    expire_customer_actions,
-    pending_customer_actions,
-    resume_dues_customer_action,
-)
 from app.services.loan_request_service import (
     PendingLoanRequestError,
     create_farmer_loan_request,
 )
 from app.services.membership_service import cooperative_selection_payload
 from app.services.ussd_service import resolve_farmer_by_phone
-from app.services.moolre_service import MoolreService
+from app.services.dues_service import run_dues_collect
+from app.services.customer_action_service import expire_customer_actions, pending_customer_actions, resume_dues_customer_action
+from app.services.loan_repayment_service import start_farmer_loan_repayment, resume_loan_repayment_customer_action
+from app.services.providers.factory import get_payment_provider, get_sms_provider
 
 logger = logging.getLogger(__name__)
 
@@ -241,7 +234,7 @@ async def pay_dues(
             "message": "Phone not registered with AgroOS. Contact your cooperative.",
         }
 
-    result = await _run_dues_collect(
+    result = await run_dues_collect(
         farmer=membership,
         amount=amount,
         channel="13",
@@ -548,8 +541,8 @@ async def wallet_balance(
     )
     coop_account = cooperative.moolre_account_number if cooperative else None
 
-    moolre = MoolreService()
-    result = await moolre.account_status(account_number=coop_account)
+    provider = get_payment_provider()
+    result = await provider.account_status(account_number=coop_account)
 
     if not result.get("success"):
         return {
@@ -590,11 +583,10 @@ async def announcements(
     if not membership and len(memberships) > 1:
         return cooperative_selection_payload(memberships)
     if farmer:
-        moolre = MoolreService()
-        sms_result = await moolre.send_single_sms(
-            phone=farmer.phone,
+        sms = get_sms_provider()
+        sms_result = await sms.send_sms(
+            recipient=farmer.phone,
             message=announcement_text,
-            ref=f"announce-{farmer.id}",
         )
         if sms_result.get("success"):
             return {"message": f"{announcement_text}\n(Also sent via SMS.)"}

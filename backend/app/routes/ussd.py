@@ -7,7 +7,8 @@ import logging
 from app.database.db import get_db
 from app.models.models import Farmer, CooperativeMembership, Cooperative, Loan, LoanStatus
 from app.services.ussd_service import resolve_farmer_by_phone
-from app.routes.transactions import _run_dues_collect
+from app.services.dues_service import run_dues_collect
+from app.services.loan_repayment_service import start_farmer_loan_repayment
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +89,7 @@ async def ussd_callback(
             
             # Use existing logic
             membership = memberships[0]
-            result = await _run_dues_collect(
+            result = await run_dues_collect(
                 farmer=membership,
                 amount=amount,
                 channel="13", # Moolre generic mobile money channel
@@ -139,7 +140,6 @@ async def ussd_callback(
             except ValueError:
                 return Response(content="END Invalid amount.", media_type="text/plain")
                 
-            from app.routes.loans import start_farmer_loan_repayment
             from app.schemas.schemas import LoanRepaymentInit
             import uuid
             try:

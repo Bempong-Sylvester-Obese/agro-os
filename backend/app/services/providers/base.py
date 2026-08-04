@@ -51,6 +51,16 @@ class PaymentProvider(ABC):
         """Get wallet/account balance and status."""
         ...
 
+    @abstractmethod
+    def resolve_account_number(self, cooperative_account: str | None = None) -> str:
+        """Resolve the account number to use (cooperative wallet or global fallback)."""
+        ...
+
+    @abstractmethod
+    async def list_transactions(self, account_number: str | None = None, start_date: str | None = None, end_date: str | None = None, limit: int = 50, status: str | None = None) -> dict:
+        """List account transactions from the provider."""
+        ...
+
 
 class SmsProvider(ABC):
     """Port for SMS operations."""

@@ -48,31 +48,45 @@ from app.models.models import (
     User,
     UssdSession,
 )
-from app.routes.loans import (
-    resume_loan_repayment_customer_action,
-    start_farmer_loan_repayment,
-)
-from app.routes.transactions import (
-    _run_dues_collect,
-    pending_customer_actions,
-    resume_dues_customer_action,
-)
 from app.schemas.schemas import UssdSessionResponse
 from app.services.auth_service import get_current_user
 from app.services.communications_service import CommunicationsService
+from app.services.customer_action_service import (
+    pending_customer_actions,
+    resume_dues_customer_action,
+)
+from app.services.dues_service import run_dues_collect
+from app.services.loan_repayment_service import (
+    resume_loan_repayment_customer_action,
+    start_farmer_loan_repayment,
+)
 from app.services.loan_request_service import (
     PendingLoanRequestError,
     create_farmer_loan_request,
 )
 from app.services.ussd_service import resolve_farmer_by_phone
-from app.services.moolre_service import MoolreService
+from app.services.providers.factory import get_payment_provider, get_sms_provider
 from app.services.trust_score_service import TrustScoreService
+from app.domain.payment_event import PaymentEvent
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 settings = get_settings()
+
+def _normalize_payload(raw: dict) -> PaymentEvent:
+    return PaymentEvent(
+        provider="moolre",
+        event_type=f"payment.{raw.get('status', 'unknown')}",
+        external_ref=str(raw.get("moolre_reference", raw.get("reference", ""))),
+        amount=float(raw.get("amount", 0)) if raw.get("amount") else None,
+        currency=raw.get("currency", "GHS"),
+        status=raw.get("status", "unknown"),
+        payer_phone=raw.get("payer_phone"),
+        metadata=raw,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Signature verification helper
@@ -326,10 +340,10 @@ async def _post_payment_tasks(farmer_id: int, amount: float, reference: str) -> 
                 if coop and coop.moolre_account_number:
                     fee_amount = round(amount * 0.02, 2)
                     if fee_amount > 0:
-                        moolre = MoolreService()
+                        provider = get_payment_provider()
                         # Transfer from Coop sub-wallet to Platform Master wallet
-                        await moolre.internal_transfer(
-                            receiver_account=moolre.settings.moolre_account_number,
+                        await provider.internal_transfer(
+                            receiver_account=settings.moolre_account_number,
                             amount=fee_amount,
                             currency=coop.currency or "GHS",
                             reference=f"Platform Fee for tx {reference}",
@@ -601,8 +615,8 @@ async def handle_ussd_session(
         if message == "4":
             announcement_text = "No new announcements. Check with your cooperative leader."
             if farmer:
-                moolre = MoolreService()
-                sms_result = await moolre.send_single_sms(
+                sms = get_sms_provider()
+                sms_result = await sms.send_sms(
                     phone=farmer.phone, message=announcement_text, ref=f"announce-{farmer.id}"
                 )
                 if sms_result.get("success"):
@@ -950,7 +964,7 @@ async def handle_ussd_session(
 
         external_ref = str(uuid.uuid4())
         try:
-            result = await _run_dues_collect(
+            result = await run_dues_collect(
                 farmer=farmer,
                 amount=amount,
                 channel="13",

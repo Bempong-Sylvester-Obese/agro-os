@@ -58,15 +58,22 @@ class MoolrePaymentAdapter(PaymentProvider):
         return await self._service.resolve_verified_account(cooperative_id)
 
     async def generate_payment_link(self, **kwargs):
-        return await self._service.generate_payment_link(
-            amount=kwargs["amount"],
-            description=kwargs["description"],
-            redirect_url=kwargs["redirect_url"],
-            external_ref=kwargs["external_ref"],
-        )
+        return await self._service.generate_payment_link(**kwargs)
 
     async def account_status(self, account_number):
         return await self._service.account_status(account_number)
+
+    def resolve_account_number(self, cooperative_account=None):
+        return self._service.resolve_account_number(cooperative_account)
+
+    async def list_transactions(self, **kwargs):
+        return await self._service.list_transactions(
+            account_number=kwargs.get("account_number"),
+            start_date=kwargs.get("start_date"),
+            end_date=kwargs.get("end_date"),
+            limit=kwargs.get("limit", 50),
+            status=kwargs.get("status"),
+        )
 
 
 class MoolreSmsAdapter(SmsProvider):
