@@ -31,7 +31,7 @@ click==8.4.1
     # via
     #   uvicorn
     #   wandb
-cryptography==49.0.0
+cryptography==50.0.0
     # via pyjwt
 dnspython==2.7.0
     # via email-validator
