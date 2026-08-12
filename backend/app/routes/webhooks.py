@@ -160,6 +160,20 @@ def _process_payment_payload(
     except (TypeError, ValueError):
         amount = 0.0
 
+    if external_ref and external_ref.startswith("sub_pre_"):
+        if moolre_status == 1:
+            from app.models.models import PendingCheckout
+            checkout = (
+                db.query(PendingCheckout)
+                .filter(PendingCheckout.reference == external_ref)
+                .first()
+            )
+            if checkout and checkout.status != "paid":
+                checkout.status = "paid"
+                db.commit()
+                logger.info(f"Pending checkout {checkout.reference} marked paid")
+        return {"status": "ok", "message": "Pre-checkout webhook processed"}
+
     if external_ref and external_ref.startswith("sub_upg_"):
         if moolre_status == 1:
             try:

@@ -59,3 +59,27 @@ def test_pre_checkout_rejects_custom_solo_band(client):
         json={"plan_key": "solo", "band": "custom", "organisation": "Acme Farm"},
     )
     assert resp.status_code == 400
+
+
+def test_webhook_marks_pending_checkout_paid(client, db):
+    checkout = PendingCheckout(
+        reference="sub_pre_wh123",
+        plan_key="growth",
+        band="base",
+        amount=299.0,
+        organisation="Webhook Coop",
+    )
+    db.add(checkout)
+    db.commit()
+
+    resp = client.post(
+        "/webhooks/moolre/payment",
+        json={
+            "status": 1,
+            "data": {"externalref": "sub_pre_wh123", "amount": "299.00"},
+        },
+    )
+
+    assert resp.status_code == 200
+    saved = db.query(PendingCheckout).filter(PendingCheckout.reference == "sub_pre_wh123").one()
+    assert saved.status == "paid"
