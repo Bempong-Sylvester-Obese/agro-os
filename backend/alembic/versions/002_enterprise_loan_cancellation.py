@@ -15,7 +15,11 @@ def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
         enum_exists = bind.execute(
-            sa.text("SELECT 1 FROM pg_type WHERE typname = 'loanstatus'")
+            sa.text(
+                "SELECT 1 FROM pg_type t "
+                "JOIN pg_namespace n ON t.typnamespace = n.oid "
+                "WHERE t.typname = 'loanstatus' AND n.nspname = current_schema()"
+            )
         ).scalar()
         if enum_exists:
             op.execute("ALTER TYPE loanstatus ADD VALUE IF NOT EXISTS 'cancelled'")
