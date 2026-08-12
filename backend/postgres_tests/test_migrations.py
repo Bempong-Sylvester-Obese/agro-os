@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.schema import CreateSchema, DropSchema
 
@@ -44,18 +44,35 @@ def _create_metadata(engine, schema: str) -> None:
         Base.metadata.create_all(bind=connection)
 
 
+def _engine_for_schema(database_url: str, schema: str):
+    scoped_url = make_url(database_url).set(
+        query={
+            **dict(make_url(database_url).query),
+            "options": f"-csearch_path={schema}",
+        }
+    )
+    engine = create_engine(scoped_url)
+
+    @event.listens_for(engine, "connect")
+    def _set_search_path(dbapi_connection, _connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute(f'SET search_path TO "{schema}"')
+        cursor.close()
+
+    return engine
+
+
 def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
     schema = f"agro_migrations_{uuid4().hex}"
     original_database_url = os.environ.get("DATABASE_URL")
     admin_engine = create_engine(DATABASE_URL)
-    scoped_url = make_url(DATABASE_URL).set(
+    engine = _engine_for_schema(DATABASE_URL, schema)
+    scoped_database_url = make_url(DATABASE_URL).set(
         query={
             **dict(make_url(DATABASE_URL).query),
             "options": f"-csearch_path={schema}",
         }
-    )
-    scoped_database_url = scoped_url.render_as_string(hide_password=False)
-    engine = create_engine(scoped_url)
+    ).render_as_string(hide_password=False)
     config = _config(scoped_database_url)
 
     try:
