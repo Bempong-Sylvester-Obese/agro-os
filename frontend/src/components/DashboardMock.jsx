@@ -1,4 +1,5 @@
 // src/components/DashboardMock.jsx
+import React from 'react'
 import { BarChart3, Users, Tractor, Star, CreditCard, Banknote, Inbox, MessageSquare, RefreshCw, Sprout } from 'lucide-react'
 
 const NAV_GROUPS = [
