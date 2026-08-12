@@ -2,10 +2,22 @@
 
 from datetime import date, timedelta
 
-from app.models.models import Cooperative, DemoBooking, User
+from app.models.models import Cooperative, DemoBooking, PendingCheckout, User
 
 
 def test_signup_persists_subscription_and_business_role(client, db):
+    db.add(
+        PendingCheckout(
+            reference="sub_pre_growth_role1",
+            plan_key="growth",
+            band="base",
+            amount=299.0,
+            organisation="Growth Cooperative",
+            status="paid",
+        )
+    )
+    db.commit()
+
     response = client.post(
         "/auth/signup",
         json={
@@ -15,6 +27,7 @@ def test_signup_persists_subscription_and_business_role(client, db):
             "location": "Kumasi",
             "member_count": 240,
             "subscription_plan": "growth",
+            "checkout_ref": "sub_pre_growth_role1",
             "onboarding_role": "Operations director",
         },
     )
