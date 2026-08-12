@@ -70,4 +70,30 @@ describe('AuthPage subscription signup', () => {
       expect(window.sessionStorage.getItem('agroos-subscription-intent')).toBeNull()
     })
   })
+
+  it('sends checkout_ref and band for a paid subscription signup', async () => {
+    window.sessionStorage.setItem('agroos-subscription-intent', JSON.stringify({
+      plan: 'growth',
+      band: 'plus_50',
+      organisation: 'Test Cooperative',
+      location: 'Accra',
+      memberCount: '125',
+      role: 'Finance or operations lead',
+      checkout_ref: 'sub_pre_abc123',
+    }))
+    authMocks.signup.mockResolvedValue({ access_token: 'token' })
+
+    render(
+      <MemoryRouter initialEntries={['/login?mode=signup&plan=growth&onboarding=subscription&checkout=sub_pre_abc123']}>
+        <AuthPage onAuth={vi.fn()} />
+      </MemoryRouter>,
+    )
+    submitSignup()
+
+    await waitFor(() => expect(authMocks.signup).toHaveBeenCalledWith(expect.objectContaining({
+      subscriptionPlan: 'growth',
+      subscriptionBand: 'plus_50',
+      checkoutRef: 'sub_pre_abc123',
+    })))
+  })
 })

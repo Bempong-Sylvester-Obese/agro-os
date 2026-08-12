@@ -1,7 +1,6 @@
 import React, { useEffect, useId, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { login, signup, storeAuthToken, userFromAuthToken, userFromSignupResponse, warmAuthBackend } from '../api/auth'
-import { createSubscriptionCheckout } from '../api/cooperatives'
 import { Sprout, ArrowLeft, ArrowRight, Building2, Users, MapPin, Mail, Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
@@ -233,6 +232,7 @@ export default function AuthPage({ onAuth }) {
     setLoading(true)
     try {
       const plan = subscriptionIntent?.plan || 'starter'
+      const checkoutRef = subscriptionIntent?.checkout_ref || searchParams.get('checkout')
       const data = await signup({
         email: signupEmail,
         password: signupPassword,
@@ -240,29 +240,13 @@ export default function AuthPage({ onAuth }) {
         location: location || undefined,
         memberCount: memberCount || undefined,
         subscriptionPlan: plan,
+        subscriptionBand: subscriptionIntent?.band,
+        checkoutRef,
         onboardingRole: subscriptionIntent?.role || 'Cooperative administrator',
         organizationType,
       })
       storeAuthToken(data.access_token)
       if (subscriptionIntent) window.sessionStorage.removeItem('agroos-subscription-intent')
-      
-      const user = data.user || userFromAuthToken(data.access_token)
-      
-      if (plan !== 'starter' && user?.cooperative_id) {
-        setLoading(true)
-        // Attempt to redirect to Moolre checkout
-        try {
-          const res = await createSubscriptionCheckout(user.cooperative_id, plan)
-          if (res.authorization_url) {
-            window.location.href = res.authorization_url
-            return
-          }
-        } catch (err) {
-          console.error("Subscription checkout failed:", err)
-          // Fall through to regular login if checkout fails
-        }
-      }
-      
       setSuccess(true)
       setTimeout(() => {
         completeAuth(data, userFromSignupResponse(data, signupEmail.trim()))
