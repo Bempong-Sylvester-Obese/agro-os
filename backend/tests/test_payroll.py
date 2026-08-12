@@ -103,11 +103,11 @@ def test_disburse_payroll_uses_stable_external_ref(auth_client, test_cooperative
         return {"success": True}
 
     monkeypatch.setattr(
-        "app.services.moolre_service.MoolreService.initiate_transfer",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_transfer",
         fake_transfer,
     )
     monkeypatch.setattr(
-        "app.services.communications_service.CommunicationsService.send_single_sms",
+        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
         fake_sms,
     )
 
