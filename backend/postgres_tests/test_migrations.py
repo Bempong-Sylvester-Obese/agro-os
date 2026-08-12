@@ -13,12 +13,6 @@ from sqlalchemy.schema import CreateSchema, DropSchema
 from alembic import command
 from app.config import get_settings
 from app.database.db import Base
-import app.models.farm_production  # noqa: F401 — register metadata for create_all
-import app.models.models  # noqa: F401
-import app.models.wage_payout  # noqa: F401
-import app.models.worker  # noqa: F401
-import app.models.worker_attendance  # noqa: F401
-import app.models.work_task  # noqa: F401
 
 DATABASE_URL = os.environ.get("POSTGRES_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(
@@ -42,6 +36,14 @@ def _reset_schema(admin_engine, schema: str) -> None:
         connection.execute(CreateSchema(schema))
 
 
+def _create_metadata(engine, schema: str) -> None:
+    import main  # noqa: F401
+
+    with engine.begin() as connection:
+        connection.execute(text(f'SET search_path TO "{schema}"'))
+        Base.metadata.create_all(bind=connection)
+
+
 def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
     schema = f"agro_migrations_{uuid4().hex}"
     original_database_url = os.environ.get("DATABASE_URL")
@@ -58,12 +60,12 @@ def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
 
     try:
         _reset_schema(admin_engine, schema)
-        Base.metadata.create_all(engine)
+        _create_metadata(engine, schema)
         command.upgrade(config, "head")
         assert inspect(engine).has_table("demo_bookings")
 
         _reset_schema(admin_engine, schema)
-        Base.metadata.create_all(engine)
+        _create_metadata(engine, schema)
         with engine.begin() as connection:
             connection.execute(text("DROP TABLE admin_action_confirmations"))
             connection.execute(text("DROP TABLE demo_bookings"))

@@ -14,18 +14,28 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
-        enum_exists = bind.execute(
+        op.execute(
             sa.text(
-                "SELECT 1 FROM pg_type t "
-                "JOIN pg_namespace n ON t.typnamespace = n.oid "
-                "WHERE t.typname = 'loanstatus' AND n.nspname = current_schema()"
+                """
+                DO $body$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM pg_type t
+                        JOIN pg_namespace n ON t.typnamespace = n.oid
+                        WHERE t.typname = 'loanstatus'
+                          AND n.nspname = current_schema()
+                    ) THEN
+                        ALTER TYPE loanstatus ADD VALUE IF NOT EXISTS 'cancelled';
+                    END IF;
+                END
+                $body$;
+                """
             )
-        ).scalar()
-        if enum_exists:
-            op.execute("ALTER TYPE loanstatus ADD VALUE IF NOT EXISTS 'cancelled'")
-    if "loans" not in sa.inspect(bind).get_table_names():
+        )
+    inspector = sa.inspect(bind)
+    if "loans" not in inspector.get_table_names():
         return
-    columns = {column["name"] for column in sa.inspect(bind).get_columns("loans")}
+    columns = {column["name"] for column in inspector.get_columns("loans")}
     if "cancelled_by" not in columns:
         op.add_column("loans", sa.Column("cancelled_by", sa.String(), nullable=True))
     if "cancelled_at" not in columns:
