@@ -1,31 +1,8 @@
-import React, { useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, ArrowRight, Building2, Check, ChevronRight, MapPin, ReceiptText, ShieldCheck, Users } from 'lucide-react'
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Reveal } from '../components/Motion'
-
-const PLAN_DETAILS = {
-  starter: {
-    name: 'Starter',
-    price: 'Free',
-    cadence: 'No billing details required',
-    description: 'Core member records and payment collection for cooperatives getting started.',
-    terms: ['Up to 50 members', 'Immediate workspace access', 'Upgrade when your operation grows'],
-  },
-  solo: {
-    name: 'Solo Farm',
-    price: 'GHS 99',
-    cadence: 'per farm / month',
-    description: 'Manage farm workers, track tasks and attendance, run payroll.',
-    terms: ['Up to 20 workers', 'Worker management', 'Attendance tracking', 'Wage payroll'],
-  },
-  growth: {
-    name: 'Growth',
-    price: 'GHS 299',
-    cadence: 'per organisation / month',
-    description: 'Connected payment, communication, USSD, and credit workflows for active operations.',
-    terms: ['Up to 500 members', 'Onboarding access before billing activation', 'No card requested at this stage'],
-  },
-}
+import { createPreCheckout, fetchPlans } from '../api/plans'
 
 const MEMBER_OPTIONS = [
   { value: '25', label: '1–50 members' },
@@ -36,8 +13,9 @@ const MEMBER_OPTIONS = [
 
 export default function SubscriptionPage() {
   const { plan: planKey } = useParams()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const plan = PLAN_DETAILS[planKey]
+  const [plans, setPlans] = useState([])
   const [step, setStep] = useState(0)
   const [error, setError] = useState('')
   const [form, setForm] = useState({
@@ -47,7 +25,18 @@ export default function SubscriptionPage() {
     role: 'Cooperative administrator',
   })
 
-  if (!plan) return <Navigate to="/pricing" replace />
+  useEffect(() => {
+    fetchPlans().then(setPlans).catch(() => {})
+  }, [])
+
+  const plan = useMemo(() => plans.find((p) => p.key === planKey), [plans, planKey])
+  const bandKey = searchParams.get('band')
+  const band = useMemo(() => {
+    if (!plan?.bands) return null
+    return plan.bands.find((b) => b.key === bandKey) || plan.bands[0]
+  }, [plan, bandKey])
+
+  if (plans.length > 0 && !plan) return <Navigate to="/pricing" replace />
 
   function updateField(event) {
     const { name, value } = event.target
@@ -65,14 +54,37 @@ export default function SubscriptionPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  function continueToAccount() {
+  async function continueToAccount() {
     const orgType = planKey === 'solo' ? 'solo_farm' : 'cooperative'
-    const intent = { plan: planKey, ...form, org_type: orgType }
-    window.sessionStorage.setItem('agroos-subscription-intent', JSON.stringify(intent))
-    const params = new URLSearchParams({ mode: 'signup', plan: planKey, onboarding: 'subscription' })
-    navigate(`/login?${params.toString()}`)
-    window.scrollTo({ top: 0, behavior: 'instant' })
+    if (planKey === 'starter') {
+      const intent = { plan: planKey, ...form, org_type: orgType }
+      window.sessionStorage.setItem('agroos-subscription-intent', JSON.stringify(intent))
+      navigate(`/login?mode=signup&plan=${planKey}&onboarding=subscription`)
+      return
+    }
+
+    setError('')
+    try {
+      const checkout = await createPreCheckout({
+        plan_key: planKey,
+        band: band?.key || null,
+        organisation: form.organisation,
+        location: form.location,
+        member_count: Number(form.memberCount) || null,
+        role: form.role,
+        organization_type: orgType,
+      })
+      const intent = { plan: planKey, band: band?.key || null, ...form, org_type: orgType, checkout_ref: checkout.reference }
+      window.sessionStorage.setItem('agroos-subscription-intent', JSON.stringify(intent))
+      window.location.href = checkout.authorization_url
+    } catch (err) {
+      setError(err.message)
+    }
   }
+
+  if (!plan) return null
+
+  const priceLabel = band ? `GHS ${band.price}` : plan.price
 
   return (
     <main className="subscribe-page">
@@ -82,17 +94,17 @@ export default function SubscriptionPage() {
         </button>
         <div className="subscribe-kicker">Selected plan</div>
         <h1 className="serif">{plan.name}</h1>
-        <div className="subscribe-price">{plan.price}</div>
-        <div className="subscribe-cadence">{plan.cadence}</div>
+        <div className="subscribe-price">{priceLabel}</div>
+        <div className="subscribe-cadence">{band ? band.label : plan.cadence}</div>
         <p className="subscribe-description">{plan.description}</p>
         <div className="subscribe-terms">
-          {plan.terms.map((term) => <div key={term}><Check size={15} /> {term}</div>)}
+          {plan.features.map((term) => <div key={term}><Check size={15} /> {term}</div>)}
         </div>
         <div className="subscribe-safety">
           <ShieldCheck size={18} />
           <div>
             <strong>Commercially transparent</strong>
-            <p>You will review the selected plan before creating an administrator account.</p>
+            <p>You will review the selected plan and pay before creating an administrator account.</p>
           </div>
         </div>
       </section>
@@ -148,7 +160,7 @@ export default function SubscriptionPage() {
               <div className="subscribe-heading">
                 <div className="subscribe-kicker">Order summary</div>
                 <h2 className="serif">Confirm your onboarding path.</h2>
-                <p>No payment details are collected during this step.</p>
+                <p>You will be charged once, securely, before account creation.</p>
               </div>
 
               <div className="subscribe-summary">
@@ -158,26 +170,28 @@ export default function SubscriptionPage() {
                     <strong>{plan.name}</strong>
                   </div>
                   <div className="subscribe-summary-price">
-                    <strong>{plan.price}</strong>
-                    <span>{planKey === 'growth' ? '/ month' : ''}</span>
+                    <strong>{priceLabel}</strong>
+                    <span>/ month</span>
                   </div>
                 </div>
                 <div className="subscribe-summary-row"><span>Organisation</span><strong>{form.organisation}</strong></div>
                 <div className="subscribe-summary-row"><span>Member profile</span><strong>{MEMBER_OPTIONS.find((option) => option.value === form.memberCount)?.label}</strong></div>
-                <div className="subscribe-summary-row"><span>Billing today</span><strong>GHS 0</strong></div>
+                <div className="subscribe-summary-row"><span>Billing today</span><strong>{priceLabel}</strong></div>
               </div>
 
               <div className="subscribe-next">
                 <ReceiptText size={18} />
                 <div>
-                  <strong>Next: secure account setup</strong>
-                  <p>Create the administrator credentials for {form.organisation}. Your plan context will carry through automatically.</p>
+                  <strong>{planKey === 'starter' ? 'Next: secure account setup' : 'Next: secure payment'}</strong>
+                  <p>{planKey === 'starter' ? 'Create the administrator credentials for your workspace.' : 'Pay securely via Moolre, then create your administrator account.'}</p>
                 </div>
                 <ChevronRight size={18} />
               </div>
 
+              {error && <div className="auth-error subscribe-error" role="alert">{error}</div>}
+
               <button type="button" className="btn-lg subscribe-primary" onClick={continueToAccount}>
-                Continue to account setup <ArrowRight size={16} />
+                {planKey === 'starter' ? 'Start free workspace' : `Pay ${priceLabel}`} <ArrowRight size={16} />
               </button>
             </>
           )}
