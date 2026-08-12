@@ -186,6 +186,7 @@ class Cooperative(Base):
     subscription_status = Column(
         String, default="active", nullable=False, server_default="active"
     )
+    subscription_band = Column(String, nullable=True)
     subscription_expires_at = Column(DateTime, nullable=True)
     # Moolre wallet that holds cooperative funds
     moolre_account_number = Column(String, nullable=True)
@@ -699,6 +700,26 @@ class DemoBooking(Base):
     selected_date = Column(Date, nullable=False, index=True)
     selected_time = Column(String, nullable=False)
     is_enterprise = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, server_default=func.now(), nullable=False)
+
+
+class PendingCheckout(Base):
+    """Subscription checkout created before account creation; reconciled by webhook."""
+
+    __tablename__ = "pending_checkouts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    reference = Column(String, unique=True, nullable=False, index=True)
+    plan_key = Column(String, nullable=False)
+    band = Column(String, nullable=True)
+    amount = Column(Float, nullable=False)
+    currency = Column(String, default="GHS")
+    organisation = Column(String, nullable=False)
+    location = Column(String, nullable=True)
+    member_count = Column(Integer, nullable=True)
+    role = Column(String, nullable=True)
+    organization_type = Column(String, default="cooperative", nullable=False)
+    status = Column(String, default="pending", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, server_default=func.now(), nullable=False)
 
 

@@ -1,5 +1,6 @@
 """Pricing catalog tests."""
 
+from app.models.models import PendingCheckout
 from app.plans import PLANS, get_plan, resolve_amount
 
 
@@ -37,3 +38,22 @@ def test_plans_endpoint_returns_all_plans(client):
     assert resp.status_code == 200
     keys = {p["key"] for p in resp.json()["plans"]}
     assert keys == {"starter", "growth", "solo", "enterprise"}
+
+
+def test_pending_checkout_is_persisted(client, db):
+    checkout = PendingCheckout(
+        reference="sub_pre_test123",
+        plan_key="growth",
+        band="base",
+        amount=299.0,
+        organisation="Ashanti Farmers Cooperative",
+        status="pending",
+    )
+    db.add(checkout)
+    db.commit()
+
+    saved = db.query(PendingCheckout).filter(PendingCheckout.reference == "sub_pre_test123").one()
+    assert saved.plan_key == "growth"
+    assert saved.band == "base"
+    assert saved.amount == 299.0
+    assert saved.status == "pending"
