@@ -23,6 +23,8 @@ def upgrade() -> None:
         ).scalar()
         if enum_exists:
             op.execute("ALTER TYPE loanstatus ADD VALUE IF NOT EXISTS 'cancelled'")
+    if "loans" not in sa.inspect(bind).get_table_names():
+        return
     columns = {column["name"] for column in sa.inspect(bind).get_columns("loans")}
     if "cancelled_by" not in columns:
         op.add_column("loans", sa.Column("cancelled_by", sa.String(), nullable=True))

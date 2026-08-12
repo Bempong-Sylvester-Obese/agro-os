@@ -13,6 +13,12 @@ from sqlalchemy.schema import CreateSchema, DropSchema
 from alembic import command
 from app.config import get_settings
 from app.database.db import Base
+import app.models.farm_production  # noqa: F401 — register metadata for create_all
+import app.models.models  # noqa: F401
+import app.models.wage_payout  # noqa: F401
+import app.models.worker  # noqa: F401
+import app.models.worker_attendance  # noqa: F401
+import app.models.work_task  # noqa: F401
 
 DATABASE_URL = os.environ.get("POSTGRES_TEST_DATABASE_URL")
 pytestmark = pytest.mark.skipif(
