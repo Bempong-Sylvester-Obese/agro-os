@@ -66,6 +66,7 @@ _PUBLIC_PATHS = frozenset({
     "/auth/signup",
     "/marketing/demo-bookings",
     "/plans",
+    "/subscriptions/pre-checkout",
     "/webhooks/moolre/payment",
     "/webhooks/moolre/ussd",
     "/ussd/callback",
