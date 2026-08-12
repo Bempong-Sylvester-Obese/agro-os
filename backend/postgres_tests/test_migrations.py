@@ -73,6 +73,7 @@ def _run_upgrade(config: Config, engine, schema: str, revision: str = "head") ->
         config.attributes["connection"] = connection
         command.upgrade(config, revision)
         config.attributes.pop("connection", None)
+        connection.commit()
 
 
 def _run_stamp(config: Config, engine, schema: str, revision: str) -> None:
@@ -81,6 +82,7 @@ def _run_stamp(config: Config, engine, schema: str, revision: str) -> None:
         config.attributes["connection"] = connection
         command.stamp(config, revision)
         config.attributes.pop("connection", None)
+        connection.commit()
 
 
 def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
