@@ -58,3 +58,15 @@ def test_production_requires_authentication():
             database_url="postgresql://user:password@db.example.com:5432/agro_os",
             auth_enabled=False,
         )
+
+
+def test_render_disables_blocking_startup_migrations(monkeypatch):
+    monkeypatch.setenv("RENDER", "true")
+    settings = Settings(
+        _env_file=None,
+        app_env="development",
+        auto_migrate_on_startup=True,
+        seed_demo_data=True,
+    )
+    assert settings.auto_migrate_on_startup is False
+    assert settings.seed_demo_data is False
