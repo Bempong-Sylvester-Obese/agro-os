@@ -12,7 +12,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    columns = {column["name"] for column in sa.inspect(op.get_bind()).get_columns("users")}
+    inspector = sa.inspect(op.get_bind())
+    if "users" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("users")}
     if "is_active" in columns:
         return
     op.add_column(

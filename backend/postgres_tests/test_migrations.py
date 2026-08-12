@@ -37,7 +37,12 @@ def _reset_schema(admin_engine, schema: str) -> None:
 
 
 def _create_metadata(engine, schema: str) -> None:
-    import main  # noqa: F401
+    import app.models.farm_production  # noqa: F401
+    import app.models.models  # noqa: F401
+    import app.models.wage_payout  # noqa: F401
+    import app.models.worker  # noqa: F401
+    import app.models.worker_attendance  # noqa: F401
+    import app.models.work_task  # noqa: F401
 
     with engine.begin() as connection:
         connection.execute(text(f'SET search_path TO "{schema}"'))
@@ -62,6 +67,22 @@ def _engine_for_schema(database_url: str, schema: str):
     return engine
 
 
+def _run_upgrade(config: Config, engine, schema: str, revision: str = "head") -> None:
+    with engine.connect() as connection:
+        connection.execute(text(f'SET search_path TO "{schema}"'))
+        config.attributes["connection"] = connection
+        command.upgrade(config, revision)
+        config.attributes.pop("connection", None)
+
+
+def _run_stamp(config: Config, engine, schema: str, revision: str) -> None:
+    with engine.connect() as connection:
+        connection.execute(text(f'SET search_path TO "{schema}"'))
+        config.attributes["connection"] = connection
+        command.stamp(config, revision)
+        config.attributes.pop("connection", None)
+
+
 def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
     schema = f"agro_migrations_{uuid4().hex}"
     original_database_url = os.environ.get("DATABASE_URL")
@@ -78,7 +99,8 @@ def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
     try:
         _reset_schema(admin_engine, schema)
         _create_metadata(engine, schema)
-        command.upgrade(config, "head")
+        _run_upgrade(config, engine, schema)
+        assert inspect(engine).get_table_names(), "metadata create_all produced no tables"
         assert inspect(engine).has_table("demo_bookings")
 
         _reset_schema(admin_engine, schema)
@@ -127,8 +149,8 @@ def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
                 ),
                 {"cooperative_id": cooperative_id},
             )
-        command.stamp(config, "004_user_active")
-        command.upgrade(config, "head")
+        _run_stamp(config, engine, schema, "004_user_active")
+        _run_upgrade(config, engine, schema)
 
         columns = {
             column["name"]: column
