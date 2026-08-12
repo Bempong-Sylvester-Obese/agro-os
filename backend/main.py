@@ -33,6 +33,7 @@ from app.routes import (
     loans,
     marketing,
     payroll,
+    plans,
     production,
     reports,
     sales,
@@ -64,6 +65,7 @@ _PUBLIC_PATHS = frozenset({
     "/auth/login",
     "/auth/signup",
     "/marketing/demo-bookings",
+    "/plans",
     "/webhooks/moolre/payment",
     "/webhooks/moolre/ussd",
     "/ussd/callback",
@@ -219,6 +221,7 @@ app.include_router(settlements.router)
 app.include_router(transactions.router)
 app.include_router(loans.router)
 app.include_router(marketing.router)
+app.include_router(plans.router)
 app.include_router(webhooks.router)
 app.include_router(ussd.router)
 app.include_router(ussdk_hooks.router)
