@@ -160,3 +160,27 @@ def test_signup_with_unpaid_checkout_is_rejected(client, db):
         },
     )
     assert resp.status_code == 402
+
+
+def test_upgrade_checkout_uses_band_price(client, db, demo_admin, monkeypatch):
+    captured = {}
+
+    async def fake_generate_payment_link(self, **kwargs):
+        captured["amount"] = kwargs.get("amount")
+        return {
+            "success": True,
+            "payment_url": "https://sandbox.moolre.com/pay/upgrade",
+            "reference": kwargs.get("external_ref"),
+        }
+
+    monkeypatch.setattr(
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.generate_payment_link",
+        fake_generate_payment_link,
+    )
+
+    resp = client.post(
+        "/subscriptions/checkout",
+        json={"cooperative_id": demo_admin.cooperative_id, "plan_key": "growth", "band": "plus_100"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert captured["amount"] == 599.0

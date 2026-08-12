@@ -19,6 +19,7 @@ router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
 class CheckoutRequest(BaseModel):
     cooperative_id: int
     plan_key: str
+    band: str | None = None
 
 
 class PreCheckoutRequest(BaseModel):
@@ -97,12 +98,8 @@ async def create_checkout(
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
 
-    plan_prices = {
-        "growth": 299.0,
-    }
-
-    amount = plan_prices.get(req.plan_key.lower())
-    if not amount:
+    amount = resolve_amount(req.plan_key, req.band)
+    if amount is None:
         raise HTTPException(status_code=400, detail="Invalid paid plan selected")
 
     provider = get_payment_provider()
