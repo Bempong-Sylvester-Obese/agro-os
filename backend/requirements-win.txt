@@ -114,7 +114,7 @@ python-dotenv==1.2.2
     #   -r requirements.in
     #   pydantic-settings
     #   uvicorn
-python-multipart==0.0.31
+python-multipart==0.0.32
     # via -r requirements.in
 pyyaml==6.0.3
     # via
