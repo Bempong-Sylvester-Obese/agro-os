@@ -77,7 +77,7 @@ packaging==26.2
     # via
     #   pytest
     #   wandb
-platformdirs==4.10.0
+platformdirs==4.11.2
     # via wandb
 pluggy==1.6.0
     # via pytest
