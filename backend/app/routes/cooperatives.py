@@ -17,7 +17,7 @@ from app.services.auth_service import (
     get_current_user,
     require_roles,
 )
-from app.services.moolre_service import MoolreService
+from app.services.providers.factory import get_payment_provider
 
 router = APIRouter(prefix="/cooperatives", tags=["cooperatives"])
 
@@ -113,8 +113,8 @@ async def provision_wallet(
     if coop.moolre_account_number:
         raise HTTPException(status_code=400, detail="Wallet already provisioned")
         
-    moolre = MoolreService()
-    result = await moolre.create_account(
+    provider = get_payment_provider()
+    result = await provider.create_account(
         account_name=coop.name,
         currency=coop.currency or "GHS",
     )

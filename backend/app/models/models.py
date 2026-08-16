@@ -1,5 +1,15 @@
 """Database Models for AgroOS"""
 
+# ---------------------------------------------------------------------------
+# Column Naming Convention
+# ---------------------------------------------------------------------------
+# Provider-specific columns are prefixed with the provider name (e.g., moolre_*).
+# Provider-neutral columns use generic names (e.g., provider_reference, external_ref).
+#
+# Current provider-specific: moolre_reference, moolre_transfer_ref, moolre_account_number
+# Provider-neutral: provider_reference (use for new providers)
+# ---------------------------------------------------------------------------
+
 import enum
 from datetime import date, datetime, timedelta
 

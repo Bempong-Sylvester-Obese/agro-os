@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.database.db import get_db
 from app.models.models import Cooperative, User
 from app.services.auth_service import enforce_cooperative_scope, get_current_user
-from app.services.moolre_service import MoolreService
+from app.services.providers.factory import get_payment_provider
 
 router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
 
@@ -39,14 +39,14 @@ async def create_checkout(
     if not amount:
         raise HTTPException(status_code=400, detail="Invalid paid plan selected")
 
-    moolre = MoolreService()
+    provider = get_payment_provider()
     ext_ref = f"sub_upg_{coop.id}_{int(datetime.utcnow().timestamp())}"
     
     user_email = current_user.email if current_user else f"admin@{coop.name.replace(' ', '').lower()}.com"
 
     # We want the subscription to be paid to the Master Wallet, not the sub-wallet!
     # generate_payment_link without account_number defaults to the Master account.
-    result = await moolre.generate_payment_link(
+    result = await provider.generate_payment_link(
         amount=amount,
         email=user_email,
         currency=coop.currency or "GHS",

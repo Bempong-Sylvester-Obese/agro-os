@@ -41,7 +41,7 @@ def test_payment_link_route(client, farmer, monkeypatch):
         }
 
     monkeypatch.setattr(
-        "app.routes.transactions.MoolreService.generate_payment_link",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.generate_payment_link",
         fake_generate_payment_link,
     )
 

@@ -316,7 +316,7 @@ def test_direct_ussd_resumes_dashboard_payment_without_logging_otp(client, farme
         "message": "Payment request sent",
     }
     with patch(
-        "app.routes.transactions.MoolreService.initiate_payment",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
         new_callable=AsyncMock,
         side_effect=[tp14, tp14, tr099],
     ):

@@ -47,7 +47,7 @@ def test_transaction_receipt_and_reconciliation(client, db, transaction):
     assert receipt.json()["receipt_number"].endswith(f"{tx.id:08d}")
 
     with patch(
-        "app.routes.transactions.MoolreService.payment_status",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.payment_status",
         new_callable=AsyncMock,
         return_value={"success": True, "status": "completed", "raw": {}},
     ):
@@ -59,7 +59,7 @@ def test_transaction_receipt_and_reconciliation(client, db, transaction):
 
     for provider_status in ("pending", "failed"):
         with patch(
-            "app.routes.transactions.MoolreService.payment_status",
+            "app.services.providers.moolre_adapter.MoolrePaymentAdapter.payment_status",
             new_callable=AsyncMock,
             return_value={"success": True, "status": provider_status, "raw": {}},
         ):

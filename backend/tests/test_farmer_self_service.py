@@ -52,7 +52,7 @@ def test_farmer_starts_loan_repayment_from_ussdk(client, farmer, db):
     db.refresh(loan)
 
     with patch(
-        "app.routes.loans.MoolreService.initiate_payment",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
         new_callable=AsyncMock,
         return_value={
             "success": False,
@@ -121,7 +121,7 @@ def test_direct_ussd_menu_starts_farmer_loan_repayment(client, farmer, db):
     assert "Confirm" in selected.json()["message"]
 
     with patch(
-        "app.routes.loans.MoolreService.initiate_payment",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
         new_callable=AsyncMock,
         return_value={
             "success": False,
@@ -153,14 +153,13 @@ def test_loan_reminder_is_idempotent_and_never_creates_payment(db, farmer):
     db.add(loan)
     db.commit()
     db.refresh(loan)
-    service = CommunicationsService()
 
-    with patch.object(
-        service.moolre,
-        "send_single_sms",
+    with patch(
+        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
         new_callable=AsyncMock,
         return_value={"success": True, "message": "sent", "raw": {"data": "sms-1"}},
     ) as send:
+        service = CommunicationsService()
         first = asyncio.run(
             service.send_loan_repayment_reminder(
                 loan=loan,
