@@ -63,8 +63,8 @@ from app.services.loan_request_service import (
     PendingLoanRequestError,
     create_farmer_loan_request,
 )
-from app.services.plans import activate_subscription, get_plan
-from app.services.providers.factory import get_payment_provider, get_sms_provider
+from app.services.plans import PLANS, activate_subscription, get_plan
+from app.services.providers.factory import get_payment_provider
 from app.services.trust_score_service import TrustScoreService
 from app.services.ussd_service import resolve_farmer_by_phone
 
@@ -163,10 +163,21 @@ def _process_payment_payload(
         if moolre_status == 1:
             try:
                 parts = external_ref.split("_")
-                if len(parts) != 5:
+                if len(parts) not in (4, 5):
                     raise ValueError("invalid subscription reference")
                 coop_id = int(parts[2])
-                plan_key = parts[3]
+                if len(parts) == 5:
+                    plan_key = parts[3]
+                else:
+                    matching_plans = [
+                        key
+                        for key, candidate in PLANS.items()
+                        if candidate["price"] > 0
+                        and abs(float(candidate["price"]) - amount) <= 0.01
+                    ]
+                    if len(matching_plans) != 1:
+                        raise ValueError("ambiguous legacy subscription plan")
+                    plan_key = matching_plans[0]
                 plan = get_plan(plan_key)
                 if not plan or plan["price"] <= 0:
                     raise ValueError("invalid paid subscription plan")
@@ -186,7 +197,6 @@ def _process_payment_payload(
                     }
 
                 from app.models.models import Cooperative
-
                 coop = (
                     db.query(Cooperative)
                     .filter(Cooperative.id == coop_id)
@@ -671,13 +681,6 @@ async def handle_ussd_session(
 
         if message == "4":
             announcement_text = "No new announcements. Check with your cooperative leader."
-            if farmer:
-                sms = get_sms_provider()
-                sms_result = await sms.send_sms(
-                    phone=farmer.phone, message=announcement_text, ref=f"announce-{farmer.id}"
-                )
-                if sms_result.get("success"):
-                    announcement_text += "\n(Also sent via SMS.)"
             _ussd_sessions.pop(session_id, None)
             _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=announcement_text, farmer=farmer)
             return {"message": announcement_text, "reply": False}

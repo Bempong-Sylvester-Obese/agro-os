@@ -323,7 +323,7 @@ def test_announcements_unregistered_phone_still_answers(client):
     assert "No new announcements" in resp.json()["message"]
 
 
-def test_announcements_sends_sms_for_registered_farmer(client, farmer):
+def test_announcements_does_not_send_placeholder_sms(client, farmer):
     with patch(
         "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
         new_callable=AsyncMock,
@@ -335,5 +335,5 @@ def test_announcements_sends_sms_for_registered_farmer(client, farmer):
         )
 
     assert resp.status_code == 200
-    mock_sms.assert_called_once()
-    assert "SMS" in resp.json()["message"]
+    mock_sms.assert_not_awaited()
+    assert "No new announcements" in resp.json()["message"]
