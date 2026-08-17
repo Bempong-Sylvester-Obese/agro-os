@@ -19,7 +19,14 @@ PLANS = {
         "max_members": 0,
         "max_workers": 20,
         "sms_per_month": 200,
-        "features": ["workers", "tasks", "attendance", "payroll", "farm_production", "ussd_worker"],
+        "features": [
+            "workers",
+            "tasks",
+            "attendance",
+            "payroll",
+            "farm_production",
+            "ussd_worker",
+        ],
     },
     "growth": {
         "name": "Growth",
@@ -28,7 +35,15 @@ PLANS = {
         "max_members": 500,
         "max_workers": 0,
         "sms_per_month": 1000,
-        "features": ["members", "payments", "loans", "scores", "commerce", "ussd", "sms"],
+        "features": [
+            "members",
+            "payments",
+            "loans",
+            "scores",
+            "commerce",
+            "ussd",
+            "sms",
+        ],
     },
     "enterprise": {
         "name": "Enterprise",
@@ -43,7 +58,7 @@ PLANS = {
 
 
 def get_plan(plan_key: str) -> dict | None:
-    return PLANS.get(plan_key)
+    return PLANS.get((plan_key or "").lower())
 
 
 def get_plan_price(plan_key: str) -> float:
@@ -52,7 +67,7 @@ def get_plan_price(plan_key: str) -> float:
 
 
 def get_plan_limit(plan_key: str, limit: str) -> int:
-    plan = PLANS.get(plan_key, {})
+    plan = get_plan(plan_key) or PLANS["starter"]
     return plan.get(limit, 0)
 
 
@@ -72,14 +87,20 @@ SUBSCRIPTION_STATUSES = ["trial", "active", "past_due", "expired", "cancelled"]
 def activate_subscription(cooperative, plan_key: str, days: int = 30):
     cooperative.subscription_plan = plan_key
     cooperative.subscription_status = "active"
-    if cooperative.subscription_expires_at and cooperative.subscription_expires_at > datetime.utcnow():
+    if (
+        cooperative.subscription_expires_at
+        and cooperative.subscription_expires_at > datetime.utcnow()
+    ):
         cooperative.subscription_expires_at += timedelta(days=days)
     else:
         cooperative.subscription_expires_at = datetime.utcnow() + timedelta(days=days)
 
 
 def check_subscription_active(cooperative) -> bool:
-    if cooperative.subscription_status == "active" and cooperative.subscription_expires_at:
+    if (
+        cooperative.subscription_status == "active"
+        and cooperative.subscription_expires_at
+    ):
         return datetime.utcnow() < cooperative.subscription_expires_at
     if cooperative.subscription_status == "trial":
         return True
@@ -87,7 +108,10 @@ def check_subscription_active(cooperative) -> bool:
 
 
 def expire_if_needed(cooperative):
-    if cooperative.subscription_status == "active" and cooperative.subscription_expires_at:
+    if (
+        cooperative.subscription_status == "active"
+        and cooperative.subscription_expires_at
+    ):
         if datetime.utcnow() > cooperative.subscription_expires_at:
             cooperative.subscription_status = "expired"
             return True

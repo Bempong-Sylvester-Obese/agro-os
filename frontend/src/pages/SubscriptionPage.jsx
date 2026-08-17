@@ -9,7 +9,7 @@ const PLAN_DETAILS = {
     price: 'Free',
     cadence: 'No billing details required',
     description: 'Core member records and payment collection for cooperatives getting started.',
-    terms: ['Up to 50 members', 'Immediate workspace access', 'Upgrade when your operation grows'],
+    terms: ['Up to 10 members', 'Immediate workspace access', 'Upgrade when your operation grows'],
   },
   solo: {
     name: 'Solo Farm',

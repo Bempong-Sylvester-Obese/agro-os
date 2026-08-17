@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 from app.database.db import get_db
 from app.models.models import Cooperative, User
 from app.services.auth_service import enforce_cooperative_scope, get_current_user
-from app.services.moolre_service import MoolreService
-from app.services.plans import get_plan_price
+from app.services.plans import get_plan
+from app.services.providers.factory import get_payment_provider
 
 router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
 
@@ -33,16 +33,26 @@ async def create_checkout(
         raise HTTPException(status_code=404, detail="Cooperative not found")
 
     plan_key = req.plan_key.lower()
-    price = get_plan_price(plan_key)
-    if price == 0:
-        raise HTTPException(status_code=400, detail=f"Plan '{plan_key}' requires custom pricing")
+    plan = get_plan(plan_key)
+    if not plan:
+        raise HTTPException(status_code=400, detail="Invalid paid plan selected")
+    price = plan["price"]
+    if price <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Plan '{plan_key}' requires custom pricing",
+        )
 
-    moolre = MoolreService()
+    provider = get_payment_provider()
     ext_ref = f"sub_upg_{coop.id}_{plan_key}_{int(datetime.utcnow().timestamp())}"
-    
-    user_email = current_user.email if current_user else f"admin@{coop.name.replace(' ', '').lower()}.com"
 
-    result = await moolre.generate_payment_link(
+    user_email = (
+        current_user.email
+        if current_user
+        else f"admin@{coop.name.replace(' ', '').lower()}.com"
+    )
+
+    result = await provider.generate_payment_link(
         amount=price,
         email=user_email,
         currency=coop.currency or "GHS",

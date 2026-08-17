@@ -17,7 +17,7 @@ from app.services.auth_service import (
     get_current_user,
     require_roles,
 )
-from app.services.moolre_service import MoolreService
+from app.services.providers.factory import get_payment_provider
 
 router = APIRouter(prefix="/cooperatives", tags=["cooperatives"])
 
@@ -79,7 +79,23 @@ def update_cooperative(
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
 
-    for field, value in updates.model_dump(exclude_none=True).items():
+    update_values = updates.model_dump(exclude_none=True)
+    if {"subscription_status", "subscription_expires_at"} & updates.model_fields_set:
+        raise HTTPException(
+            status_code=403,
+            detail="Subscription lifecycle fields are managed by billing",
+        )
+    if "subscription_plan" in updates.model_fields_set:
+        requested_plan = update_values.get("subscription_plan")
+        if not (coop.subscription_plan == "growth" and requested_plan == "starter"):
+            raise HTTPException(
+                status_code=403,
+                detail="Plan upgrades require a completed checkout",
+            )
+        update_values["subscription_status"] = "active"
+        update_values["subscription_expires_at"] = None
+
+    for field, value in update_values.items():
         setattr(coop, field, value)
 
     if current_user:
@@ -90,7 +106,7 @@ def update_cooperative(
                 action="settings.updated",
                 resource_type="cooperative",
                 resource_id=str(coop.id),
-                details="fields=" + ",".join(sorted(updates.model_dump(exclude_none=True))),
+                details="fields=" + ",".join(sorted(update_values)),
             )
         )
     db.commit()
@@ -113,8 +129,8 @@ async def provision_wallet(
     if coop.moolre_account_number:
         raise HTTPException(status_code=400, detail="Wallet already provisioned")
         
-    moolre = MoolreService()
-    result = await moolre.create_account(
+    provider = get_payment_provider()
+    result = await provider.create_account(
         account_name=coop.name,
         currency=coop.currency or "GHS",
     )

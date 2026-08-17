@@ -64,7 +64,7 @@ export default function GetStartedModal({ onClose, onSignIn, onAuth }) {
   }
 
   const planFeatures = [
-    'Up to 50 members',
+    'Up to 10 members',
     'MoMo payment collection',
     'Basic dashboard & reports',
     'SMS broadcasts (100/month)',

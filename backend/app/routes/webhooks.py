@@ -4,6 +4,14 @@ Moolre Webhook Routes
 Handles:
   - POST /webhooks/moolre/payment  — real-time payment confirmation
   - POST /webhooks/moolre/ussd     — USSD session menu handler
+# USSD Gateway (Moolre webhook format) — delegates to app.services.ussd_service
+
+Domain logic note (M2 decoupling): _process_payment_payload currently does
+payment processing inline. The domain model lives in app.domain.payment_event
+and the extracted service scaffolding in app.services.payment_service.
+In a future milestone the webhook handler should normalize the raw Moolre
+payload into a PaymentEvent and delegate to process_payment_event() so that
+new payment providers can reuse the same domain logic.
 """
 
 import hashlib
@@ -11,7 +19,7 @@ import hmac
 import json
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from fastapi import (
     APIRouter,
@@ -27,10 +35,9 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
+from app.domain.payment_event import PaymentEvent
 from app.models.models import (
     CooperativeMembership as Farmer,
-)
-from app.models.models import (
     Loan,
     LoanStatus,
     PaymentWebhookEvent,
@@ -40,32 +47,45 @@ from app.models.models import (
     User,
     UssdSession,
 )
-from app.routes.loans import (
-    resume_loan_repayment_customer_action,
-    start_farmer_loan_repayment,
-)
-from app.routes.transactions import (
-    _run_dues_collect,
-    pending_customer_actions,
-    resume_dues_customer_action,
-)
 from app.schemas.schemas import UssdSessionResponse
 from app.services.auth_service import get_current_user
 from app.services.communications_service import CommunicationsService
+from app.services.customer_action_service import (
+    pending_customer_actions,
+    resume_dues_customer_action,
+)
+from app.services.dues_service import run_dues_collect
+from app.services.loan_repayment_service import (
+    resume_loan_repayment_customer_action,
+    start_farmer_loan_repayment,
+)
 from app.services.loan_request_service import (
     PendingLoanRequestError,
     create_farmer_loan_request,
 )
-from app.services.membership_service import memberships_for_phone
-from app.services.moolre_service import MoolreService
-from app.services.plans import activate_subscription, get_plan_price
+from app.services.plans import activate_subscription, get_plan
+from app.services.providers.factory import get_payment_provider, get_sms_provider
 from app.services.trust_score_service import TrustScoreService
+from app.services.ussd_service import resolve_farmer_by_phone
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 settings = get_settings()
+
+def _normalize_payload(raw: dict) -> PaymentEvent:
+    return PaymentEvent(
+        provider="moolre",
+        event_type=f"payment.{raw.get('status', 'unknown')}",
+        external_ref=str(raw.get("moolre_reference", raw.get("reference", ""))),
+        amount=float(raw.get("amount", 0)) if raw.get("amount") else None,
+        currency=raw.get("currency", "GHS"),
+        status=raw.get("status", "unknown"),
+        payer_phone=raw.get("payer_phone"),
+        metadata=raw,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Signature verification helper
@@ -143,40 +163,83 @@ def _process_payment_payload(
         if moolre_status == 1:
             try:
                 parts = external_ref.split("_")
+                if len(parts) != 5:
+                    raise ValueError("invalid subscription reference")
                 coop_id = int(parts[2])
                 plan_key = parts[3]
+                plan = get_plan(plan_key)
+                if not plan or plan["price"] <= 0:
+                    raise ValueError("invalid paid subscription plan")
+
+                existing_event = (
+                    db.query(PaymentWebhookEvent)
+                    .filter(
+                        PaymentWebhookEvent.moolre_reference == external_ref,
+                        PaymentWebhookEvent.processed.is_(True),
+                    )
+                    .first()
+                )
+                if existing_event:
+                    return {
+                        "status": "ok",
+                        "message": "Subscription webhook already processed",
+                    }
 
                 from app.models.models import Cooperative
 
-                coop = db.query(Cooperative).filter(Cooperative.id == coop_id).first()
+                coop = (
+                    db.query(Cooperative)
+                    .filter(Cooperative.id == coop_id)
+                    .with_for_update()
+                    .first()
+                )
                 if not coop:
                     return {"status": "ok", "message": "Cooperative not found"}
 
-                now = datetime.utcnow()
-                cutoff = now + timedelta(days=25)
-                if (
-                    coop.subscription_plan == plan_key
-                    and coop.subscription_status == "active"
-                    and coop.subscription_expires_at
-                    and coop.subscription_expires_at > cutoff
-                ):
-                    logger.info(
-                        f"Subscription already active for cooperative {coop_id}, plan {plan_key}"
+                expected_amount = float(plan["price"])
+                if abs(amount - expected_amount) > 0.01:
+                    _record_webhook_event(
+                        db,
+                        payload=payload,
+                        signature_valid=signature_valid,
+                        processed=False,
+                        message="subscription amount mismatch",
                     )
-                    return {"status": "ok", "message": "Subscription already active"}
-
-                expected_amount = get_plan_price(plan_key)
-                if amount < expected_amount * 0.99:
                     logger.warning(
-                        f"Payment amount {amount} below expected {expected_amount} for {plan_key}"
+                        "Subscription payment amount %s did not match %s for %s",
+                        amount,
+                        expected_amount,
+                        plan_key,
                     )
+                    return {
+                        "status": "ok",
+                        "message": "Subscription amount mismatch",
+                    }
 
                 activate_subscription(coop, plan_key)
-
+                db.add(
+                    PaymentWebhookEvent(
+                        event_type="subscription",
+                        moolre_reference=external_ref,
+                        signature_valid=signature_valid,
+                        payload=json.dumps(payload),
+                        processed=True,
+                        message=f"subscription activated: {plan_key}",
+                    )
+                )
                 db.commit()
-                logger.info(f"Subscription upgraded for cooperative {coop.id} to {plan_key}")
-            except Exception as e:
-                logger.error(f"Failed to process subscription webhook: {e}")
+                logger.info(
+                    "Subscription upgraded for cooperative %s to %s",
+                    coop.id,
+                    plan_key,
+                )
+            except (TypeError, ValueError, IndexError) as exc:
+                db.rollback()
+                logger.warning("Rejected subscription webhook: %s", exc)
+                return {"status": "ok", "message": "Invalid subscription reference"}
+            except Exception as exc:
+                db.rollback()
+                logger.error("Failed to process subscription webhook: %s", exc)
         return {"status": "ok", "message": "Subscription webhook processed"}
 
     tx: Transaction | None = None
@@ -334,10 +397,10 @@ async def _post_payment_tasks(farmer_id: int, amount: float, reference: str) -> 
                 if coop and coop.moolre_account_number:
                     fee_amount = round(amount * 0.02, 2)
                     if fee_amount > 0:
-                        moolre = MoolreService()
+                        provider = get_payment_provider()
                         # Transfer from Coop sub-wallet to Platform Master wallet
-                        await moolre.internal_transfer(
-                            receiver_account=moolre.settings.moolre_account_number,
+                        await provider.internal_transfer(
+                            receiver_account=settings.moolre_account_number,
                             amount=fee_amount,
                             currency=coop.currency or "GHS",
                             reference=f"Platform Fee for tx {reference}",
@@ -501,7 +564,7 @@ async def handle_ussd_session(
 
     # ---- Fresh session: silently resolve the farmer's membership, then show the menu
     if is_new or session_id not in _ussd_sessions:
-        memberships = memberships_for_phone(msisdn, db)
+        farmer_obj, memberships = resolve_farmer_by_phone(msisdn, db)
         if len(memberships) > 1:
             options = "\n".join(
                 f"{index}. {membership.cooperative.name}"
@@ -522,12 +585,12 @@ async def handle_ussd_session(
             )
             return {"message": msg, "reply": True}
 
-        farmer = memberships[0] if memberships else None
+        primary_membership = memberships[0] if memberships else None
         _ussd_sessions[session_id] = {
             "step": "main",
-            "farmer_id": farmer.id if farmer else None,
+            "farmer_id": primary_membership.id if primary_membership else None,
         }
-        _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path="new", response_text=USSD_MENU_MAIN, farmer=farmer)
+        _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path="new", response_text=USSD_MENU_MAIN, farmer=primary_membership)
         return {"message": USSD_MENU_MAIN, "reply": True}
 
     state = _ussd_sessions[session_id]
@@ -609,8 +672,8 @@ async def handle_ussd_session(
         if message == "4":
             announcement_text = "No new announcements. Check with your cooperative leader."
             if farmer:
-                moolre = MoolreService()
-                sms_result = await moolre.send_single_sms(
+                sms = get_sms_provider()
+                sms_result = await sms.send_sms(
                     phone=farmer.phone, message=announcement_text, ref=f"announce-{farmer.id}"
                 )
                 if sms_result.get("success"):
@@ -958,7 +1021,7 @@ async def handle_ussd_session(
 
         external_ref = str(uuid.uuid4())
         try:
-            result = await _run_dues_collect(
+            result = await run_dues_collect(
                 farmer=farmer,
                 amount=amount,
                 channel="13",

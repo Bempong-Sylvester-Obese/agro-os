@@ -64,9 +64,23 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
     if (!cooperativeId || !cooperative) return
     const plan = (cooperative.subscription_plan || '').toLowerCase()
     if (plan === 'starter' || plan === 'growth') {
-      fetchFarmers(cooperativeId)
-        .then((data) => setMemberCount(data?.length ?? 0))
-        .catch(() => setMemberCount(null))
+      let cancelled = false
+      const loadMemberCount = async () => {
+        const pageSize = 100
+        let count = 0
+        while (true) {
+          const page = await fetchFarmers(cooperativeId, null, count, pageSize)
+          count += page.length
+          if (page.length < pageSize) break
+        }
+        if (!cancelled) setMemberCount(count)
+      }
+      loadMemberCount().catch(() => {
+        if (!cancelled) setMemberCount(null)
+      })
+      return () => {
+        cancelled = true
+      }
     }
   }, [cooperativeId, cooperative])
 
@@ -170,7 +184,7 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
   }
   const statusColor = statusColors[cooperative?.subscription_status] || 'gray'
 
-  const planMaxMembers = cooperative?.subscription_plan?.toLowerCase() === 'starter' ? 50
+  const planMaxMembers = cooperative?.subscription_plan?.toLowerCase() === 'starter' ? 10
     : cooperative?.subscription_plan?.toLowerCase() === 'growth' ? 500
     : null
 

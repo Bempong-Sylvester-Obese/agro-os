@@ -663,7 +663,7 @@ class MoolreService:
             "accountname": account_name,
             "currency": currency,
             "api": api,
-            "callback": callback or "https://api.agroos.company/webhooks/moolre/payment",
+            "callback": callback or f"{self.settings.agroos_base_url}/webhooks/moolre/payment",
             "settlement": {
                 "currency": currency,
                 "frequency": "1",

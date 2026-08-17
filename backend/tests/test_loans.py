@@ -23,17 +23,17 @@ def _mock_disburse_moolre(*, transfer_result=None, status_result=None, wallet_ac
     status_result = status_result or _transfer_status_completed()
     with (
         patch(
-            "app.routes.loans.MoolreService.resolve_verified_account",
+            "app.services.providers.moolre_adapter.MoolrePaymentAdapter.resolve_verified_account",
             new_callable=AsyncMock,
             return_value=(wallet_account, None),
         ),
         patch(
-            "app.routes.loans.MoolreService.initiate_transfer",
+            "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_transfer",
             new_callable=AsyncMock,
             return_value=transfer_result,
         ) as mock_transfer,
         patch(
-            "app.routes.loans.MoolreService.transfer_status",
+            "app.services.providers.moolre_adapter.MoolrePaymentAdapter.transfer_status",
             new_callable=AsyncMock,
             return_value=status_result,
         ) as mock_status,
@@ -230,7 +230,7 @@ def test_reject_loan_records_reason_and_sends_sms(client, farmer, db):
     )
     loan_id = create_resp.json()["id"]
     with patch(
-        "app.services.communications_service.MoolreService.send_single_sms",
+        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
         new_callable=AsyncMock,
         return_value={
             "success": True,
@@ -249,7 +249,7 @@ def test_reject_loan_records_reason_and_sends_sms(client, farmer, db):
     assert resp.json()["rejected_at"] is not None
     assert resp.json()["notification_status"] == "sent"
     mock_send.assert_awaited_once()
-    assert mock_send.await_args.kwargs["phone"] == farmer["phone"]
+    assert mock_send.await_args.kwargs["recipient"] == farmer["phone"]
     assert (
         "Reason: Insufficient repayment history"
         in mock_send.await_args.kwargs["message"]
@@ -274,7 +274,7 @@ def test_reject_loan_reports_failed_sms_delivery(client, farmer):
         "/loans/", json={"farmer_id": farmer["id"], "amount": 100.0}
     ).json()["id"]
     with patch(
-        "app.services.communications_service.MoolreService.send_single_sms",
+        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
         new_callable=AsyncMock,
         return_value={"success": False, "message": "Provider unavailable", "raw": {}},
     ):
@@ -498,12 +498,12 @@ def test_disburse_retry_updates_pending_transaction_without_duplicate(client, fa
 
     with (
         patch(
-            "app.routes.loans.MoolreService.resolve_verified_account",
+            "app.services.providers.moolre_adapter.MoolrePaymentAdapter.resolve_verified_account",
             new_callable=AsyncMock,
             return_value=("PLATFORM-ACC", None),
         ),
         patch(
-            "app.routes.loans.MoolreService.transfer_status",
+            "app.services.providers.moolre_adapter.MoolrePaymentAdapter.transfer_status",
             new_callable=AsyncMock,
             side_effect=[
                 {
@@ -516,7 +516,7 @@ def test_disburse_retry_updates_pending_transaction_without_duplicate(client, fa
             ],
         ) as mock_status,
         patch(
-            "app.routes.loans.MoolreService.initiate_transfer",
+            "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_transfer",
             new_callable=AsyncMock,
             return_value={
                 **_transfer_initiated("fresh-attempt"),
@@ -544,12 +544,12 @@ def test_repay_loan(client, farmer):
 
     with (
         patch(
-            "app.routes.loans.MoolreService.initiate_payment",
+            "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
             new_callable=AsyncMock,
             return_value=_payment_initiated("repay-ref-001"),
         ) as mock_pay,
         patch(
-            "app.routes.loans.MoolreService.payment_status",
+            "app.services.providers.moolre_adapter.MoolrePaymentAdapter.payment_status",
             new_callable=AsyncMock,
             return_value=_payment_status_completed(150.0),
         ) as mock_status,
@@ -567,12 +567,12 @@ def test_repay_loan_stays_disbursed_when_payment_pending(client, farmer):
 
     with (
         patch(
-            "app.routes.loans.MoolreService.initiate_payment",
+            "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
             new_callable=AsyncMock,
             return_value=_payment_initiated("repay-ref-pending"),
         ),
         patch(
-            "app.routes.loans.MoolreService.payment_status",
+            "app.services.providers.moolre_adapter.MoolrePaymentAdapter.payment_status",
             new_callable=AsyncMock,
             return_value={"success": False, "status": "pending", "raw": {}},
         ),
@@ -589,7 +589,7 @@ def test_ambiguous_repayment_preserves_attempt_and_blocks_duplicate(
     loan_id = _approve_and_disburse(client, farmer, 150.0)
 
     with patch(
-        "app.routes.loans.MoolreService.initiate_payment",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
         new_callable=AsyncMock,
         side_effect=RuntimeError("provider timeout"),
     ) as mock_pay:
@@ -613,7 +613,7 @@ def test_farmer_completes_repayment_otp_from_ussdk(client, farmer, db):
     loan_id = _approve_and_disburse(client, farmer, 150.0)
     with (
         patch(
-            "app.routes.loans.MoolreService.initiate_payment",
+            "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
             new_callable=AsyncMock,
             side_effect=[
                 _payment_otp_required("repay-ref-otp"),
@@ -621,7 +621,7 @@ def test_farmer_completes_repayment_otp_from_ussdk(client, farmer, db):
             ],
         ) as mock_pay,
         patch(
-            "app.routes.loans.MoolreService.payment_status",
+            "app.services.providers.moolre_adapter.MoolrePaymentAdapter.payment_status",
             new_callable=AsyncMock,
             return_value={"success": False, "status": "pending", "raw": {}},
         ),
@@ -679,12 +679,12 @@ def test_repay_loan_uses_cooperative_account(client, farmer, cooperative):
 
     with (
         patch(
-            "app.routes.loans.MoolreService.initiate_payment",
+            "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
             new_callable=AsyncMock,
             return_value=_payment_initiated("repay-ref-coop"),
         ) as mock_pay,
         patch(
-            "app.routes.loans.MoolreService.payment_status",
+            "app.services.providers.moolre_adapter.MoolrePaymentAdapter.payment_status",
             new_callable=AsyncMock,
             return_value=_payment_status_completed(120.0),
         ),

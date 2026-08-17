@@ -30,7 +30,7 @@ from app.models.models import (
     TransactionType,
 )
 from app.schemas.market import SettlementCalculate
-from app.services.moolre_service import MoolreService
+from app.services.providers.factory import get_payment_provider
 
 CENT = Decimal("0.01")
 KG = Decimal("0.001")
@@ -488,15 +488,15 @@ class SettlementService:
         )
         db.commit()
 
-        moolre = MoolreService()
-        account_number, wallet_error = await moolre.resolve_verified_account(None)
+        provider = get_payment_provider()
+        account_number, wallet_error = await provider.resolve_verified_account(None)
         for original_line, original_tx in transactions:
             db.refresh(original_tx)
             if wallet_error:
                 result = {"success": False, "message": wallet_error}
             else:
                 try:
-                    result = await moolre.initiate_transfer(
+                    result = await provider.initiate_transfer(
                         receiver_phone=original_tx.payee_phone,
                         amount=original_tx.amount,
                         currency=original_tx.currency,
@@ -610,14 +610,14 @@ class SettlementService:
         )
         if not pending:
             return settlement, []
-        moolre = MoolreService()
-        account_number, wallet_error = await moolre.resolve_verified_account(None)
+        provider = get_payment_provider()
+        account_number, wallet_error = await provider.resolve_verified_account(None)
         if wallet_error:
             raise HTTPException(status_code=502, detail=wallet_error)
         reconciled: list[int] = []
         batch_ids: set[int] = set()
         for pending_tx in pending:
-            result = await moolre.transfer_status(
+            result = await provider.transfer_status(
                 reference=(
                     pending_tx.moolre_transfer_ref
                     or pending_tx.moolre_reference

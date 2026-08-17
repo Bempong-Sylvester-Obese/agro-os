@@ -48,6 +48,14 @@ def reset_settings_cache():
     get_settings.cache_clear()
 
 
+@pytest.fixture(autouse=True)
+def _reset_providers():
+    """Ensure each test gets fresh provider instances."""
+    from app.services.providers.factory import reset_providers
+
+    reset_providers()
+
+
 # --------------------------------------------------------------------------
 # Shared in-memory SQLite engine
 # SQLite requires connect_args={"check_same_thread": False} for FastAPI.
