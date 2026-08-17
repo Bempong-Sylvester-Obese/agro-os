@@ -1,3 +1,6 @@
+-- ⚠️ REFERENCE ONLY — actual schema is managed by Alembic (backend/alembic/versions/).
+-- Do NOT apply this SQL directly. Use `alembic upgrade head` instead.
+--
 -- Split global farmer identity from cooperative-specific membership.
 -- This migration deliberately fails on normalized phone collisions so records
 -- can be reviewed instead of being merged implicitly.

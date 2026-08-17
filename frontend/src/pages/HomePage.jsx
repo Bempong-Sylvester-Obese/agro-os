@@ -269,7 +269,7 @@ export default function HomePage({ user }) {
           </div>
           <div className="home-plan-grid">
             {[
-              ['Starter', 'Free', 'Up to 50 members', 'Create free workspace', () => setPage('subscription', { plan: 'starter' })],
+              ['Starter', 'Free', 'Up to 10 members', 'Create free workspace', () => setPage('subscription', { plan: 'starter' })],
               ['Growth', 'GHS 299 / month', 'Up to 500 members', 'Review Growth', () => setPage('subscription', { plan: 'growth' })],
               ['Enterprise', 'Custom', 'Multi-team or programme rollout', 'Talk to enterprise sales', () => setPage('bookDemo', { plan: 'enterprise', topic: 'Enterprise implementation' })],
             ].map(([name, price, detail, label, action], index) => (

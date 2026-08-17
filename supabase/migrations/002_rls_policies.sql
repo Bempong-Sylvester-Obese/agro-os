@@ -1,3 +1,6 @@
+-- ⚠️ REFERENCE ONLY — actual schema is managed by Alembic (backend/alembic/versions/).
+-- Do NOT apply this SQL directly. Use `alembic upgrade head` instead.
+--
 -- Row-level security policies (service role bypasses RLS; anon/authenticated scoped)
 
 ALTER TABLE cooperatives ENABLE ROW LEVEL SECURITY;

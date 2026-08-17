@@ -62,10 +62,12 @@ class Settings(BaseSettings):
     moolre_merchant_id: str = ""
     moolre_merchant_code: str = ""
     moolre_webhook_secret: str = ""
+    moolre_ussd_secret: str = ""
 
     # Farmer-facing AgroOS USSD menu and USSDK hook verification
     agroos_ussd_code: str = "*919*4020#"
     ussdk_hook_secret: str = ""
+    ussd_callback_secret: str = ""
 
     # Cooperative defaults
     default_currency: str = "GHS"
@@ -112,6 +114,8 @@ class Settings(BaseSettings):
             raise ValueError("APP_ENV=production cannot run with SEED_DEMO_DATA=true")
         if not self.auth_enabled:
             raise ValueError("APP_ENV=production requires AUTH_ENABLED=true")
+        if not self.moolre_webhook_secret:
+            raise ValueError("MOOLRE_WEBHOOK_SECRET must be set in production")
         # Prefer Render pre-deploy / release-phase migrations in production.
         self.auto_migrate_on_startup = False
         return self

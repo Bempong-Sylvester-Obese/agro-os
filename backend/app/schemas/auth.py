@@ -52,6 +52,7 @@ class SignupResponse(BaseModel):
     cooperative_id: int
     cooperative_name: str
     subscription_plan: Literal["starter", "growth", "solo"]
+    subscription_status: str | None = "active"
     organization_type: str = "cooperative"
     onboarding_role: str | None = None
 

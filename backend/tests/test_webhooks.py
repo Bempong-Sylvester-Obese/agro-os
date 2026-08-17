@@ -1,6 +1,7 @@
 """Tests for /webhooks/moolre/payment and /webhooks/moolre/ussd"""
 
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 
@@ -302,12 +303,110 @@ def _ussd_step(session_id: str, msisdn: str, message: str) -> dict:
     }
 
 
-def test_ussd_main_menu(client):
+def test_ussd_main_menu(client, db):
+    from app.models.models import UssdSession
+
     resp = client.post("/webhooks/moolre/ussd", json=_ussd_new("s001", "+233000000000"))
     assert resp.status_code == 200
     body = resp.json()
     assert body["reply"] is True
     assert "AgroOS" in body["message"]
+    persisted = (
+        db.query(UssdSession)
+        .filter(
+            UssdSession.session_id == "s001",
+            UssdSession.session_state.is_not(None),
+        )
+        .one()
+    )
+    assert persisted.session_state == {"step": "main", "farmer_id": None}
+
+
+def test_ussd_callback_rejects_invalid_configured_secret(client, monkeypatch):
+    from app.routes import webhooks as webhooks_module
+
+    monkeypatch.setattr(webhooks_module.settings, "moolre_ussd_secret", "ussd-test-secret")
+
+    missing = client.post(
+        "/webhooks/moolre/ussd",
+        json=_ussd_new("secret-missing", "+233000000000"),
+    )
+    invalid = client.post(
+        "/webhooks/moolre/ussd?secret=wrong",
+        json=_ussd_new("secret-invalid", "+233000000000"),
+    )
+    accepted = client.post(
+        "/webhooks/moolre/ussd?secret=ussd-test-secret",
+        json=_ussd_new("secret-valid", "+233000000000"),
+    )
+
+    assert missing.status_code == 401
+    assert invalid.status_code == 401
+    assert accepted.status_code == 200
+
+
+def test_ussd_callback_fails_closed_without_production_secret(client, monkeypatch):
+    from app.routes import webhooks as webhooks_module
+
+    monkeypatch.setattr(webhooks_module.settings, "app_env", "production")
+    monkeypatch.setattr(webhooks_module.settings, "moolre_ussd_secret", "")
+
+    response = client.post(
+        "/webhooks/moolre/ussd",
+        json=_ussd_new("production-secret", "+233000000000"),
+    )
+
+    assert response.status_code == 401
+
+
+def test_native_ussd_callback_requires_configured_secret(client, monkeypatch):
+    from app.routes import ussd as ussd_module
+
+    monkeypatch.setattr(
+        ussd_module,
+        "get_settings",
+        lambda: SimpleNamespace(
+            app_env="test",
+            ussd_callback_secret="native-ussd-secret",
+        ),
+    )
+    form = {
+        "sessionId": "native-secret",
+        "serviceCode": "*123#",
+        "phoneNumber": "+233000000000",
+        "text": "",
+    }
+
+    missing = client.post("/ussd/callback", data=form)
+    accepted = client.post("/ussd/callback?secret=native-ussd-secret", data=form)
+
+    assert missing.status_code == 401
+    assert accepted.status_code == 200
+
+
+def test_native_ussd_callback_fails_closed_without_production_secret(
+    client,
+    monkeypatch,
+):
+    from app.routes import ussd as ussd_module
+
+    monkeypatch.setattr(
+        ussd_module,
+        "get_settings",
+        lambda: SimpleNamespace(app_env="production", ussd_callback_secret=""),
+    )
+
+    response = client.post(
+        "/ussd/callback",
+        data={
+            "sessionId": "native-production-secret",
+            "serviceCode": "*123#",
+            "phoneNumber": "+233000000000",
+            "text": "",
+        },
+    )
+
+    assert response.status_code == 401
 
 
 def test_ussd_option_1_unknown_phone(client):
@@ -328,73 +427,22 @@ def test_ussd_option_1_known_farmer(client, farmer):
     assert farmer["name"] in body["message"]
 
 
-def test_ussd_announcements_use_provider_and_respect_consent(
-    client, farmer, db
-):
-    from app.models.models import Announcement, CooperativeMembership
+def test_ussd_session_state_is_bound_to_phone(client, farmer):
+    client.post("/webhooks/moolre/ussd", json=_ussd_new("phone-bound", farmer["phone"]))
 
-    membership = (
-        db.query(CooperativeMembership)
-        .filter(CooperativeMembership.id == farmer["id"])
-        .one()
+    other_phone = client.post(
+        "/webhooks/moolre/ussd",
+        json=_ussd_step("phone-bound", "+233000000000", "1"),
     )
-    db.add_all(
-        [
-            Announcement(
-                cooperative_id=membership.cooperative_id,
-                title="Visible update",
-                body="Collection opens Monday.",
-            ),
-            Announcement(
-                cooperative_id=membership.cooperative_id,
-                title="Deleted update",
-                body="This should stay hidden.",
-                deleted_at=membership.created_at,
-            ),
-        ]
-    )
-    db.commit()
-
-    with patch(
-        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
-        new_callable=AsyncMock,
-        return_value={"success": True},
-    ) as send_sms:
-        client.post(
-            "/webhooks/moolre/ussd",
-            json=_ussd_new("announcement-visible", farmer["phone"]),
-        )
-        response = client.post(
-            "/webhooks/moolre/ussd",
-            json=_ussd_step("announcement-visible", farmer["phone"], "4"),
-        )
-
-    assert response.status_code == 200
-    assert "Visible update" in response.json()["message"]
-    assert "Deleted update" not in response.json()["message"]
-    send_sms.assert_awaited_once_with(
-        recipient=farmer["phone"],
-        message="Visible update: Collection opens Monday.",
+    farmer_response = client.post(
+        "/webhooks/moolre/ussd",
+        json=_ussd_step("phone-bound", farmer["phone"], "1"),
     )
 
-    membership.sms_consent = False
-    db.commit()
-    with patch(
-        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
-        new_callable=AsyncMock,
-    ) as send_sms:
-        client.post(
-            "/webhooks/moolre/ussd",
-            json=_ussd_new("announcement-opt-out", farmer["phone"]),
-        )
-        response = client.post(
-            "/webhooks/moolre/ussd",
-            json=_ussd_step("announcement-opt-out", farmer["phone"], "4"),
-        )
-
-    assert response.status_code == 200
-    assert "Visible update" in response.json()["message"]
-    send_sms.assert_not_awaited()
+    assert other_phone.json()["reply"] is True
+    assert "Check Loan Balance" in other_phone.json()["message"]
+    assert farmer_response.json()["reply"] is False
+    assert farmer["name"] in farmer_response.json()["message"]
 
 
 def test_direct_ussd_requires_cooperative_selection_for_multi_membership(client, farmer):

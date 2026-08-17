@@ -1,3 +1,6 @@
+-- ⚠️ REFERENCE ONLY — actual schema is managed by Alembic (backend/alembic/versions/).
+-- Do NOT apply this SQL directly. Use `alembic upgrade head` instead.
+--
 -- Add a unified, unit-aware production model while retaining crop contracts.
 
 ALTER TABLE cooperative_memberships
