@@ -19,7 +19,7 @@ Moolre is the sole adapter: backend/app/services/providers/moolre_adapter.py
 2. Implement all abstract methods
 3. Normalize provider-specific responses to the standard dict format:
    - initiate_payment: {outcome: "push_sent"|"verification_required"|"failed", external_ref: str, ...}
-   - initiate_transfer: {success: bool, moolre_transfer_ref: str, ...}
+   - initiate_transfer: {success: bool, external_ref: str, ...}
 4. Register the adapter in a factory/service resolver
 5. Add provider-specific configuration to .env.example and config.py
 
@@ -27,4 +27,5 @@ Moolre is the sole adapter: backend/app/services/providers/moolre_adapter.py
 
 - provider_reference: generic external reference (DB column)
 - moolre_reference: Moolre-specific reference (DB column, legacy)
+- moolre_transfer_ref: Moolre-specific transfer reference (legacy compatibility)
 - New providers should use provider_reference for their references

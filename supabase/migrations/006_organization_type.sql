@@ -5,7 +5,8 @@ ALTER TABLE cooperatives
     ADD COLUMN IF NOT EXISTS organization_type VARCHAR NOT NULL DEFAULT 'cooperative',
     ADD COLUMN IF NOT EXISTS subscription_plan VARCHAR DEFAULT 'starter',
     ADD COLUMN IF NOT EXISTS subscription_status VARCHAR DEFAULT 'active',
-    ADD COLUMN IF NOT EXISTS ussd_code VARCHAR(4);
+    ADD COLUMN IF NOT EXISTS ussd_code VARCHAR(4),
+    ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
 
 ALTER TABLE users
     ADD COLUMN IF NOT EXISTS onboarding_role VARCHAR,

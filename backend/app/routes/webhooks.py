@@ -65,7 +65,7 @@ from app.services.loan_request_service import (
     create_farmer_loan_request,
 )
 from app.services.ussd_service import resolve_farmer_by_phone
-from app.services.providers.factory import get_payment_provider, get_sms_provider
+from app.services.providers.factory import get_payment_provider
 from app.services.trust_score_service import TrustScoreService
 from app.domain.payment_event import PaymentEvent
 
@@ -167,8 +167,28 @@ def _process_payment_payload(
                 parts = external_ref.split("_")
                 coop_id = int(parts[2])
                 from app.models.models import Cooperative
-                coop = db.query(Cooperative).filter(Cooperative.id == coop_id).first()
+                coop = (
+                    db.query(Cooperative)
+                    .filter(Cooperative.id == coop_id)
+                    .with_for_update()
+                    .first()
+                )
                 if coop:
+                    duplicate = (
+                        db.query(PaymentWebhookEvent)
+                        .filter(
+                            PaymentWebhookEvent.moolre_reference == external_ref,
+                            PaymentWebhookEvent.processed.is_(True),
+                            PaymentWebhookEvent.message
+                            == "Subscription payment applied",
+                        )
+                        .first()
+                    )
+                    if duplicate:
+                        return {
+                            "status": "ok",
+                            "message": "Subscription webhook already processed",
+                        }
                     # In a real app we'd map amount to plan_key or get it from metadata
                     coop.subscription_status = "active"
                     # Add 30 days
@@ -178,10 +198,20 @@ def _process_payment_payload(
                         coop.subscription_expires_at = now + timedelta(days=30)
                     else:
                         coop.subscription_expires_at = coop.subscription_expires_at + timedelta(days=30)
-                    
+                    db.add(
+                        PaymentWebhookEvent(
+                            event_type="subscription",
+                            moolre_reference=external_ref,
+                            signature_valid=signature_valid,
+                            payload=json.dumps(payload),
+                            processed=True,
+                            message="Subscription payment applied",
+                        )
+                    )
                     db.commit()
                     logger.info(f"Subscription upgraded for cooperative {coop.id} via webhook")
             except Exception as e:
+                db.rollback()
                 logger.error(f"Failed to process subscription webhook: {e}")
         return {"status": "ok", "message": "Subscription webhook processed"}
 
@@ -614,13 +644,6 @@ async def handle_ussd_session(
 
         if message == "4":
             announcement_text = "No new announcements. Check with your cooperative leader."
-            if farmer:
-                sms = get_sms_provider()
-                sms_result = await sms.send_sms(
-                    phone=farmer.phone, message=announcement_text, ref=f"announce-{farmer.id}"
-                )
-                if sms_result.get("success"):
-                    announcement_text += "\n(Also sent via SMS.)"
             _ussd_sessions.pop(session_id, None)
             _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=announcement_text, farmer=farmer)
             return {"message": announcement_text, "reply": False}
