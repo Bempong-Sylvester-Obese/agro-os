@@ -53,6 +53,7 @@ from app.services.auth_service import get_current_user
 from app.services.communications_service import CommunicationsService
 from app.services.customer_action_service import (
     pending_customer_actions,
+    reconcile_stale_customer_actions,
     resume_dues_customer_action,
 )
 from app.services.dues_service import run_dues_collect
@@ -812,6 +813,7 @@ async def handle_ussd_session(
             if not farmer:
                 _clear_ussd_state(db, session_id)
                 return {"message": NOT_REGISTERED_MSG, "reply": False}
+            await reconcile_stale_customer_actions(db, farmer_id=farmer.id)
             actions = pending_customer_actions(farmer=farmer, db=db)
             if not actions:
                 _clear_ussd_state(db, session_id)
@@ -834,10 +836,15 @@ async def handle_ussd_session(
                     ),
                     "reply": False,
                 }
-            if tx.customer_action == "processing_otp":
+            if tx.customer_action in ("initiating", "processing_otp"):
                 _clear_ussd_state(db, session_id)
                 return {
-                    "message": "Your OTP is already being processed. Check again shortly.",
+                    "message": (
+                        "Your OTP is already being processed; the payment is "
+                        "still processing. Check again shortly."
+                        if tx.customer_action == "processing_otp"
+                        else "Your payment is still processing. Check again shortly."
+                    ),
                     "reply": False,
                 }
             state["step"] = "pending_payment_otp"
@@ -1004,8 +1011,9 @@ async def handle_ussd_session(
                 Transaction.id == transaction_id,
                 Transaction.farmer_id == farmer.id,
                 Transaction.status == TransactionStatus.pending,
-                Transaction.customer_action.in_(("otp", "processing_otp", "approval")),
-                Transaction.action_expires_at > datetime.utcnow(),
+                Transaction.customer_action.in_(
+                    ("initiating", "otp", "processing_otp", "approval")
+                ),
             )
             .first()
         )
@@ -1018,10 +1026,15 @@ async def handle_ussd_session(
                 "message": f"GHS {tx.amount:.2f} is waiting for approval on your phone.",
                 "reply": False,
             }
-        if tx.customer_action == "processing_otp":
+        if tx.customer_action in ("initiating", "processing_otp"):
             _clear_ussd_state(db, session_id)
             return {
-                "message": "Your OTP is already being processed. Check again shortly.",
+                "message": (
+                    "Your OTP is already being processed; the payment is still "
+                    "processing. Check again shortly."
+                    if tx.customer_action == "processing_otp"
+                    else "Your payment is still processing. Check again shortly."
+                ),
                 "reply": False,
             }
         state["step"] = "pending_payment_otp"

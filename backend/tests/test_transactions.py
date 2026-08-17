@@ -1,8 +1,37 @@
 """Tests for /transactions endpoints"""
 
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
-from app.models.models import Transaction
+import pytest
+
+from app.models.models import (
+    Transaction,
+    TransactionStatus,
+    TransactionType,
+)
+
+
+def _stale_payment(
+    db,
+    farmer_id: int,
+    *,
+    action: str = "initiating",
+    reference: str = "stale-payment-ref",
+) -> Transaction:
+    transaction = Transaction(
+        farmer_id=farmer_id,
+        transaction_type=TransactionType.dues,
+        amount=50,
+        status=TransactionStatus.pending,
+        moolre_reference=reference,
+        customer_action=action,
+        action_expires_at=datetime.utcnow() - timedelta(seconds=1),
+        initiation_channel="moolre_ussd",
+    )
+    db.add(transaction)
+    db.commit()
+    return transaction
 
 
 def test_create_transaction(client, farmer):
@@ -89,6 +118,78 @@ def test_list_transactions_filter_by_type(client, transaction, cooperative):
     resp = client.get(f"/transactions/?cooperative_id={cooperative['id']}&transaction_type=dues")
     assert resp.status_code == 200
     assert all(t["transaction_type"] == "dues" for t in resp.json())
+
+
+@pytest.mark.parametrize(
+    ("provider_status", "expected_status", "expected_action"),
+    [
+        ("completed", TransactionStatus.completed, "none"),
+        ("failed", TransactionStatus.failed, "none"),
+        ("pending", TransactionStatus.pending, "initiating"),
+    ],
+)
+def test_dashboard_list_reconciles_stale_payment_actions(
+    client,
+    db,
+    farmer,
+    cooperative,
+    provider_status,
+    expected_status,
+    expected_action,
+):
+    transaction = _stale_payment(db, farmer["id"])
+    expired_at = transaction.action_expires_at
+    with patch(
+        "app.services.providers.moolre_adapter."
+        "MoolrePaymentAdapter.payment_status",
+        new_callable=AsyncMock,
+        return_value={"status": provider_status, "amount": 50},
+    ) as payment_status:
+        response = client.get(
+            f"/transactions/?cooperative_id={cooperative['id']}"
+        )
+        if provider_status == "pending":
+            replay = client.get(
+                f"/transactions/?cooperative_id={cooperative['id']}"
+            )
+            assert replay.status_code == 200
+
+    assert response.status_code == 200
+    db.refresh(transaction)
+    assert transaction.status == expected_status
+    assert transaction.customer_action == expected_action
+    if provider_status == "pending":
+        assert transaction.action_expires_at > expired_at
+    else:
+        assert transaction.action_expires_at is None
+    payment_status.assert_awaited_once()
+
+
+def test_dashboard_reconciliation_keeps_state_on_provider_error(
+    client, db, farmer, cooperative
+):
+    transaction = _stale_payment(
+        db,
+        farmer["id"],
+        action="processing_otp",
+        reference="provider-error-ref",
+    )
+    expired_at = transaction.action_expires_at
+    with patch(
+        "app.services.providers.moolre_adapter."
+        "MoolrePaymentAdapter.payment_status",
+        new_callable=AsyncMock,
+        side_effect=TimeoutError("provider unavailable"),
+    ):
+        response = client.get(
+            f"/transactions/?cooperative_id={cooperative['id']}"
+        )
+
+    assert response.status_code == 200
+    db.refresh(transaction)
+    assert transaction.status == TransactionStatus.pending
+    assert transaction.customer_action == "processing_otp"
+    assert transaction.action_expires_at == expired_at
 
 
 def test_same_farmer_transactions_are_isolated_by_membership(client, farmer, cooperative):

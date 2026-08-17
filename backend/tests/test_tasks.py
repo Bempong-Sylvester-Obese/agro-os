@@ -11,8 +11,10 @@ def test_create_task(auth_client, test_cooperative):
     assert data["task_type"] == "planting"
 
 
-def test_create_task_with_workers(auth_client, test_cooperative):
+def test_create_task_with_workers(auth_client, test_cooperative, db):
     """POST /tasks with worker_ids creates assignments."""
+    from app.models.work_task import WorkerAssignment
+
     worker = auth_client.post(
         f"/workers/?cooperative_id={test_cooperative.id}",
         json={"name": "Task Worker", "phone": "0241112240"},
@@ -27,6 +29,12 @@ def test_create_task_with_workers(auth_client, test_cooperative):
     )
     assert res.status_code == 201
     assert len(res.json()["assignments"]) == 1
+    assignment = (
+        db.query(WorkerAssignment)
+        .filter(WorkerAssignment.work_task_id == res.json()["id"])
+        .one()
+    )
+    assert assignment.cooperative_id == test_cooperative.id
 
 
 def test_list_tasks(auth_client, test_cooperative):

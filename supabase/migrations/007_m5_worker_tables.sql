@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS workers (
     status VARCHAR DEFAULT 'active',
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW(),
-    CONSTRAINT uq_worker_phone_per_coop UNIQUE (cooperative_id, phone)
+    CONSTRAINT uq_worker_phone_per_coop UNIQUE (cooperative_id, phone),
+    CONSTRAINT uq_workers_cooperative_id_id UNIQUE (cooperative_id, id)
 );
 
 CREATE TABLE IF NOT EXISTS work_tasks (
@@ -27,33 +28,47 @@ CREATE TABLE IF NOT EXISTS work_tasks (
     scheduled_date DATE NOT NULL,
     assigned_by INTEGER REFERENCES users(id),
     status VARCHAR DEFAULT 'open',
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT uq_work_tasks_cooperative_id_id UNIQUE (cooperative_id, id)
 );
 
 CREATE TABLE IF NOT EXISTS worker_assignments (
     id SERIAL PRIMARY KEY,
-    work_task_id INTEGER NOT NULL REFERENCES work_tasks(id) ON DELETE CASCADE,
-    worker_id INTEGER NOT NULL REFERENCES workers(id) ON DELETE CASCADE,
-    assigned_at TIMESTAMP DEFAULT NOW()
+    cooperative_id INTEGER NOT NULL,
+    work_task_id INTEGER NOT NULL,
+    worker_id INTEGER NOT NULL,
+    assigned_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT fk_worker_assignments_cooperative_task
+        FOREIGN KEY (cooperative_id, work_task_id)
+        REFERENCES work_tasks(cooperative_id, id) ON DELETE CASCADE,
+    CONSTRAINT fk_worker_assignments_cooperative_worker
+        FOREIGN KEY (cooperative_id, worker_id)
+        REFERENCES workers(cooperative_id, id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS worker_attendance (
     id SERIAL PRIMARY KEY,
-    worker_id INTEGER NOT NULL REFERENCES workers(id),
-    work_task_id INTEGER REFERENCES work_tasks(id),
+    worker_id INTEGER NOT NULL,
+    work_task_id INTEGER,
     cooperative_id INTEGER NOT NULL REFERENCES cooperatives(id),
     date DATE NOT NULL,
     hours_worked DOUBLE PRECISION,
     shift VARCHAR NOT NULL DEFAULT 'full_day',
     logged_by INTEGER REFERENCES users(id),
     notes TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT fk_worker_attendance_cooperative_worker
+        FOREIGN KEY (cooperative_id, worker_id)
+        REFERENCES workers(cooperative_id, id),
+    CONSTRAINT fk_worker_attendance_cooperative_task
+        FOREIGN KEY (cooperative_id, work_task_id)
+        REFERENCES work_tasks(cooperative_id, id)
 );
 
 CREATE TABLE IF NOT EXISTS wage_payouts (
     id SERIAL PRIMARY KEY,
     cooperative_id INTEGER NOT NULL REFERENCES cooperatives(id),
-    worker_id INTEGER NOT NULL REFERENCES workers(id),
+    worker_id INTEGER NOT NULL,
     period_start DATE NOT NULL,
     period_end DATE NOT NULL,
     total_hours DOUBLE PRECISION DEFAULT 0,
@@ -66,7 +81,10 @@ CREATE TABLE IF NOT EXISTS wage_payouts (
     paid_at TIMESTAMP,
     moolre_reference VARCHAR,
     failure_reason TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    CONSTRAINT fk_wage_payouts_cooperative_worker
+        FOREIGN KEY (cooperative_id, worker_id)
+        REFERENCES workers(cooperative_id, id)
 );
 
 CREATE TABLE IF NOT EXISTS farm_productions (

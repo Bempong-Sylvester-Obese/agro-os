@@ -6,7 +6,9 @@ from uuid import uuid4
 
 import pytest
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.engine import make_url
 from sqlalchemy.schema import CreateSchema, DropSchema
 
@@ -85,6 +87,12 @@ def _run_stamp(config: Config, engine, schema: str, revision: str) -> None:
         connection.commit()
 
 
+def _assert_integrity_rejected(connection, statement, parameters) -> None:
+    with pytest.raises(IntegrityError):
+        with connection.begin_nested():
+            connection.execute(text(statement), parameters)
+
+
 def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
     schema = f"agro_migrations_{uuid4().hex}"
     original_database_url = os.environ.get("DATABASE_URL")
@@ -153,6 +161,9 @@ def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
             )
         _run_stamp(config, engine, schema, "004_user_active")
         _run_upgrade(config, engine, schema)
+        assert ScriptDirectory.from_config(config).get_heads() == [
+            "015_worker_integrity"
+        ]
 
         columns = {
             column["name"]: column
@@ -180,6 +191,121 @@ def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
                     "WHERE action = 'legacy.action'"
                 )
             ).scalar_one()
+
+        with engine.begin() as connection:
+            second_cooperative_id = connection.execute(
+                text(
+                    "INSERT INTO cooperatives (name, currency) "
+                    "VALUES ('Second Cooperative', 'GHS') RETURNING id"
+                )
+            ).scalar_one()
+            local_worker_id = connection.execute(
+                text(
+                    "INSERT INTO workers "
+                    "(cooperative_id, name, phone, wage_rate) "
+                    "VALUES (:cooperative_id, 'Local Worker', "
+                    "'0240000001', 20) RETURNING id"
+                ),
+                {"cooperative_id": cooperative_id},
+            ).scalar_one()
+            foreign_worker_id = connection.execute(
+                text(
+                    "INSERT INTO workers "
+                    "(cooperative_id, name, phone, wage_rate) "
+                    "VALUES (:cooperative_id, 'Foreign Worker', "
+                    "'0240000002', 20) RETURNING id"
+                ),
+                {"cooperative_id": second_cooperative_id},
+            ).scalar_one()
+            local_task_id = connection.execute(
+                text(
+                    "INSERT INTO work_tasks "
+                    "(cooperative_id, title, task_type, scheduled_date) "
+                    "VALUES (:cooperative_id, 'Local Task', 'general', "
+                    "'2026-08-01') RETURNING id"
+                ),
+                {"cooperative_id": cooperative_id},
+            ).scalar_one()
+            foreign_task_id = connection.execute(
+                text(
+                    "INSERT INTO work_tasks "
+                    "(cooperative_id, title, task_type, scheduled_date) "
+                    "VALUES (:cooperative_id, 'Foreign Task', 'general', "
+                    "'2026-08-01') RETURNING id"
+                ),
+                {"cooperative_id": second_cooperative_id},
+            ).scalar_one()
+
+            _assert_integrity_rejected(
+                connection,
+                """
+                INSERT INTO worker_assignments
+                    (cooperative_id, work_task_id, worker_id)
+                VALUES (:cooperative_id, :task_id, :worker_id)
+                """,
+                {
+                    "cooperative_id": cooperative_id,
+                    "task_id": local_task_id,
+                    "worker_id": foreign_worker_id,
+                },
+            )
+            _assert_integrity_rejected(
+                connection,
+                """
+                INSERT INTO worker_attendance
+                    (cooperative_id, worker_id, date, shift)
+                VALUES (:cooperative_id, :worker_id, '2026-08-01', 'morning')
+                """,
+                {
+                    "cooperative_id": cooperative_id,
+                    "worker_id": foreign_worker_id,
+                },
+            )
+            _assert_integrity_rejected(
+                connection,
+                """
+                INSERT INTO worker_attendance
+                    (cooperative_id, worker_id, work_task_id, date, shift)
+                VALUES (
+                    :cooperative_id,
+                    :worker_id,
+                    :task_id,
+                    '2026-08-01',
+                    'morning'
+                )
+                """,
+                {
+                    "cooperative_id": cooperative_id,
+                    "worker_id": local_worker_id,
+                    "task_id": foreign_task_id,
+                },
+            )
+            _assert_integrity_rejected(
+                connection,
+                """
+                INSERT INTO wage_payouts
+                    (
+                        cooperative_id,
+                        worker_id,
+                        period_start,
+                        period_end,
+                        wage_rate,
+                        gross_amount
+                    )
+                VALUES (
+                    :cooperative_id,
+                    :worker_id,
+                    '2026-08-01',
+                    '2026-08-31',
+                    20,
+                    160
+                )
+                """,
+                {
+                    "cooperative_id": cooperative_id,
+                    "worker_id": foreign_worker_id,
+                },
+            )
     finally:
         engine.dispose()
         with admin_engine.begin() as connection:

@@ -80,3 +80,54 @@ def test_attendance_filter_by_worker(auth_client, test_cooperative):
     res = auth_client.get(f"/attendance/?cooperative_id={test_cooperative.id}&worker_id={w1['id']}")
     assert res.status_code == 200
     assert all(r["worker_id"] == w1["id"] for r in res.json())
+
+
+def test_log_attendance_rejects_cross_tenant_worker(
+    auth_client, test_cooperative, another_cooperative
+):
+    foreign_worker = auth_client.post(
+        f"/workers/?cooperative_id={another_cooperative.id}",
+        json={"name": "Foreign Attendance", "phone": "0241112288"},
+    ).json()
+
+    res = auth_client.post(
+        f"/attendance/?cooperative_id={test_cooperative.id}",
+        json={
+            "worker_id": foreign_worker["id"],
+            "date": "2026-08-04",
+            "shift": "morning",
+        },
+    )
+
+    assert res.status_code == 404
+    assert res.json()["detail"] == "Worker not found"
+
+
+def test_log_attendance_rejects_cross_tenant_task(
+    auth_client, test_cooperative, another_cooperative
+):
+    worker = auth_client.post(
+        f"/workers/?cooperative_id={test_cooperative.id}",
+        json={"name": "Local Attendance", "phone": "0241112287"},
+    ).json()
+    foreign_task = auth_client.post(
+        f"/tasks/?cooperative_id={another_cooperative.id}",
+        json={
+            "title": "Foreign task",
+            "task_type": "general",
+            "scheduled_date": "2026-08-04",
+        },
+    ).json()
+
+    res = auth_client.post(
+        f"/attendance/?cooperative_id={test_cooperative.id}",
+        json={
+            "worker_id": worker["id"],
+            "work_task_id": foreign_task["id"],
+            "date": "2026-08-04",
+            "shift": "morning",
+        },
+    )
+
+    assert res.status_code == 404
+    assert res.json()["detail"] == "Task not found"

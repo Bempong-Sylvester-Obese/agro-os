@@ -12,6 +12,7 @@ Covers all MVP-relevant Moolre endpoints:
   - Generate Payment Link
 """
 
+import asyncio
 import uuid
 from typing import Any
 from urllib.parse import urlsplit
@@ -25,6 +26,7 @@ class MoolreService:
     """Handle all server-side Moolre API communications."""
 
     _shared_client: httpx.AsyncClient | None = None
+    _shared_client_loop: asyncio.AbstractEventLoop | None = None
 
     def __init__(self) -> None:
         self.settings = get_settings()
@@ -33,8 +35,13 @@ class MoolreService:
 
     @classmethod
     def _http_client(cls) -> httpx.AsyncClient:
-        if cls._shared_client is None:
+        current_loop = asyncio.get_running_loop()
+        if (
+            cls._shared_client is None
+            or cls._shared_client_loop is not current_loop
+        ):
             cls._shared_client = httpx.AsyncClient(timeout=30.0)
+            cls._shared_client_loop = current_loop
         return cls._shared_client
 
     # ------------------------------------------------------------------

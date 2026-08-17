@@ -90,7 +90,13 @@ async def create_task(
     db.flush()
 
     for worker in workers:
-        db.add(WorkerAssignment(work_task_id=task.id, worker_id=worker.id))
+        db.add(
+            WorkerAssignment(
+                cooperative_id=cooperative_id,
+                work_task_id=task.id,
+                worker_id=worker.id,
+            )
+        )
 
     db.commit()
     db.refresh(task)
@@ -157,7 +163,13 @@ async def assign_workers(
     existing_ids = {a.worker_id for a in task.assignments}
     new_workers = [worker for worker in workers if worker.id not in existing_ids]
     for worker in new_workers:
-        db.add(WorkerAssignment(work_task_id=task_id, worker_id=worker.id))
+        db.add(
+            WorkerAssignment(
+                cooperative_id=cooperative_id,
+                work_task_id=task_id,
+                worker_id=worker.id,
+            )
+        )
 
     db.commit()
     db.refresh(task)

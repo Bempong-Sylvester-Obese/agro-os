@@ -90,6 +90,19 @@ Cross-cooperative data isolation follows a defense-in-depth model:
    applied by backend Alembic, so the deployed API currently relies on the
    API-layer guard rather than RLS for tenant isolation.
 
+Browser clients must access application data through FastAPI. Direct
+`authenticated` Supabase access is unsupported because AgroOS issues custom
+FastAPI JWTs, not Supabase Auth JWTs. The M5 reference policies therefore grant
+worker-table access only to `service_role` and fail closed for browser roles.
+
+The backend database connection may use an owner or superuser role, which
+bypasses PostgreSQL RLS. Do not treat the reference policies as protection for
+that connection. Enforced database RLS is future work and requires a restricted
+non-superuser runtime role plus a transaction-scoped cooperative context (for
+example, `SET LOCAL app.current_cooperative_id`). Until then, production tenant
+isolation depends on `AUTH_ENABLED=true`, authenticated FastAPI scope checks,
+and the cooperative-consistency constraints in Alembic.
+
 ## Rate Limits
 
 Abuse-sensitive POST routes use per-client, one-minute limits: login 10,

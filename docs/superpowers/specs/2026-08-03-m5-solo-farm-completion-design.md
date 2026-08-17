@@ -51,7 +51,12 @@ Create supabase migration for M5 tables with proper RLS:
 - `wage_payouts` table
 - `farm_productions` table
 
-All tables: RLS enabled, `service_role` bypass, cooperative-scoped SELECT/INSERT/UPDATE policies matching existing patterns in `002_rls_policies.sql`.
+All tables: RLS enabled with fail-closed, `service_role`-only policies. Browser
+clients use FastAPI; direct Supabase `authenticated` access is unsupported
+because the application uses custom FastAPI JWTs. Current tenant isolation is
+provided by authenticated API scope checks, not by RLS on the backend's
+owner/superuser connection. Enforced database RLS requires a future restricted
+runtime role and transaction-scoped cooperative context.
 
 ### 4. #255 — 3-Tier RBAC for Dashboard Users
 

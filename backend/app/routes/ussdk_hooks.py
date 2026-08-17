@@ -46,7 +46,12 @@ from app.services.loan_request_service import (
 from app.services.membership_service import cooperative_selection_payload
 from app.services.ussd_service import resolve_farmer_by_phone
 from app.services.dues_service import run_dues_collect
-from app.services.customer_action_service import expire_customer_actions, pending_customer_actions, resume_dues_customer_action
+from app.services.customer_action_service import (
+    expire_customer_actions,
+    pending_customer_actions,
+    reconcile_stale_customer_actions,
+    resume_dues_customer_action,
+)
 from app.services.loan_repayment_service import start_farmer_loan_repayment, resume_loan_repayment_customer_action
 from app.services.providers.factory import get_payment_provider, get_sms_provider
 
@@ -406,6 +411,7 @@ async def pending_payment(
             return cooperative_selection_payload(memberships)
         return {"action": "end", "message": "Phone not registered with AgroOS."}
 
+    await reconcile_stale_customer_actions(db, farmer_id=membership.id)
     transaction_id = values.get("transaction_id")
     if not transaction_id:
         actions = pending_customer_actions(farmer=membership, db=db)
@@ -438,8 +444,9 @@ async def pending_payment(
             Transaction.id == selected_id,
             Transaction.farmer_id == membership.id,
             Transaction.status == TransactionStatus.pending,
-            Transaction.customer_action.in_(("otp", "processing_otp", "approval")),
-            Transaction.action_expires_at > datetime.utcnow(),
+            Transaction.customer_action.in_(
+                ("initiating", "otp", "processing_otp", "approval")
+            ),
         )
         .first()
     )
@@ -450,10 +457,15 @@ async def pending_payment(
             "action": "end",
             "message": "Approve the payment prompt on your phone to complete.",
         }
-    if tx.customer_action == "processing_otp":
+    if tx.customer_action in ("initiating", "processing_otp"):
         return {
             "action": "end",
-            "message": "Your OTP is already being processed. Check again shortly.",
+            "message": (
+                "Your OTP is already being processed; the payment is still "
+                "processing. Check again shortly."
+                if tx.customer_action == "processing_otp"
+                else "Your payment is still processing. Check again shortly."
+            ),
         }
 
     otp_code = str(values.get("otp_code", "")).strip()

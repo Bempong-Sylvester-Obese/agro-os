@@ -34,4 +34,9 @@ class Worker(Base):
 
     __table_args__ = (
         UniqueConstraint("cooperative_id", "phone", name="uq_worker_phone_per_coop"),
+        UniqueConstraint(
+            "cooperative_id",
+            "id",
+            name="uq_workers_cooperative_id_id",
+        ),
     )

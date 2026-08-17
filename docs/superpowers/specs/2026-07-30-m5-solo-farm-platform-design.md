@@ -60,8 +60,9 @@ work_tasks
 ```
 worker_assignments
   id (PK)
-  work_task_id (FK -> work_tasks.id)
-  worker_id (FK -> workers.id)
+  cooperative_id
+  (cooperative_id, work_task_id) (FK -> work_tasks(cooperative_id, id))
+  (cooperative_id, worker_id) (FK -> workers(cooperative_id, id))
   assigned_at (datetime)
 ```
 
@@ -70,9 +71,9 @@ worker_assignments
 ```
 worker_attendance
   id (PK)
-  worker_id (FK -> workers.id)
-  work_task_id (FK -> work_tasks.id, nullable)
   cooperative_id (FK -> cooperatives.id)
+  (cooperative_id, worker_id) (FK -> workers(cooperative_id, id))
+  (cooperative_id, work_task_id) (FK -> work_tasks(cooperative_id, id), nullable)
   date (date)
   hours_worked (decimal, nullable)
   shift (enum: "morning", "afternoon", "full_day")
@@ -111,7 +112,7 @@ Production is at the farm level (not per-member). The farm owner/manager logs pl
 wage_payouts
   id (PK)
   cooperative_id (FK -> cooperatives.id)
-  worker_id (FK -> workers.id)
+  (cooperative_id, worker_id) (FK -> workers(cooperative_id, id))
   period_start (date)
   period_end (date)
   total_hours / total_shifts (decimal)
@@ -135,6 +136,19 @@ New roles for solo_farm orgs (on the `users` table, existing `role` field):
 - `supervisor` — log attendance, view schedules
 
 Existing roles (`admin`, `finance_officer`) remain for cooperative orgs.
+
+### 2.8 Access and RLS Boundary
+
+M5 browser clients use FastAPI exclusively. AgroOS custom JWTs are validated by
+FastAPI and do not authenticate the Supabase `authenticated` role. The
+Supabase SQL files are reference-only, and their worker-table RLS policies
+intentionally permit only `service_role`.
+
+Production must set `AUTH_ENABLED=true`. Tenant isolation is currently
+enforced by API cooperative-scope checks and composite database constraints;
+an owner/superuser backend connection bypasses PostgreSQL RLS. Enforced RLS is
+future work requiring a restricted non-superuser runtime role and a
+transaction-scoped cooperative context.
 
 ---
 

@@ -1,6 +1,7 @@
 """Tests for /webhooks/moolre/payment and /webhooks/moolre/ussd"""
 
 import json
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -320,6 +321,52 @@ def test_ussd_main_menu(client, db):
         .one()
     )
     assert persisted.session_state == {"step": "main", "farmer_id": None}
+
+
+def test_ussd_pending_payment_reconciles_stale_initiation(
+    client, farmer, db
+):
+    from app.models.models import (
+        Transaction,
+        TransactionStatus,
+        TransactionType,
+    )
+
+    transaction = Transaction(
+        farmer_id=farmer["id"],
+        transaction_type=TransactionType.dues,
+        amount=30,
+        status=TransactionStatus.pending,
+        moolre_reference="moolre-ussd-stale-ref",
+        customer_action="initiating",
+        action_expires_at=datetime.utcnow() - timedelta(seconds=1),
+        initiation_channel="moolre_ussd",
+    )
+    db.add(transaction)
+    db.commit()
+
+    client.post(
+        "/webhooks/moolre/ussd",
+        json=_ussd_new("stale-payment", farmer["phone"]),
+    )
+    with patch(
+        "app.services.providers.moolre_adapter."
+        "MoolrePaymentAdapter.payment_status",
+        new_callable=AsyncMock,
+        return_value={"status": "pending", "amount": 30},
+    ):
+        response = client.post(
+            "/webhooks/moolre/ussd",
+            json=_ussd_step("stale-payment", farmer["phone"], "5"),
+        )
+
+    assert response.status_code == 200
+    assert response.json()["reply"] is False
+    assert "still processing" in response.json()["message"].lower()
+    db.refresh(transaction)
+    assert transaction.status == TransactionStatus.pending
+    assert transaction.customer_action == "initiating"
+    assert transaction.action_expires_at > datetime.utcnow()
 
 
 def test_ussd_callback_rejects_invalid_configured_secret(client, monkeypatch):

@@ -2,15 +2,32 @@
 
 This directory contains the AgroOS database schema reference, migrations, and seed documentation aligned with the SQLAlchemy models in `backend/app/models/models.py`.
 
-## Migration strategy (hackathon MVP)
+## Migration strategy
 
 | Approach | Status | Notes |
 |----------|--------|-------|
-| SQLAlchemy `create_all()` on FastAPI startup | **Active** | Creates/updates tables automatically |
-| `supabase/migrations/*.sql` | **Reference** | Mirrors ORM for review and future Supabase CLI use |
-| Alembic versioned migrations | Planned | Recommended before production |
+| Alembic versioned migrations | **Active** | Authoritative schema; deploy with `alembic upgrade head` |
+| SQLAlchemy `create_all()` | Tests/local bootstrap only | Does not replace versioned production migrations |
+| `supabase/migrations/*.sql` | **Reference only** | Mirrors ORM/Alembic for review; do not apply directly |
 
 Run local seed via backend startup (`APP_ENV=development`) or set `SEED_DEMO_DATA=true`. See [docs/api-contract.md](../docs/api-contract.md) for Golden Path characters.
+
+## Access and RLS boundary
+
+Browser clients must use the FastAPI API. AgroOS access tokens are custom
+FastAPI JWTs and are not Supabase Auth JWTs, so direct SQL/API access using the
+Supabase `authenticated` role is unsupported.
+
+The M5 policies in `008_m5_rls_policies.sql` intentionally grant access only to
+`service_role`; browser roles fail closed. These reference policies are not
+installed by Alembic and do not protect an owner/superuser backend connection,
+because PostgreSQL owners and superusers can bypass RLS. Current tenant
+isolation is enforced by authenticated FastAPI cooperative-scope checks and
+requires `AUTH_ENABLED=true` in production.
+
+Enforcing database RLS in a future deployment requires a restricted
+non-superuser runtime role and a transaction-scoped cooperative value (for
+example, `SET LOCAL app.current_cooperative_id`) that policies can evaluate.
 
 ## Table mapping
 

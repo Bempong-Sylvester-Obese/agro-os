@@ -46,6 +46,7 @@ from app.services.customer_action_service import (
     PROCESSING_ACTION_TTL,
     expire_customer_actions,
     pending_customer_actions,
+    reconcile_stale_customer_actions,
     resume_dues_customer_action,
 )
 from app.services.dues_service import _dues_collect_response, run_dues_collect
@@ -82,7 +83,7 @@ def create_transaction(
 
 
 @router.get("/", response_model=list[TransactionResponse])
-def list_transactions(
+async def list_transactions(
     farmer_id: int | None = None,
     status: TransactionStatus | None = None,
     transaction_type: TransactionType | None = None,
@@ -98,6 +99,10 @@ def list_transactions(
         current_user=current_user,
         cooperative_id=cooperative_id,
         settings=settings,
+    )
+    await reconcile_stale_customer_actions(
+        db,
+        cooperative_id=scoped_coop_id,
     )
     expire_customer_actions(db, cooperative_id=scoped_coop_id)
     query = db.query(Transaction).join(Farmer, Transaction.farmer_id == Farmer.id).filter(

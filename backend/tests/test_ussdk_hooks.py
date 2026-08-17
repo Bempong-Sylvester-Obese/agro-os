@@ -1,5 +1,6 @@
 """Tests for /ussdk/loan-balance and /ussdk/pay-dues"""
 
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -115,6 +116,51 @@ def test_pay_dues_otp_required_returns_external_ref_for_retry(client, farmer):
     body = resp.json()
     assert body["verification_required"] is True
     assert body["external_ref"]
+
+
+def test_pending_payment_reconciles_stale_processing_action(
+    client, farmer, db
+):
+    from app.models.models import (
+        Transaction,
+        TransactionStatus,
+        TransactionType,
+    )
+
+    transaction = Transaction(
+        farmer_id=farmer["id"],
+        transaction_type=TransactionType.dues,
+        amount=25,
+        status=TransactionStatus.pending,
+        moolre_reference="ussdk-stale-ref",
+        customer_action="processing_otp",
+        action_expires_at=datetime.utcnow() - timedelta(seconds=1),
+        initiation_channel="ussdk",
+    )
+    db.add(transaction)
+    db.commit()
+
+    with patch(
+        "app.services.providers.moolre_adapter."
+        "MoolrePaymentAdapter.payment_status",
+        new_callable=AsyncMock,
+        return_value={"status": "pending", "amount": 25},
+    ):
+        response = client.post(
+            "/ussdk/pending-payment",
+            json=_hook_payload(
+                farmer["phone"],
+                {"transaction_id": transaction.id},
+            ),
+        )
+
+    assert response.status_code == 200
+    assert response.json()["action"] == "end"
+    assert "still processing" in response.json()["message"].lower()
+    db.refresh(transaction)
+    assert transaction.status == TransactionStatus.pending
+    assert transaction.customer_action == "processing_otp"
+    assert transaction.action_expires_at > datetime.utcnow()
 
 
 def test_loan_balance_unregistered_phone(client):
