@@ -1,4 +1,4 @@
-import { API_URL, AUTH_FETCH_TIMEOUT_MS, formatTransportError } from './config'
+import { API_URL, AUTH_FETCH_TIMEOUT_MS, formatTransportError, fetchJson } from './config'
 
 export const TOKEN_KEY = 'agro_os_token'
 const USER_KEY = 'agro_os_user'
@@ -26,6 +26,41 @@ export function clearProfileAvatar(email) {
 }
 
 export { MAX_AVATAR_BYTES }
+
+export async function requestPasswordReset(email) {
+  await fetchJson(`${API_URL}/auth/password-reset-request`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  })
+}
+
+export async function confirmPasswordReset(resetToken, newPassword) {
+  await fetchJson(`${API_URL}/auth/password-reset-confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reset_token: resetToken, new_password: newPassword }),
+  })
+}
+
+export async function acceptInvite(inviteToken, password) {
+  await fetchJson(`${API_URL}/auth/accept-invite`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ invite_token: inviteToken, password }),
+  })
+}
+
+export async function changePassword(accessToken, newPassword) {
+  await fetchJson(`${API_URL}/auth/change-password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ new_password: newPassword }),
+  })
+}
 
 async function authFetch(path, body, { retries = 2 } = {}) {
   let lastError
@@ -66,6 +101,8 @@ export async function signupAdmin({
   subscription_plan,
   onboarding_role,
   organization_type,
+  checkout_ref,
+  subscription_band,
 }) {
   return authFetch('/auth/signup', {
     email,
@@ -76,6 +113,8 @@ export async function signupAdmin({
     subscription_plan: subscription_plan || 'starter',
     onboarding_role: onboarding_role || null,
     organization_type: organization_type || 'cooperative',
+    checkout_ref: checkout_ref || null,
+    subscription_band: subscription_band || null,
   }, { retries: 0 })
 }
 
@@ -96,6 +135,8 @@ export async function signup({
   subscriptionPlan,
   onboardingRole,
   organizationType,
+  checkoutRef,
+  subscriptionBand,
 }) {
   const data = await signupAdmin({
     email,
@@ -106,6 +147,8 @@ export async function signup({
     subscription_plan: subscriptionPlan,
     onboarding_role: onboardingRole,
     organization_type: organizationType || 'cooperative',
+    checkout_ref: checkoutRef,
+    subscription_band: subscriptionBand,
   })
   return {
     ...data,

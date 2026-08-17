@@ -22,9 +22,24 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    connection = config.attributes.get("connection")
+    if connection is not None:
+        context.configure(connection=connection, target_metadata=target_metadata)
+        with context.begin_transaction():
+            context.run_migrations()
+        return
+
     configuration = config.get_section(config.config_ini_section, {})
     configuration["sqlalchemy.url"] = get_settings().database_url
-    connectable = engine_from_config(configuration, prefix="sqlalchemy.", poolclass=pool.NullPool)
+    connectable = engine_from_config(
+        configuration,
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+        connect_args={
+            "connect_timeout": 10,
+            "options": "-c lock_timeout=10000 -c statement_timeout=60000",
+        },
+    )
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():

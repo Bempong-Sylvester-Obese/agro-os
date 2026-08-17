@@ -33,6 +33,7 @@ class Token(BaseModel):
     token_type: str
     user: UserResponse | None = None
     organization_type: str | None = None
+    password_change_required: bool = False
 
 class SignupRequest(BaseModel):
     """Combined cooperative + user registration in one step."""
@@ -44,6 +45,8 @@ class SignupRequest(BaseModel):
     subscription_plan: Literal["starter", "growth", "solo"] = "starter"
     organization_type: Literal["cooperative", "solo_farm"] = "cooperative"
     onboarding_role: str | None = Field(default=None, max_length=80)
+    checkout_ref: str | None = None
+    subscription_band: str | None = None
 
 class SignupResponse(BaseModel):
     access_token: str
@@ -51,5 +54,30 @@ class SignupResponse(BaseModel):
     cooperative_id: int
     cooperative_name: str
     subscription_plan: Literal["starter", "growth", "solo"]
+    subscription_status: str | None = "active"
     organization_type: str = "cooperative"
     onboarding_role: str | None = None
+    subscription_band: str | None = None
+
+class PasswordResetRequest(BaseModel):
+    email: str
+
+class PasswordResetConfirm(BaseModel):
+    reset_token: str
+    new_password: str
+
+
+class PasswordChangeRequest(BaseModel):
+    new_password: str
+
+
+class InviteUserRequest(BaseModel):
+    email: str
+    role: Literal[
+        "admin", "finance_officer", "farm_owner", "farm_manager", "supervisor"
+    ]
+
+
+class AcceptInviteRequest(BaseModel):
+    invite_token: str
+    password: str

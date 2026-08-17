@@ -41,6 +41,7 @@ export function getAuthInfo() {
       user_id: payload.user_id ?? null,
       email: payload.sub ?? null,
       organization_type: payload.organization_type ?? null,
+      role: payload.role ?? null,
     }
   } catch {
     return { cooperative_id: null, email: null, user_id: null }
@@ -53,6 +54,11 @@ export function getOrganizationType(user = null) {
   if (fromAuthInfo) return fromAuthInfo
   if (user?.organization_type) return user.organization_type
   return 'cooperative'
+}
+
+/** Resolve the user role from the JWT payload. */
+export function getUserRole() {
+  return getAuthInfo().role ?? null
 }
 
 /** Returns 1–2 uppercase initials from an email address. */

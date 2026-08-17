@@ -1,5 +1,6 @@
 """Tests for /ussdk/loan-balance and /ussdk/pay-dues"""
 
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -83,7 +84,7 @@ def test_pay_dues_missing_amount_returns_retry(client, farmer):
 
 def test_pay_dues_success_prompts_phone_approval(client, farmer):
     with patch(
-        "app.routes.transactions.MoolreService.initiate_payment",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
         new_callable=AsyncMock,
     ) as mock_pay:
         mock_pay.return_value = _tr099_result("ussd-ref-1")
@@ -101,7 +102,7 @@ def test_pay_dues_success_prompts_phone_approval(client, farmer):
 
 def test_pay_dues_otp_required_returns_external_ref_for_retry(client, farmer):
     with patch(
-        "app.routes.transactions.MoolreService.initiate_payment",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
         new_callable=AsyncMock,
     ) as mock_pay:
         mock_pay.return_value = _tp14_result("ussd-ref-2")
@@ -115,6 +116,51 @@ def test_pay_dues_otp_required_returns_external_ref_for_retry(client, farmer):
     body = resp.json()
     assert body["verification_required"] is True
     assert body["external_ref"]
+
+
+def test_pending_payment_reconciles_stale_processing_action(
+    client, farmer, db
+):
+    from app.models.models import (
+        Transaction,
+        TransactionStatus,
+        TransactionType,
+    )
+
+    transaction = Transaction(
+        farmer_id=farmer["id"],
+        transaction_type=TransactionType.dues,
+        amount=25,
+        status=TransactionStatus.pending,
+        moolre_reference="ussdk-stale-ref",
+        customer_action="processing_otp",
+        action_expires_at=datetime.utcnow() - timedelta(seconds=1),
+        initiation_channel="ussdk",
+    )
+    db.add(transaction)
+    db.commit()
+
+    with patch(
+        "app.services.providers.moolre_adapter."
+        "MoolrePaymentAdapter.payment_status",
+        new_callable=AsyncMock,
+        return_value={"status": "pending", "amount": 25},
+    ):
+        response = client.post(
+            "/ussdk/pending-payment",
+            json=_hook_payload(
+                farmer["phone"],
+                {"transaction_id": transaction.id},
+            ),
+        )
+
+    assert response.status_code == 200
+    assert response.json()["action"] == "end"
+    assert "still processing" in response.json()["message"].lower()
+    db.refresh(transaction)
+    assert transaction.status == TransactionStatus.pending
+    assert transaction.customer_action == "processing_otp"
+    assert transaction.action_expires_at > datetime.utcnow()
 
 
 def test_loan_balance_unregistered_phone(client):
@@ -282,7 +328,7 @@ def test_wallet_balance_unregistered_phone_ends_session(client):
 
 def test_wallet_balance_success(client, farmer):
     with patch(
-        "app.routes.ussdk_hooks.MoolreService.account_status",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.account_status",
         new_callable=AsyncMock,
     ) as mock_status:
         mock_status.return_value = {
@@ -301,7 +347,7 @@ def test_wallet_balance_success(client, farmer):
 
 def test_wallet_balance_moolre_failure_ends_session(client, farmer):
     with patch(
-        "app.routes.ussdk_hooks.MoolreService.account_status",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.account_status",
         new_callable=AsyncMock,
     ) as mock_status:
         mock_status.return_value = {"success": False}
@@ -320,12 +366,12 @@ def test_announcements_unregistered_phone_still_answers(client):
         json=_hook_payload("0200000000"),
     )
     assert resp.status_code == 200
-    assert "No new announcements" in resp.json()["message"]
+    assert "No announcements yet" in resp.json()["message"]
 
 
-def test_announcements_sends_sms_for_registered_farmer(client, farmer):
+def test_announcements_does_not_send_placeholder_sms(client, farmer):
     with patch(
-        "app.routes.ussdk_hooks.MoolreService.send_single_sms",
+        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
         new_callable=AsyncMock,
     ) as mock_sms:
         mock_sms.return_value = {"success": True}
@@ -335,5 +381,118 @@ def test_announcements_sends_sms_for_registered_farmer(client, farmer):
         )
 
     assert resp.status_code == 200
-    mock_sms.assert_called_once()
-    assert "SMS" in resp.json()["message"]
+    mock_sms.assert_not_awaited()
+    assert "No announcements yet" in resp.json()["message"]
+
+
+def test_announcements_sends_persisted_message_sms(client, farmer, db):
+    from app.models.models import Announcement
+
+    db.add(
+        Announcement(
+            cooperative_id=farmer["cooperative_id"],
+            title="Collection update",
+            body="Collection opens Monday.",
+        )
+    )
+    db.commit()
+
+    with patch(
+        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
+        new_callable=AsyncMock,
+        return_value={"success": True},
+    ) as mock_sms:
+        resp = client.post(
+            "/ussdk/announcements",
+            json=_hook_payload(farmer["phone"]),
+        )
+
+    assert resp.status_code == 200
+    mock_sms.assert_awaited_once_with(
+        recipient=farmer["phone"],
+        message="Collection update: Collection opens Monday.",
+    )
+    assert "Also sent via SMS" in resp.json()["message"]
+
+
+def test_announcements_respects_member_sms_opt_out(client, farmer, db):
+    from app.models.models import CooperativeMembership
+
+    membership = (
+        db.query(CooperativeMembership)
+        .filter(CooperativeMembership.id == farmer["id"])
+        .one()
+    )
+    membership.sms_consent = False
+    db.commit()
+
+    with patch(
+        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
+        new_callable=AsyncMock,
+    ) as mock_sms:
+        resp = client.post(
+            "/ussdk/announcements",
+            json=_hook_payload(farmer["phone"]),
+        )
+
+    assert resp.status_code == 200
+    mock_sms.assert_not_awaited()
+    assert "Also sent via SMS" not in resp.json()["message"]
+
+
+def test_announcements_require_selection_and_use_selected_cooperative(
+    client, farmer, db
+):
+    from app.models.models import Announcement
+
+    second_coop = client.post(
+        "/cooperatives/",
+        json={"name": "Second Announcement Cooperative", "currency": "GHS"},
+    ).json()
+    second_membership = client.post(
+        "/farmers/",
+        json={
+            "name": farmer["name"],
+            "phone": farmer["phone"],
+            "cooperative_id": second_coop["id"],
+        },
+    ).json()
+    db.add_all(
+        [
+            Announcement(
+                cooperative_id=farmer["cooperative_id"],
+                title="First cooperative",
+                body="First message",
+            ),
+            Announcement(
+                cooperative_id=second_coop["id"],
+                title="Second cooperative",
+                body="Second message",
+            ),
+        ]
+    )
+    db.commit()
+
+    choose = client.post(
+        "/ussdk/announcements",
+        json=_hook_payload(farmer["phone"]),
+    )
+    assert choose.status_code == 200
+    assert choose.json()["requires_cooperative_selection"] is True
+
+    with patch(
+        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
+        new_callable=AsyncMock,
+        return_value={"success": True},
+    ):
+        selected = client.post(
+            "/ussdk/announcements",
+            json=_hook_payload(
+                farmer["phone"],
+                {"membership_id": second_membership["id"]},
+            ),
+        )
+
+    assert selected.status_code == 200
+    assert "Second cooperative" in selected.json()["message"]
+    assert "First cooperative" not in selected.json()["message"]

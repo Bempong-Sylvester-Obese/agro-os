@@ -71,6 +71,19 @@ def create_farmer(
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
 
+    from app.services.plans import get_plan_limit
+
+    active_count = db.query(CooperativeMembership).filter(
+        CooperativeMembership.membership_status == MembershipStatus.active,
+        CooperativeMembership.cooperative_id == cooperative_id,
+    ).count()
+    max_members = get_plan_limit(coop.subscription_plan, "max_members")
+    if max_members > 0 and active_count >= max_members:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Member limit of {max_members} reached for the {coop.subscription_plan} plan. Upgrade to add more members."
+        )
+
     normalized_phone = normalize_ghana_phone(farmer_in.phone)
     farmer = db.query(Farmer).filter(Farmer.phone == normalized_phone).first()
     existing_farmer = farmer is not None
@@ -118,6 +131,7 @@ def create_farmer(
         animal_type=farmer_in.animal_type,
         animal_scale=farmer_in.animal_scale,
         farmer_code=code,
+        sms_consent=farmer_in.sms_consent,
     )
     db.add(membership)
     try:
@@ -232,6 +246,7 @@ def update_farmer(
         "animal_type",
         "animal_scale",
         "membership_status",
+        "sms_consent",
     ):
         if field in values:
             setattr(membership, field, values[field])
@@ -347,7 +362,15 @@ def record_attendance(
     farmer_id: int,
     attendance_in: AttendanceCreate,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(require_roles("admin")),
+    current_user: User | None = Depends(
+        require_roles(
+            "admin",
+            "finance_officer",
+            "farm_owner",
+            "farm_manager",
+            "supervisor",
+        )
+    ),
 ):
     """Record whether a farmer attended a cooperative event."""
     _get_farmer_or_404(farmer_id, db, current_user)

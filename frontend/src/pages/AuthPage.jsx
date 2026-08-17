@@ -1,7 +1,6 @@
 import React, { useEffect, useId, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { login, signup, storeAuthToken, userFromAuthToken, userFromSignupResponse, warmAuthBackend } from '../api/auth'
-import { createSubscriptionCheckout } from '../api/cooperatives'
+import { acceptInvite, changePassword, confirmPasswordReset, login, requestPasswordReset, signup, storeAuthToken, userFromAuthToken, userFromSignupResponse, warmAuthBackend } from '../api/auth'
 import { Sprout, ArrowLeft, ArrowRight, Building2, Users, MapPin, Mail, Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
@@ -90,6 +89,12 @@ const SIZE_OPTIONS = [
   { label: '500+', value: 750 },
 ]
 
+function subscriptionPlanName(plan) {
+  if (plan === 'growth') return 'Growth'
+  if (plan === 'solo') return 'Solo Farm'
+  return 'Starter'
+}
+
 function SizePills({ value, onChange }) {
   return (
     <fieldset style={{ margin: 0, marginBottom: 16, padding: 0, border: 0 }}>
@@ -149,6 +154,14 @@ export default function AuthPage({ onAuth }) {
   const [subscriptionIntent, setSubscriptionIntent] = useState(null)
   const [organizationType, setOrganizationType] = useState('cooperative')
 
+  const [specialMode, setSpecialMode] = useState(null)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotSent, setForgotSent] = useState(false)
+  const [resetPassword, setResetPassword] = useState('')
+  const [invitePassword, setInvitePassword] = useState('')
+  const [pendingLoginData, setPendingLoginData] = useState(null)
+  const [pendingLoginToken, setPendingLoginToken] = useState(null)
+
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState(false)
@@ -168,6 +181,18 @@ export default function AuthPage({ onAuth }) {
     setError(null)
     setStep(0)
     setSuccess(false)
+    setOrganizationType('cooperative')
+    setForgotSent(false)
+
+    const token = searchParams.get('token')
+    const invite = searchParams.get('invite')
+    if (token) {
+      setSpecialMode('reset')
+    } else if (invite) {
+      setSpecialMode('accept-invite')
+    } else {
+      setSpecialMode(null)
+    }
 
     if (searchParams.get('onboarding') === 'subscription') {
       try {
@@ -177,6 +202,7 @@ export default function AuthPage({ onAuth }) {
           setCooperativeName(intent.organisation || '')
           setLocation(intent.location || '')
           setMemberCount(intent.memberCount ? Number(intent.memberCount) : null)
+          setOrganizationType(intent.org_type || 'cooperative')
         }
       } catch {
         setSubscriptionIntent(null)
@@ -201,6 +227,13 @@ export default function AuthPage({ onAuth }) {
     setLoading(true)
     try {
       const data = await login(email, password)
+      if (data.password_change_required) {
+        setPendingLoginData(data)
+        setPendingLoginToken(data.access_token)
+        setSpecialMode('set-password')
+        setLoading(false)
+        return
+      }
       storeAuthToken(data.access_token)
       completeAuth(data, {
         email: data.user?.email || email.trim(),
@@ -233,6 +266,7 @@ export default function AuthPage({ onAuth }) {
     setLoading(true)
     try {
       const plan = subscriptionIntent?.plan || 'starter'
+      const checkoutRef = subscriptionIntent?.checkout_ref || searchParams.get('checkout')
       const data = await signup({
         email: signupEmail,
         password: signupPassword,
@@ -240,29 +274,13 @@ export default function AuthPage({ onAuth }) {
         location: location || undefined,
         memberCount: memberCount || undefined,
         subscriptionPlan: plan,
+        subscriptionBand: subscriptionIntent?.band,
+        checkoutRef,
         onboardingRole: subscriptionIntent?.role || 'Cooperative administrator',
         organizationType,
       })
       storeAuthToken(data.access_token)
       if (subscriptionIntent) window.sessionStorage.removeItem('agroos-subscription-intent')
-      
-      const user = data.user || userFromAuthToken(data.access_token)
-      
-      if (plan !== 'starter' && user?.cooperative_id) {
-        setLoading(true)
-        // Attempt to redirect to Moolre checkout
-        try {
-          const res = await createSubscriptionCheckout(user.cooperative_id, plan)
-          if (res.authorization_url) {
-            window.location.href = res.authorization_url
-            return
-          }
-        } catch (err) {
-          console.error("Subscription checkout failed:", err)
-          // Fall through to regular login if checkout fails
-        }
-      }
-      
       setSuccess(true)
       setTimeout(() => {
         completeAuth(data, userFromSignupResponse(data, signupEmail.trim()))
@@ -271,6 +289,79 @@ export default function AuthPage({ onAuth }) {
       setError(err.message)
       setLoading(false)
     }
+  }
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      await requestPasswordReset(forgotEmail)
+      setForgotSent(true)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleResetPassword = async (e) => {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      const token = searchParams.get('token')
+      await confirmPasswordReset(token, resetPassword)
+      setError(null)
+      setSuccess(true)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleAcceptInvite = async (e) => {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      const token = searchParams.get('invite')
+      await acceptInvite(token, invitePassword)
+      setError(null)
+      setSuccess(true)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSetPassword = async (e) => {
+    e.preventDefault()
+    setError(null)
+    setLoading(true)
+    try {
+      await changePassword(pendingLoginToken, resetPassword)
+      storeAuthToken(pendingLoginToken)
+      setError(null)
+      completeAuth(pendingLoginData, {
+        email: pendingLoginData?.user?.email || email.trim(),
+        cooperative_id: pendingLoginData?.user?.cooperative_id ?? userFromAuthToken(pendingLoginToken)?.cooperative_id ?? null,
+        cooperative: pendingLoginData?.user?.cooperative || 'Kuapa Kokoo Demo Cooperative',
+      })
+    } catch (err) {
+      setError(err.message)
+      setLoading(false)
+    }
+  }
+
+  const returnToLogin = () => {
+    setSpecialMode(null)
+    setForgotSent(false)
+    setError(null)
+    setSuccess(false)
+    navigate('/login', { replace: true })
   }
 
   // ── Switch mode helper ─────────────────────────────────────────────────────
@@ -286,8 +377,10 @@ export default function AuthPage({ onAuth }) {
     if (next) params.set('next', next)
     const plan = searchParams.get('plan')
     const onboarding = searchParams.get('onboarding')
+    const checkout = searchParams.get('checkout')
     if (plan) params.set('plan', plan)
     if (onboarding) params.set('onboarding', onboarding)
+    if (checkout) params.set('checkout', checkout)
     const search = params.toString() ? `?${params.toString()}` : ''
     navigate(`/login${search}`, { replace: true })
   }
@@ -390,7 +483,43 @@ export default function AuthPage({ onAuth }) {
         <div style={{ width: '100%', maxWidth: 420 }}>
 
           {/* ── Success state ── */}
-          {success && (
+          {success && specialMode === 'reset' && (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{
+                width: 72, height: 72, borderRadius: '50%',
+                background: 'rgba(82,183,136,0.15)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                margin: '0 auto 20px',
+              }}>
+                <CheckCircle2 size={36} color="var(--gl)" />
+              </div>
+              <h2 className="serif" style={{ fontSize: 26, marginBottom: 8 }}>Password reset</h2>
+              <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 16 }}>Your password has been reset. Please log in.</p>
+              <button className="btn-lg" onClick={returnToLogin} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                Go to login <ArrowRight size={16} />
+              </button>
+            </div>
+          )}
+
+          {success && specialMode === 'accept-invite' && (
+            <div style={{ textAlign: 'center' }}>
+              <div style={{
+                width: 72, height: 72, borderRadius: '50%',
+                background: 'rgba(82,183,136,0.15)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                margin: '0 auto 20px',
+              }}>
+                <CheckCircle2 size={36} color="var(--gl)" />
+              </div>
+              <h2 className="serif" style={{ fontSize: 26, marginBottom: 8 }}>Account activated</h2>
+              <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 16 }}>Your account has been activated. Please log in.</p>
+              <button className="btn-lg" onClick={returnToLogin} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                Go to login <ArrowRight size={16} />
+              </button>
+            </div>
+          )}
+
+          {success && !specialMode && (
             <div style={{ textAlign: 'center' }}>
               <div style={{
                 width: 72, height: 72, borderRadius: '50%',
@@ -405,8 +534,227 @@ export default function AuthPage({ onAuth }) {
             </div>
           )}
 
+          {/* ── FORGOT PASSWORD ── */}
+          {!success && specialMode === 'forgot' && (
+            <>
+              <h2 className="serif" style={{ fontSize: 28, marginBottom: 6 }}>Forgot password</h2>
+              <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 32 }}>
+                Enter your email and we'll generate a reset link.
+              </p>
+
+              {error && (
+                <div style={{
+                  padding: '10px 14px', backgroundColor: '#FEF2F2', color: '#991B1B',
+                  borderRadius: 8, marginBottom: 20, fontSize: 13, borderLeft: '3px solid #F87171',
+                }}>
+                  {error}
+                </div>
+              )}
+
+              {forgotSent ? (
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{
+                    width: 72, height: 72, borderRadius: '50%',
+                    background: 'rgba(82,183,136,0.15)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    margin: '0 auto 20px',
+                  }}>
+                    <CheckCircle2 size={36} color="var(--gl)" />
+                  </div>
+                  <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 20 }}>
+                    If an account with that email exists, reset instructions have been generated.
+                  </p>
+                  <button className="btn-lg" onClick={returnToLogin} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    Back to login <ArrowRight size={16} />
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleForgotPassword}>
+                  <Field
+                    label="Email address"
+                    icon={Mail}
+                    type="email"
+                    value={forgotEmail}
+                    onChange={e => setForgotEmail(e.target.value)}
+                    placeholder="you@cooperative.com"
+                    required
+                  />
+                  <button
+                    type="submit"
+                    className="btn-lg"
+                    disabled={loading}
+                    style={{ width: '100%', marginTop: 8, justifyContent: 'center', display: 'flex' }}
+                  >
+                    {loading ? 'Sending…' : 'Send reset link →'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={returnToLogin}
+                    style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 13, cursor: 'pointer', marginTop: 16, display: 'block', width: '100%', textAlign: 'center' }}
+                  >
+                    ← Back to login
+                  </button>
+                </form>
+              )}
+            </>
+          )}
+
+          {/* ── RESET PASSWORD ── */}
+          {!success && specialMode === 'reset' && (
+            <>
+              <h2 className="serif" style={{ fontSize: 28, marginBottom: 6 }}>Reset password</h2>
+              <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 32 }}>
+                Enter your new password.
+              </p>
+
+              {error && (
+                <div style={{
+                  padding: '10px 14px', backgroundColor: '#FEF2F2', color: '#991B1B',
+                  borderRadius: 8, marginBottom: 20, fontSize: 13, borderLeft: '3px solid #F87171',
+                }}>
+                  {error}
+                </div>
+              )}
+
+              <form onSubmit={handleResetPassword}>
+                <Field
+                  label="New password"
+                  icon={Lock}
+                  type={showPw ? 'text' : 'password'}
+                  value={resetPassword}
+                  onChange={e => setResetPassword(e.target.value)}
+                  placeholder="Enter your new password"
+                  required
+                  rightEl={
+                    <button
+                      type="button"
+                      onClick={() => setShowPw(!showPw)}
+                      aria-label={showPw ? 'Hide password' : 'Show password'}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 0 }}
+                    >
+                      {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  }
+                />
+                <button
+                  type="submit"
+                  className="btn-lg"
+                  disabled={loading}
+                  style={{ width: '100%', marginTop: 8, justifyContent: 'center', display: 'flex' }}
+                >
+                  {loading ? 'Resetting…' : 'Reset password →'}
+                </button>
+                <button
+                  type="button"
+                  onClick={returnToLogin}
+                  style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 13, cursor: 'pointer', marginTop: 16, display: 'block', width: '100%', textAlign: 'center' }}
+                >
+                  ← Back to login
+                </button>
+              </form>
+            </>
+          )}
+
+          {/* ── ACCEPT INVITE ── */}
+          {!success && specialMode === 'accept-invite' && (
+            <>
+              <h2 className="serif" style={{ fontSize: 28, marginBottom: 6 }}>Create your password</h2>
+              <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 32 }}>
+                Set a password to activate your account.
+              </p>
+
+              {error && (
+                <div style={{
+                  padding: '10px 14px', backgroundColor: '#FEF2F2', color: '#991B1B',
+                  borderRadius: 8, marginBottom: 20, fontSize: 13, borderLeft: '3px solid #F87171',
+                }}>
+                  {error}
+                </div>
+              )}
+
+              <form onSubmit={handleAcceptInvite}>
+                <Field
+                  label="Password"
+                  icon={Lock}
+                  type={showPw ? 'text' : 'password'}
+                  value={invitePassword}
+                  onChange={e => setInvitePassword(e.target.value)}
+                  placeholder="Create a strong password"
+                  required
+                  rightEl={
+                    <button
+                      type="button"
+                      onClick={() => setShowPw(!showPw)}
+                      aria-label={showPw ? 'Hide password' : 'Show password'}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 0 }}
+                    >
+                      {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  }
+                />
+                <button
+                  type="submit"
+                  className="btn-lg"
+                  disabled={loading}
+                  style={{ width: '100%', marginTop: 8, justifyContent: 'center', display: 'flex' }}
+                >
+                  {loading ? 'Activating…' : 'Activate account →'}
+                </button>
+              </form>
+            </>
+          )}
+
+          {/* ── SET PASSWORD (FORCE CHANGE) ── */}
+          {!success && specialMode === 'set-password' && (
+            <>
+              <h2 className="serif" style={{ fontSize: 28, marginBottom: 6 }}>Set your new password</h2>
+              <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 32 }}>
+                You must set a new password before continuing.
+              </p>
+
+              {error && (
+                <div style={{
+                  padding: '10px 14px', backgroundColor: '#FEF2F2', color: '#991B1B',
+                  borderRadius: 8, marginBottom: 20, fontSize: 13, borderLeft: '3px solid #F87171',
+                }}>
+                  {error}
+                </div>
+              )}
+
+              <form onSubmit={handleSetPassword}>
+                <Field
+                  label="New password"
+                  icon={Lock}
+                  type={showPw ? 'text' : 'password'}
+                  value={resetPassword}
+                  onChange={e => setResetPassword(e.target.value)}
+                  placeholder="Enter your new password"
+                  required
+                  rightEl={
+                    <button
+                      type="button"
+                      onClick={() => setShowPw(!showPw)}
+                      aria-label={showPw ? 'Hide password' : 'Show password'}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 0 }}
+                    >
+                      {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  }
+                />
+                <button
+                  type="submit"
+                  className="btn-lg"
+                  disabled={loading}
+                  style={{ width: '100%', marginTop: 8, justifyContent: 'center', display: 'flex' }}
+                >
+                  {loading ? 'Setting password…' : 'Set password →'}
+                </button>
+              </form>
+            </>
+          )}
+
           {/* ── LOGIN FORM ── */}
-          {!success && isLogin && (
+          {!success && !specialMode && isLogin && (
             <>
               <h2 className="serif" style={{ fontSize: 28, marginBottom: 6 }}>Sign in</h2>
               <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 32 }}>
@@ -467,11 +815,21 @@ export default function AuthPage({ onAuth }) {
                   {loading ? 'Signing in…' : 'Sign in →'}
                 </button>
               </form>
+
+              <div style={{ marginTop: 16, textAlign: 'center' }}>
+                <button
+                  type="button"
+                  onClick={() => { setError(null); setSpecialMode('forgot') }}
+                  style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 13, cursor: 'pointer', textDecoration: 'underline' }}
+                >
+                  Forgot password?
+                </button>
+              </div>
             </>
           )}
 
           {/* ── SIGNUP STEP 0: Cooperative info ── */}
-          {!success && !isLogin && step === 0 && (
+          {!success && !specialMode && !isLogin && step === 0 && (
             <>
               <StepDots total={2} current={0} />
               {subscriptionIntent && (
@@ -486,7 +844,7 @@ export default function AuthPage({ onAuth }) {
               </h2>
               <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 28 }}>
                 {subscriptionIntent
-                  ? `Complete the organisation profile for the ${subscriptionIntent.plan === 'growth' ? 'Growth' : 'Starter'} workspace.`
+                  ? `Complete the organisation profile for the ${subscriptionPlanName(subscriptionIntent.plan)} workspace.`
                   : 'Tell us about your farm or cooperative to get started.'}
               </p>
 
@@ -562,7 +920,7 @@ export default function AuthPage({ onAuth }) {
           )}
 
           {/* ── SIGNUP STEP 1: Account credentials ── */}
-          {!success && !isLogin && step === 1 && (
+          {!success && !specialMode && !isLogin && step === 1 && (
             <>
               <StepDots total={2} current={1} />
 
@@ -638,7 +996,7 @@ export default function AuthPage({ onAuth }) {
                   {loading
                     ? 'Creating account…'
                     : subscriptionIntent
-                    ? `Create ${subscriptionIntent.plan === 'growth' ? 'Growth' : 'Starter'} account →`
+                    ? `Create ${subscriptionPlanName(subscriptionIntent.plan)} account →`
                     : 'Get started free →'}
                 </button>
               </form>
@@ -646,7 +1004,7 @@ export default function AuthPage({ onAuth }) {
           )}
 
           {/* ── Toggle login/signup ── */}
-          {!success && (
+          {!success && !specialMode && (
             <div style={{ marginTop: 28, textAlign: 'center', fontSize: 14, color: 'var(--muted)' }}>
               {isLogin ? "Don't have an account? " : 'Already have an account? '}
               <button

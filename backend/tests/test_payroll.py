@@ -103,11 +103,11 @@ def test_disburse_payroll_uses_stable_external_ref(auth_client, test_cooperative
         return {"success": True}
 
     monkeypatch.setattr(
-        "app.services.moolre_service.MoolreService.initiate_transfer",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_transfer",
         fake_transfer,
     )
     monkeypatch.setattr(
-        "app.services.communications_service.CommunicationsService.send_single_sms",
+        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
         fake_sms,
     )
 
@@ -120,3 +120,40 @@ def test_disburse_payroll_uses_stable_external_ref(auth_client, test_cooperative
     assert payouts[0]["status"] == "paid"
     assert seen_refs == [f"wage-payout-{payout_id}"]
     assert payouts[0]["moolre_reference"] == f"wage-payout-{payout_id}"
+
+
+def test_payroll_excludes_cross_tenant_attendance(
+    auth_client, test_cooperative, another_cooperative, db
+):
+    from datetime import date
+
+    from app.models.worker import Worker
+    from app.models.worker_attendance import Shift, WorkerAttendance
+
+    foreign_worker = Worker(
+        cooperative_id=another_cooperative.id,
+        name="Foreign Payroll",
+        phone="0241112286",
+        wage_rate=100,
+    )
+    db.add(foreign_worker)
+    db.flush()
+    db.add(
+        WorkerAttendance(
+            cooperative_id=test_cooperative.id,
+            worker_id=foreign_worker.id,
+            date=date(2026, 10, 1),
+            shift=Shift.full_day,
+            hours_worked=8,
+        )
+    )
+    db.commit()
+
+    res = auth_client.get(
+        f"/payroll/summary?cooperative_id={test_cooperative.id}"
+        "&period_start=2026-10-01&period_end=2026-10-31"
+    )
+
+    assert res.status_code == 200
+    assert res.json()["total_workers"] == 0
+    assert res.json()["total_gross"] == 0

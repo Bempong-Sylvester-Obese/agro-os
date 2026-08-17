@@ -1,11 +1,16 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database.db import get_db
-from app.models.models import AdminAuditLog, Cooperative, User
+from app.models.models import AdminAuditLog, Cooperative, PendingCheckout, User
 from app.schemas.auth import (
+    AcceptInviteRequest,
+    InviteUserRequest,
+    PasswordChangeRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
     SignupRequest,
     SignupResponse,
     Token,
@@ -17,8 +22,12 @@ from app.schemas.auth import (
 from app.services.auth_service import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
+    generate_reset_or_invite_token,
+    get_password_change_user,
     get_password_hash,
+    invite_token_valid,
     require_roles,
+    reset_token_valid,
     verify_password,
 )
 
@@ -26,7 +35,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/signup", response_model=SignupResponse, status_code=201)
-def signup(data: SignupRequest, db: Session = Depends(get_db)):
+async def signup(data: SignupRequest, db: Session = Depends(get_db)):
     """
     Combined onboarding: creates a new Cooperative and an admin User in one step.
     Returns a JWT access token immediately so the user is logged in right away.
@@ -35,10 +44,47 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == data.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    resolved_plan = data.subscription_plan
+    resolved_band = data.subscription_band
+    resolved_org_type = data.organization_type
+    resolved_name = data.cooperative_name
+    resolved_location = data.location
+    resolved_member_count = data.member_count
+    resolved_role = data.onboarding_role
+    subscription_status = "active"
+    subscription_expires_at = None
+
+    if data.checkout_ref:
+        checkout = (
+            db.query(PendingCheckout)
+            .filter(PendingCheckout.reference == data.checkout_ref)
+            .with_for_update()
+            .first()
+        )
+        if not checkout:
+            raise HTTPException(status_code=404, detail="Checkout not found")
+        if checkout.status != "paid":
+            raise HTTPException(status_code=402, detail="Payment not confirmed for this checkout")
+        resolved_plan = checkout.plan_key
+        resolved_band = checkout.band
+        resolved_org_type = checkout.organization_type or data.organization_type
+        resolved_name = checkout.organisation or data.cooperative_name
+        resolved_location = checkout.location or data.location
+        resolved_member_count = checkout.member_count or data.member_count
+        resolved_role = checkout.role or data.onboarding_role
+    elif data.subscription_plan != "starter":
+        raise HTTPException(
+            status_code=400,
+            detail="Paid plans require a completed checkout",
+        )
+
+    if resolved_plan != "starter":
+        subscription_expires_at = datetime.utcnow() + timedelta(days=30)
+
     # 2. Create the cooperative
     description = None
-    if data.member_count:
-        description = f"Approximate member count: {data.member_count}"
+    if resolved_member_count:
+        description = f"Approximate member count: {resolved_member_count}"
 
     import random
     while True:
@@ -47,20 +93,24 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
             break
 
     new_coop = Cooperative(
-        name=data.cooperative_name,
-        location=data.location,
+        name=resolved_name,
+        location=resolved_location,
         description=description,
         currency="GHS",
-        subscription_plan=data.subscription_plan,
-        organization_type=data.organization_type,
+        subscription_plan=resolved_plan,
+        subscription_band=resolved_band,
+        organization_type=resolved_org_type,
+        subscription_status=subscription_status,
+        subscription_expires_at=subscription_expires_at,
         ussd_code=code,
     )
 
-    import asyncio
-    from app.services.moolre_service import MoolreService
+    from app.services.providers.factory import get_payment_provider
     try:
-        moolre_svc = MoolreService()
-        moolre_result = asyncio.run(moolre_svc.create_account(account_name=data.cooperative_name))
+        moolre_svc = get_payment_provider()
+        moolre_result = await moolre_svc.create_account(
+            account_name=resolved_name
+        )
         if moolre_result.get("success"):
             new_coop.moolre_account_number = moolre_result.get("account_number")
     except Exception as e:
@@ -75,7 +125,7 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
         hashed_password=get_password_hash(data.password),
         role="admin",
         cooperative_id=new_coop.id,
-        onboarding_role=data.onboarding_role,
+        onboarding_role=resolved_role,
     )
     db.add(new_user)
     db.flush()
@@ -89,6 +139,8 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
             details=f"subscription_plan={new_coop.subscription_plan}",
         )
     )
+    if data.checkout_ref:
+        checkout.status = "consumed"
     db.commit()
     db.refresh(new_user)
     db.refresh(new_coop)
@@ -112,8 +164,10 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
         "cooperative_id": new_coop.id,
         "cooperative_name": new_coop.name,
         "subscription_plan": new_coop.subscription_plan,
-        "organization_type": data.organization_type,
+        "subscription_band": new_coop.subscription_band,
+        "organization_type": new_coop.organization_type,
         "onboarding_role": new_user.onboarding_role,
+        "password_change_required": False,
     }
 
 
@@ -133,6 +187,8 @@ def register(
         hashed_password=hashed_password,
         cooperative_id=current_user.cooperative_id,
         role=user_in.role,
+        must_change_password=True,
+        onboarding_role=user_in.onboarding_role if hasattr(user_in, 'onboarding_role') else None,
     )
     db.add(new_user)
     db.commit()
@@ -262,4 +318,85 @@ def login(user_in: UserLogin, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "user": UserResponse.model_validate(user),
         "organization_type": user.cooperative.organization_type if user.cooperative else None,
+        "password_change_required": user.must_change_password,
     }
+
+@router.post("/password-reset-request", status_code=200)
+def password_reset_request(data: PasswordResetRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == data.email).first()
+    if user and user.is_active:
+        user.reset_token = generate_reset_or_invite_token()
+        user.reset_token_expires_at = datetime.utcnow() + timedelta(minutes=15)
+        db.commit()
+        import logging
+        logging.getLogger(__name__).info(
+            "Password reset token for %s: %s", user.email, user.reset_token
+        )
+    return {"message": "If that account exists, a reset link has been generated."}
+
+@router.post("/password-reset-confirm", status_code=200)
+def password_reset_confirm(data: PasswordResetConfirm, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.reset_token == data.reset_token).first()
+    if not user or not reset_token_valid(user):
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token.")
+    user.hashed_password = get_password_hash(data.new_password)
+    user.reset_token = None
+    user.reset_token_expires_at = None
+    user.must_change_password = False
+    db.commit()
+    return {"message": "Password has been reset successfully."}
+
+
+@router.post("/change-password", status_code=200)
+def change_password(
+    data: PasswordChangeRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_password_change_user),
+):
+    if current_user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    current_user.hashed_password = get_password_hash(data.new_password)
+    current_user.must_change_password = False
+    db.commit()
+    return {"message": "Password has been changed successfully."}
+
+
+@router.post("/invite", response_model=UserResponse, status_code=201)
+def invite_user(
+    data: InviteUserRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+):
+    if db.query(User).filter(User.email == data.email).first():
+        raise HTTPException(status_code=409, detail="Email already registered")
+    token = generate_reset_or_invite_token()
+    expires = datetime.utcnow() + timedelta(hours=72)
+    new_user = User(
+        email=data.email,
+        hashed_password="",
+        role=data.role,
+        cooperative_id=current_user.cooperative_id,
+        invite_token=token,
+        invite_token_expires_at=expires,
+        must_change_password=True,
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    import logging
+    logging.getLogger(__name__).info(
+        "Invite for %s: token=%s (valid until %s)", new_user.email, token, expires
+    )
+    return new_user
+
+@router.post("/accept-invite", status_code=200)
+def accept_invite(data: AcceptInviteRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.invite_token == data.invite_token).first()
+    if not user or not invite_token_valid(user):
+        raise HTTPException(status_code=400, detail="Invalid or expired invite token.")
+    user.hashed_password = get_password_hash(data.password)
+    user.invite_token = None
+    user.invite_token_expires_at = None
+    user.must_change_password = False
+    db.commit()
+    return {"message": "Account activated. You may now login."}

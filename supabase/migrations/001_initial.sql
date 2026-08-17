@@ -1,3 +1,6 @@
+-- ⚠️ REFERENCE ONLY — actual schema is managed by Alembic (backend/alembic/versions/).
+-- Do NOT apply this SQL directly. Use `alembic upgrade head` instead.
+--
 -- Initial schema aligned with backend/app/models/models.py (SQLAlchemy create_all mirror).
 -- Use for Supabase CLI review; runtime tables are created by the FastAPI app on startup.
 

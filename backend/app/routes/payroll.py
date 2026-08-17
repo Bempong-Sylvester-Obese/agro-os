@@ -50,7 +50,11 @@ def payroll_summary(
             func.coalesce(func.sum(WorkerAttendance.hours_worked), 0).label("total_hours"),
             func.count(WorkerAttendance.id).label("total_shifts"),
         )
-        .join(Worker, WorkerAttendance.worker_id == Worker.id)
+        .join(
+            Worker,
+            (WorkerAttendance.worker_id == Worker.id)
+            & (WorkerAttendance.cooperative_id == Worker.cooperative_id),
+        )
         .filter(
             WorkerAttendance.cooperative_id == cooperative_id,
             WorkerAttendance.date >= period_start,
@@ -119,7 +123,11 @@ def approve_payroll(
             func.coalesce(func.sum(WorkerAttendance.hours_worked), 0).label("total_hours"),
             func.count(WorkerAttendance.id).label("total_shifts"),
         )
-        .join(Worker, WorkerAttendance.worker_id == Worker.id)
+        .join(
+            Worker,
+            (WorkerAttendance.worker_id == Worker.id)
+            & (WorkerAttendance.cooperative_id == Worker.cooperative_id),
+        )
         .filter(
             WorkerAttendance.cooperative_id == cooperative_id,
             WorkerAttendance.date >= data.period_start,
@@ -183,9 +191,9 @@ async def disburse_payroll(
     if not payout_ids:
         raise HTTPException(status_code=404, detail="No approved payouts found for this period")
 
-    from app.services.moolre_service import MoolreService
+    from app.services.providers.factory import get_payment_provider
 
-    moolre = MoolreService()
+    moolre = get_payment_provider()
     results = []
     paid_notifications: list[tuple[float, date, date, str]] = []
 

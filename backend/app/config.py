@@ -1,4 +1,5 @@
 """Settings and Configuration"""
+import os
 from functools import lru_cache
 
 from pydantic import model_validator
@@ -7,6 +8,11 @@ from pydantic_settings import BaseSettings
 _DEFAULT_SECRET_KEY = "your-secret-key-change-in-production"
 _DEFAULT_ADMIN_PASSWORD = "demo1234"
 _DEFAULT_DATABASE_URL = "postgresql://user:password@localhost:5432/agro_os"
+
+
+def _running_on_render() -> bool:
+    """Render injects RENDER=true into every service environment."""
+    return os.getenv("RENDER", "").lower() in {"true", "1", "yes"}
 
 
 class Settings(BaseSettings):
@@ -22,7 +28,9 @@ class Settings(BaseSettings):
     sentry_dsn: str = ""
     seed_demo_data: bool = False
     # When false, schema changes must run via Render pre-deploy / alembic CLI.
-    # Production defaults to false so uvicorn can bind before migrations finish.
+    # Production and Render default to false so uvicorn can bind before
+    # migrations finish (avoids "no open ports" deploy failures on free tier,
+    # where pre-deploy commands are skipped).
     auto_migrate_on_startup: bool = True
     rate_limit_enabled: bool = True
     rate_limit_login_per_minute: int = 10
@@ -38,6 +46,9 @@ class Settings(BaseSettings):
     supabase_service_role_key: str = ""
     supabase_anon_key: str = ""
 
+    # AgroOS deployment
+    agroos_base_url: str = ""
+
     # Moolre API
     moolre_env: str = "sandbox"
     moolre_api_url: str = "https://sandbox.moolre.com"
@@ -51,10 +62,12 @@ class Settings(BaseSettings):
     moolre_merchant_id: str = ""
     moolre_merchant_code: str = ""
     moolre_webhook_secret: str = ""
+    moolre_ussd_secret: str = ""
 
     # Farmer-facing AgroOS USSD menu and USSDK hook verification
     agroos_ussd_code: str = "*919*4020#"
     ussdk_hook_secret: str = ""
+    ussd_callback_secret: str = ""
 
     # Cooperative defaults
     default_currency: str = "GHS"
@@ -79,6 +92,15 @@ class Settings(BaseSettings):
         return self
 
     @model_validator(mode="after")
+    def disable_blocking_startup_on_render(self) -> "Settings":
+        # Free-tier Render skips pre-deploy commands; blocking Alembic in
+        # lifespan prevents uvicorn from binding and fails the deploy.
+        if _running_on_render():
+            self.auto_migrate_on_startup = False
+            self.seed_demo_data = False
+        return self
+
+    @model_validator(mode="after")
     def reject_insecure_production_settings(self) -> "Settings":
         if self.app_env.lower() not in ("production", "prod"):
             return self
@@ -92,6 +114,8 @@ class Settings(BaseSettings):
             raise ValueError("APP_ENV=production cannot run with SEED_DEMO_DATA=true")
         if not self.auth_enabled:
             raise ValueError("APP_ENV=production requires AUTH_ENABLED=true")
+        if not self.moolre_webhook_secret:
+            raise ValueError("MOOLRE_WEBHOOK_SECRET must be set in production")
         # Prefer Render pre-deploy / release-phase migrations in production.
         self.auto_migrate_on_startup = False
         return self

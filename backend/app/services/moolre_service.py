@@ -12,8 +12,10 @@ Covers all MVP-relevant Moolre endpoints:
   - Generate Payment Link
 """
 
+import asyncio
 import uuid
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -24,6 +26,7 @@ class MoolreService:
     """Handle all server-side Moolre API communications."""
 
     _shared_client: httpx.AsyncClient | None = None
+    _shared_client_loop: asyncio.AbstractEventLoop | None = None
 
     def __init__(self) -> None:
         self.settings = get_settings()
@@ -32,8 +35,13 @@ class MoolreService:
 
     @classmethod
     def _http_client(cls) -> httpx.AsyncClient:
-        if cls._shared_client is None:
+        current_loop = asyncio.get_running_loop()
+        if (
+            cls._shared_client is None
+            or cls._shared_client_loop is not current_loop
+        ):
             cls._shared_client = httpx.AsyncClient(timeout=30.0)
+            cls._shared_client_loop = current_loop
         return cls._shared_client
 
     # ------------------------------------------------------------------
@@ -657,13 +665,29 @@ class MoolreService:
         callback: str | None = None,
     ) -> dict[str, Any]:
         """Create a new business wallet (sub-account)."""
+        callback_url = callback
+        if api:
+            callback_url = callback_url or (
+                f"{self.settings.agroos_base_url.rstrip('/')}"
+                "/webhooks/moolre/payment"
+            )
+            parsed_callback = urlsplit(callback_url)
+            if (
+                parsed_callback.scheme not in {"http", "https"}
+                or not parsed_callback.netloc
+            ):
+                raise ValueError(
+                    "API-enabled Moolre accounts require an absolute HTTP(S) "
+                    "callback URL; configure AGROOS_BASE_URL or pass callback"
+                )
+
         # Moolre requires a settlement object and callback if API is enabled
         payload = {
             "type": 1,
             "accountname": account_name,
             "currency": currency,
             "api": api,
-            "callback": callback or "https://api.agroos.company/webhooks/moolre/payment",
+            "callback": callback_url,
             "settlement": {
                 "currency": currency,
                 "frequency": "1",

@@ -1,7 +1,17 @@
 import enum
 from datetime import date, datetime
 
-from sqlalchemy import Column, Date, DateTime, Enum, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import (
+    Column,
+    Date,
+    DateTime,
+    Enum,
+    Float,
+    ForeignKey,
+    ForeignKeyConstraint,
+    Integer,
+    Text,
+)
 from sqlalchemy.orm import relationship
 
 from app.database.db import Base
@@ -15,10 +25,22 @@ class Shift(str, enum.Enum):
 
 class WorkerAttendance(Base):
     __tablename__ = "worker_attendance"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["cooperative_id", "worker_id"],
+            ["workers.cooperative_id", "workers.id"],
+            name="fk_worker_attendance_cooperative_worker",
+        ),
+        ForeignKeyConstraint(
+            ["cooperative_id", "work_task_id"],
+            ["work_tasks.cooperative_id", "work_tasks.id"],
+            name="fk_worker_attendance_cooperative_task",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    worker_id = Column(Integer, ForeignKey("workers.id"), nullable=False, index=True)
-    work_task_id = Column(Integer, ForeignKey("work_tasks.id"), nullable=True, index=True)
+    worker_id = Column(Integer, nullable=False, index=True)
+    work_task_id = Column(Integer, nullable=True, index=True)
     cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=False, index=True)
     date = Column(Date, nullable=False)
     hours_worked = Column(Float, nullable=True)
@@ -27,7 +49,7 @@ class WorkerAttendance(Base):
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    worker = relationship("Worker")
-    work_task = relationship("WorkTask")
-    cooperative = relationship("Cooperative")
+    worker = relationship("Worker", overlaps="cooperative")
+    work_task = relationship("WorkTask", overlaps="cooperative,worker")
+    cooperative = relationship("Cooperative", overlaps="work_task,worker")
     logger = relationship("User")

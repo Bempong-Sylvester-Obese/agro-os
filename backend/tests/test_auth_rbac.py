@@ -198,3 +198,87 @@ def test_agro_ai_ignores_cross_tenant_scope_request(client, db, auth_enabled):
     assert other_code not in {item["farmer_id"] for item in response.json()}
     assert own_coop.id != other_coop.id
 
+
+def test_required_password_change_blocks_api_until_completed(
+    client, db, auth_enabled
+):
+    _, _, _, admin_headers = _tenant(db, "12")
+    created = client.post(
+        "/auth/register",
+        headers=admin_headers,
+        json={
+            "email": "manager-12@example.com",
+            "password": "temporary-password",
+            "role": "farm_manager",
+        },
+    )
+    assert created.status_code == 200
+
+    login = client.post(
+        "/auth/login",
+        json={
+            "email": "manager-12@example.com",
+            "password": "temporary-password",
+        },
+    )
+    assert login.status_code == 200
+    assert login.json()["password_change_required"] is True
+    forced_headers = {
+        "Authorization": f"Bearer {login.json()['access_token']}"
+    }
+
+    assert client.get("/farmers/", headers=forced_headers).status_code == 403
+    changed = client.post(
+        "/auth/change-password",
+        headers=forced_headers,
+        json={"new_password": "permanent-password"},
+    )
+    assert changed.status_code == 200
+    assert client.get("/farmers/", headers=forced_headers).status_code == 200
+
+    assert client.post(
+        "/auth/login",
+        json={
+            "email": "manager-12@example.com",
+            "password": "temporary-password",
+        },
+    ).status_code == 401
+    relogin = client.post(
+        "/auth/login",
+        json={
+            "email": "manager-12@example.com",
+            "password": "permanent-password",
+        },
+    )
+    assert relogin.status_code == 200
+    assert relogin.json()["password_change_required"] is False
+
+
+def test_cooperative_staff_records_only_own_attendance(
+    client, db, auth_enabled
+):
+    own_coop, _, own_member, headers = _tenant(db, "13", role="farm_manager")
+    _, _, other_member, _ = _tenant(db, "14")
+    payload = {
+        "farmer_id": own_member.id,
+        "event_name": "Monthly meeting",
+        "event_date": "2026-08-17T10:00:00",
+        "attended": True,
+    }
+
+    created = client.post(
+        f"/farmers/{own_member.id}/attendance",
+        headers=headers,
+        json=payload,
+    )
+    assert created.status_code == 201
+    assert created.json()["farmer_id"] == own_member.id
+
+    cross_tenant = client.post(
+        f"/farmers/{other_member.id}/attendance",
+        headers=headers,
+        json={**payload, "farmer_id": other_member.id},
+    )
+    assert cross_tenant.status_code == 404
+    assert own_member.cooperative_id == own_coop.id
+

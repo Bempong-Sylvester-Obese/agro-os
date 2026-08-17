@@ -22,6 +22,7 @@ from app.routes import (
     admin,
     aggregation,
     agro_ai,
+    announcements,
     attendance,
     auth,
     buyers,
@@ -33,6 +34,7 @@ from app.routes import (
     loans,
     marketing,
     payroll,
+    plans,
     production,
     reports,
     sales,
@@ -64,6 +66,8 @@ _PUBLIC_PATHS = frozenset({
     "/auth/login",
     "/auth/signup",
     "/marketing/demo-bookings",
+    "/plans",
+    "/subscriptions/pre-checkout",
     "/webhooks/moolre/payment",
     "/webhooks/moolre/ussd",
     "/ussd/callback",
@@ -92,28 +96,34 @@ if settings.sentry_dsn:
 async def lifespan(app: FastAPI):
     """Initialise DB connections; optionally bootstrap schema on startup.
 
-    Hosted deploys should run `alembic upgrade head` in a Render pre-deploy
-    command and set AUTO_MIGRATE_ON_STARTUP=false so uvicorn can bind before
-    migrations finish (avoids "no open ports" deploy failures).
+    Hosted deploys must not block here: Render fails the deploy when uvicorn
+    does not bind a port quickly ("no open ports detected"). Free-tier also
+    skips pre-deploy commands, so run `alembic upgrade head` as a one-off
+    job (or paid pre-deploy) instead of during lifespan.
     """
+    logger = logging.getLogger("agroos.startup")
     _init_db()
     runtime_settings = get_settings()
     app_env = runtime_settings.app_env.lower()
+    on_render = os.getenv("RENDER", "").lower() in {"true", "1", "yes"}
 
-    if runtime_settings.auto_migrate_on_startup:
+    if runtime_settings.auto_migrate_on_startup and not on_render:
         # create_all is local/dev convenience only — it contends on enum/table
         # locks when multiple Render services share one Postgres database.
-        # Render injects RENDER=true; never run create_all there.
-        on_render = os.getenv("RENDER", "").lower() in {"true", "1", "yes"}
-        if app_env in {"development", "dev", "test"} and not on_render:
+        if app_env in {"development", "dev", "test"}:
             Base.metadata.create_all(bind=engine)
         if app_env != "test":
             backend_dir = Path(__file__).resolve().parent
             alembic_config = Config(str(backend_dir / "alembic.ini"))
             alembic_config.set_main_option("script_location", str(backend_dir / "alembic"))
             command.upgrade(alembic_config, "head")
+    elif on_render:
+        logger.info(
+            "Skipping startup migrations on Render "
+            "(run `alembic upgrade head` via pre-deploy or a one-off job)"
+        )
 
-    if runtime_settings.seed_demo_data:
+    if runtime_settings.seed_demo_data and not on_render:
         db = create_session()
         try:
             seed_golden_path(db)
@@ -213,7 +223,7 @@ app.include_router(settlements.router)
 app.include_router(transactions.router)
 app.include_router(loans.router)
 app.include_router(marketing.router)
-app.include_router(subscriptions.router)
+app.include_router(plans.router)
 app.include_router(webhooks.router)
 app.include_router(ussd.router)
 app.include_router(ussdk_hooks.router)
@@ -223,6 +233,7 @@ app.include_router(tasks.router)
 app.include_router(attendance.router)
 app.include_router(farm_production.router)
 app.include_router(payroll.router)
+app.include_router(announcements.router)
 app.include_router(agro_ai.router)
 
 @app.get("/", tags=["health"])

@@ -7,6 +7,7 @@ from sqlalchemy import func
 
 from app.database.db import get_db
 from app.models.models import Cooperative, User
+from app.models.work_task import WorkTask
 from app.models.worker import Worker
 from app.models.worker_attendance import Shift, WorkerAttendance
 from app.schemas.worker_attendance import AttendanceCreate, AttendanceResponse, AttendanceSummary
@@ -55,6 +56,27 @@ def log_attendance(
     coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
+    worker = (
+        db.query(Worker)
+        .filter(
+            Worker.id == data.worker_id,
+            Worker.cooperative_id == cooperative_id,
+        )
+        .first()
+    )
+    if not worker:
+        raise HTTPException(status_code=404, detail="Worker not found")
+    if data.work_task_id is not None:
+        task = (
+            db.query(WorkTask)
+            .filter(
+                WorkTask.id == data.work_task_id,
+                WorkTask.cooperative_id == cooperative_id,
+            )
+            .first()
+        )
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
 
     record = WorkerAttendance(
         worker_id=data.worker_id,
@@ -88,7 +110,11 @@ def attendance_summary(
             func.coalesce(func.sum(WorkerAttendance.hours_worked), 0).label("total_hours"),
             func.count(WorkerAttendance.id).label("total_shifts"),
         )
-        .join(Worker, WorkerAttendance.worker_id == Worker.id)
+        .join(
+            Worker,
+            (WorkerAttendance.worker_id == Worker.id)
+            & (WorkerAttendance.cooperative_id == Worker.cooperative_id),
+        )
         .filter(
             WorkerAttendance.cooperative_id == cooperative_id,
             WorkerAttendance.date >= period_start,

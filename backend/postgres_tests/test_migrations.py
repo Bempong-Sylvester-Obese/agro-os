@@ -6,7 +6,9 @@ from uuid import uuid4
 
 import pytest
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect, text
+from alembic.script import ScriptDirectory
+from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.engine import make_url
 from sqlalchemy.schema import CreateSchema, DropSchema
 
@@ -36,28 +38,83 @@ def _reset_schema(admin_engine, schema: str) -> None:
         connection.execute(CreateSchema(schema))
 
 
+def _create_metadata(engine, schema: str) -> None:
+    import app.models.farm_production  # noqa: F401
+    import app.models.models  # noqa: F401
+    import app.models.wage_payout  # noqa: F401
+    import app.models.worker  # noqa: F401
+    import app.models.worker_attendance  # noqa: F401
+    import app.models.work_task  # noqa: F401
+
+    with engine.begin() as connection:
+        connection.execute(text(f'SET search_path TO "{schema}"'))
+        Base.metadata.create_all(bind=connection)
+
+
+def _engine_for_schema(database_url: str, schema: str):
+    scoped_url = make_url(database_url).set(
+        query={
+            **dict(make_url(database_url).query),
+            "options": f"-csearch_path={schema}",
+        }
+    )
+    engine = create_engine(scoped_url)
+
+    @event.listens_for(engine, "connect")
+    def _set_search_path(dbapi_connection, _connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute(f'SET search_path TO "{schema}"')
+        cursor.close()
+
+    return engine
+
+
+def _run_upgrade(config: Config, engine, schema: str, revision: str = "head") -> None:
+    with engine.connect() as connection:
+        connection.execute(text(f'SET search_path TO "{schema}"'))
+        config.attributes["connection"] = connection
+        command.upgrade(config, revision)
+        config.attributes.pop("connection", None)
+        connection.commit()
+
+
+def _run_stamp(config: Config, engine, schema: str, revision: str) -> None:
+    with engine.connect() as connection:
+        connection.execute(text(f'SET search_path TO "{schema}"'))
+        config.attributes["connection"] = connection
+        command.stamp(config, revision)
+        config.attributes.pop("connection", None)
+        connection.commit()
+
+
+def _assert_integrity_rejected(connection, statement, parameters) -> None:
+    with pytest.raises(IntegrityError):
+        with connection.begin_nested():
+            connection.execute(text(statement), parameters)
+
+
 def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
     schema = f"agro_migrations_{uuid4().hex}"
     original_database_url = os.environ.get("DATABASE_URL")
     admin_engine = create_engine(DATABASE_URL)
-    scoped_url = make_url(DATABASE_URL).set(
+    engine = _engine_for_schema(DATABASE_URL, schema)
+    scoped_database_url = make_url(DATABASE_URL).set(
         query={
             **dict(make_url(DATABASE_URL).query),
             "options": f"-csearch_path={schema}",
         }
-    )
-    scoped_database_url = scoped_url.render_as_string(hide_password=False)
-    engine = create_engine(scoped_url)
+    ).render_as_string(hide_password=False)
     config = _config(scoped_database_url)
 
     try:
         _reset_schema(admin_engine, schema)
-        Base.metadata.create_all(engine)
-        command.upgrade(config, "head")
+        _create_metadata(engine, schema)
+        _run_upgrade(config, engine, schema)
+        assert inspect(engine).get_table_names(), "metadata create_all produced no tables"
         assert inspect(engine).has_table("demo_bookings")
 
         _reset_schema(admin_engine, schema)
-        Base.metadata.create_all(engine)
+        _create_metadata(engine, schema)
         with engine.begin() as connection:
             connection.execute(text("DROP TABLE admin_action_confirmations"))
             connection.execute(text("DROP TABLE demo_bookings"))
@@ -102,8 +159,11 @@ def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
                 ),
                 {"cooperative_id": cooperative_id},
             )
-        command.stamp(config, "004_user_active")
-        command.upgrade(config, "head")
+        _run_stamp(config, engine, schema, "004_user_active")
+        _run_upgrade(config, engine, schema)
+        assert ScriptDirectory.from_config(config).get_heads() == [
+            "015_worker_integrity"
+        ]
 
         columns = {
             column["name"]: column
@@ -131,6 +191,121 @@ def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
                     "WHERE action = 'legacy.action'"
                 )
             ).scalar_one()
+
+        with engine.begin() as connection:
+            second_cooperative_id = connection.execute(
+                text(
+                    "INSERT INTO cooperatives (name, currency) "
+                    "VALUES ('Second Cooperative', 'GHS') RETURNING id"
+                )
+            ).scalar_one()
+            local_worker_id = connection.execute(
+                text(
+                    "INSERT INTO workers "
+                    "(cooperative_id, name, phone, wage_rate) "
+                    "VALUES (:cooperative_id, 'Local Worker', "
+                    "'0240000001', 20) RETURNING id"
+                ),
+                {"cooperative_id": cooperative_id},
+            ).scalar_one()
+            foreign_worker_id = connection.execute(
+                text(
+                    "INSERT INTO workers "
+                    "(cooperative_id, name, phone, wage_rate) "
+                    "VALUES (:cooperative_id, 'Foreign Worker', "
+                    "'0240000002', 20) RETURNING id"
+                ),
+                {"cooperative_id": second_cooperative_id},
+            ).scalar_one()
+            local_task_id = connection.execute(
+                text(
+                    "INSERT INTO work_tasks "
+                    "(cooperative_id, title, task_type, scheduled_date) "
+                    "VALUES (:cooperative_id, 'Local Task', 'general', "
+                    "'2026-08-01') RETURNING id"
+                ),
+                {"cooperative_id": cooperative_id},
+            ).scalar_one()
+            foreign_task_id = connection.execute(
+                text(
+                    "INSERT INTO work_tasks "
+                    "(cooperative_id, title, task_type, scheduled_date) "
+                    "VALUES (:cooperative_id, 'Foreign Task', 'general', "
+                    "'2026-08-01') RETURNING id"
+                ),
+                {"cooperative_id": second_cooperative_id},
+            ).scalar_one()
+
+            _assert_integrity_rejected(
+                connection,
+                """
+                INSERT INTO worker_assignments
+                    (cooperative_id, work_task_id, worker_id)
+                VALUES (:cooperative_id, :task_id, :worker_id)
+                """,
+                {
+                    "cooperative_id": cooperative_id,
+                    "task_id": local_task_id,
+                    "worker_id": foreign_worker_id,
+                },
+            )
+            _assert_integrity_rejected(
+                connection,
+                """
+                INSERT INTO worker_attendance
+                    (cooperative_id, worker_id, date, shift)
+                VALUES (:cooperative_id, :worker_id, '2026-08-01', 'morning')
+                """,
+                {
+                    "cooperative_id": cooperative_id,
+                    "worker_id": foreign_worker_id,
+                },
+            )
+            _assert_integrity_rejected(
+                connection,
+                """
+                INSERT INTO worker_attendance
+                    (cooperative_id, worker_id, work_task_id, date, shift)
+                VALUES (
+                    :cooperative_id,
+                    :worker_id,
+                    :task_id,
+                    '2026-08-01',
+                    'morning'
+                )
+                """,
+                {
+                    "cooperative_id": cooperative_id,
+                    "worker_id": local_worker_id,
+                    "task_id": foreign_task_id,
+                },
+            )
+            _assert_integrity_rejected(
+                connection,
+                """
+                INSERT INTO wage_payouts
+                    (
+                        cooperative_id,
+                        worker_id,
+                        period_start,
+                        period_end,
+                        wage_rate,
+                        gross_amount
+                    )
+                VALUES (
+                    :cooperative_id,
+                    :worker_id,
+                    '2026-08-01',
+                    '2026-08-31',
+                    20,
+                    160
+                )
+                """,
+                {
+                    "cooperative_id": cooperative_id,
+                    "worker_id": foreign_worker_id,
+                },
+            )
     finally:
         engine.dispose()
         with admin_engine.begin() as connection:

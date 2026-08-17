@@ -16,6 +16,7 @@ export const DASHBOARD_SECTIONS = [
   'scores',
   'sms',
   'ussd',
+  'announcements',
   'activity',
   'settings',
 ]

@@ -38,6 +38,9 @@ class CooperativeUpdate(BaseModel):
     currency: Optional[str] = None
     moolre_account_number: Optional[str] = None
     organization_type: Optional[str] = None
+    subscription_plan: str | None = None
+    subscription_status: str | None = None
+    subscription_expires_at: datetime | None = None
 
 
 class CooperativeResponse(CooperativeBase):
@@ -46,6 +49,9 @@ class CooperativeResponse(CooperativeBase):
     created_at: datetime
     updated_at: datetime
     organization_type: str = "cooperative"
+    subscription_plan: str
+    subscription_status: str
+    subscription_expires_at: datetime | None = None
 
     class Config:
         from_attributes = True
@@ -67,6 +73,7 @@ class FarmerBase(BaseModel):
     animal_type: Optional[str] = None
     animal_scale: Optional[float] = Field(default=None, ge=0)
     cooperative_id: int
+    sms_consent: bool = True
 
 
 class FarmerCreate(FarmerBase):
@@ -85,6 +92,7 @@ class FarmerUpdate(BaseModel):
     animal_scale: Optional[float] = Field(default=None, ge=0)
     membership_status: Optional[MembershipStatus] = None
     cooperative_id: Optional[int] = None
+    sms_consent: Optional[bool] = None
 
 
 class FarmerResponse(FarmerBase):
