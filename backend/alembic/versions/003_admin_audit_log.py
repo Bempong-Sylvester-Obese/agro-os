@@ -12,7 +12,11 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    if "admin_audit_logs" in sa.inspect(op.get_bind()).get_table_names():
+    inspector = sa.inspect(op.get_bind())
+    table_names = inspector.get_table_names()
+    if "admin_audit_logs" in table_names:
+        return
+    if "cooperatives" not in table_names:
         return
     op.create_table(
         "admin_audit_logs",
