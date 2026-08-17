@@ -22,6 +22,7 @@ from app.routes import (
     admin,
     aggregation,
     agro_ai,
+    announcements,
     attendance,
     auth,
     buyers,
@@ -228,6 +229,7 @@ app.include_router(tasks.router)
 app.include_router(attendance.router)
 app.include_router(farm_production.router)
 app.include_router(payroll.router)
+app.include_router(announcements.router)
 app.include_router(agro_ai.router)
 
 @app.get("/", tags=["health"])

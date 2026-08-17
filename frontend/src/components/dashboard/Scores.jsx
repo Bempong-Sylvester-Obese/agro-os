@@ -203,6 +203,11 @@ export default function Scores({ farmers = [], cooperativeId, loading }) {
 
   return (
     <>
+      <div className="info-banner" style={{ background: '#FFFBEB', borderColor: '#FCD34D', marginBottom: 16 }}>
+        <strong>Experimental — </strong>
+        Trust scores are trained on synthetic data, not real repayment history.
+        Use as an advisory tool only.
+      </div>
       <div className="info-banner">
         <strong>AgroCredit Trust Score</strong> — Calculated from real cooperative data: payment compliance (40%),
         production history (25%), loan repayment (20%), and attendance (15%). Threshold for credit eligibility: 68/100.

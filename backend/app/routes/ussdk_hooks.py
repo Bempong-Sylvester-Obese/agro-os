@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database.db import get_db
 from app.models.models import (
+    Announcement,
     Cooperative,
     Loan,
     LoanStatus,
@@ -47,7 +48,7 @@ from app.services.ussd_service import resolve_farmer_by_phone
 from app.services.dues_service import run_dues_collect
 from app.services.customer_action_service import expire_customer_actions, pending_customer_actions, resume_dues_customer_action
 from app.services.loan_repayment_service import start_farmer_loan_repayment, resume_loan_repayment_customer_action
-from app.services.providers.factory import get_payment_provider
+from app.services.providers.factory import get_payment_provider, get_sms_provider
 
 logger = logging.getLogger(__name__)
 
@@ -515,9 +516,8 @@ async def wallet_balance(
 ):
     """Hook for a 'Check Cooperative Wallet Balance' USSD step.
 
-    Calls Moolre's real account/status endpoint via MoolreService.account_status,
-    using the farmer's cooperative wallet if set, falling back to the server-wide
-    MOOLRE_ACCOUNT_NUMBER otherwise.
+    Calls the configured payment provider's account-status endpoint, using the
+    farmer's cooperative wallet when one is configured.
 
     Phone resolution delegates to the shared app.services.ussd_service.
     """
@@ -565,8 +565,9 @@ async def announcements(
 ):
     """Hook for a 'View Announcements' USSD step.
 
-    Shows the announcement status on the USSD screen. The placeholder is not
-    sent by SMS because there is no persisted announcement to deliver.
+    Shows persisted announcements on the USSD screen and sends them through
+    the configured SMS provider when the selected membership has consented.
+    Placeholder text is never sent by SMS.
 
     Phone resolution delegates to the shared app.services.ussd_service.
     """
@@ -574,12 +575,39 @@ async def announcements(
     msisdn = payload.get("props", {}).get("session", {}).get("msisdn", "")
     values = payload.get("props", {}).get("values", {})
 
-    _, membership, memberships = _resolve_membership(
+    farmer, membership, memberships = _resolve_membership(
         msisdn, values.get("membership_id"), db
     )
-    announcement_text = "No new announcements. Check with your cooperative leader."
-
     if not membership and len(memberships) > 1:
         return cooperative_selection_payload(memberships)
+
+    coop_id = membership.cooperative_id if membership else None
+    announcements = (
+        db.query(Announcement)
+        .filter(
+            Announcement.cooperative_id == coop_id,
+            Announcement.deleted_at.is_(None),
+        )
+        .order_by(Announcement.created_at.desc())
+        .limit(3)
+        .all()
+    ) if coop_id is not None else []
+    if announcements:
+        lines = []
+        for a in announcements:
+            lines.append(f"{a.title}: {a.body[:120]}")
+        announcement_text = "\n---\n".join(lines)
+    else:
+        announcement_text = "No announcements yet. Check with your cooperative leader."
+
+    if announcements and farmer and membership and membership.sms_consent:
+        sms = get_sms_provider()
+        sms_result = await sms.send_sms(
+            recipient=farmer.phone,
+            message=announcement_text,
+        )
+        if sms_result.get("success"):
+            return {"message": f"{announcement_text}\n(Also sent via SMS.)"}
+
     return {"message": announcement_text}
 

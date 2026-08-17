@@ -733,8 +733,32 @@ async def handle_ussd_session(
             return {"message": msg, "reply": True}
 
         if message == "4":
-            announcement_text = "No new announcements. Check with your cooperative leader."
-            _clear_ussd_state(db, session_id)
+            announcements = (
+                db.query(Announcement)
+                .filter(
+                    Announcement.cooperative_id == farmer.cooperative_id,
+                    Announcement.deleted_at.is_(None),
+                )
+                .order_by(Announcement.created_at.desc())
+                .limit(3)
+                .all()
+            ) if farmer else []
+            if announcements:
+                lines = []
+                for a in announcements:
+                    lines.append(f"{a.title}: {a.body[:120]}")
+                announcement_text = "\n---\n".join(lines)
+            else:
+                announcement_text = "No announcements yet. Check with your cooperative leader."
+            if announcements and farmer and farmer.sms_consent:
+                sms = get_sms_provider()
+                sms_result = await sms.send_sms(
+                    recipient=farmer.phone,
+                    message=announcement_text,
+                )
+                if sms_result.get("success"):
+                    announcement_text += "\n(Also sent via SMS.)"
+            _ussd_sessions.pop(session_id, None)
             _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=announcement_text, farmer=farmer)
             return {"message": announcement_text, "reply": False}
 

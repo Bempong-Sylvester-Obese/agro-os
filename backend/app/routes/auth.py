@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -6,6 +6,11 @@ from sqlalchemy.orm import Session
 from app.database.db import get_db
 from app.models.models import AdminAuditLog, Cooperative, User
 from app.schemas.auth import (
+    AcceptInviteRequest,
+    InviteUserRequest,
+    PasswordChangeRequest,
+    PasswordResetConfirm,
+    PasswordResetRequest,
     SignupRequest,
     SignupResponse,
     Token,
@@ -17,8 +22,12 @@ from app.schemas.auth import (
 from app.services.auth_service import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
+    generate_reset_or_invite_token,
+    get_password_change_user,
     get_password_hash,
+    invite_token_valid,
     require_roles,
+    reset_token_valid,
     verify_password,
 )
 
@@ -115,6 +124,7 @@ async def signup(data: SignupRequest, db: Session = Depends(get_db)):
         "subscription_plan": new_coop.subscription_plan,
         "organization_type": data.organization_type,
         "onboarding_role": new_user.onboarding_role,
+        "password_change_required": False,
     }
 
 
@@ -134,6 +144,8 @@ def register(
         hashed_password=hashed_password,
         cooperative_id=current_user.cooperative_id,
         role=user_in.role,
+        must_change_password=True,
+        onboarding_role=user_in.onboarding_role if hasattr(user_in, 'onboarding_role') else None,
     )
     db.add(new_user)
     db.commit()
@@ -263,4 +275,85 @@ def login(user_in: UserLogin, db: Session = Depends(get_db)):
         "token_type": "bearer",
         "user": UserResponse.model_validate(user),
         "organization_type": user.cooperative.organization_type if user.cooperative else None,
+        "password_change_required": user.must_change_password,
     }
+
+@router.post("/password-reset-request", status_code=200)
+def password_reset_request(data: PasswordResetRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == data.email).first()
+    if user and user.is_active:
+        user.reset_token = generate_reset_or_invite_token()
+        user.reset_token_expires_at = datetime.utcnow() + timedelta(minutes=15)
+        db.commit()
+        import logging
+        logging.getLogger(__name__).info(
+            "Password reset token for %s: %s", user.email, user.reset_token
+        )
+    return {"message": "If that account exists, a reset link has been generated."}
+
+@router.post("/password-reset-confirm", status_code=200)
+def password_reset_confirm(data: PasswordResetConfirm, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.reset_token == data.reset_token).first()
+    if not user or not reset_token_valid(user):
+        raise HTTPException(status_code=400, detail="Invalid or expired reset token.")
+    user.hashed_password = get_password_hash(data.new_password)
+    user.reset_token = None
+    user.reset_token_expires_at = None
+    user.must_change_password = False
+    db.commit()
+    return {"message": "Password has been reset successfully."}
+
+
+@router.post("/change-password", status_code=200)
+def change_password(
+    data: PasswordChangeRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_password_change_user),
+):
+    if current_user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    current_user.hashed_password = get_password_hash(data.new_password)
+    current_user.must_change_password = False
+    db.commit()
+    return {"message": "Password has been changed successfully."}
+
+
+@router.post("/invite", response_model=UserResponse, status_code=201)
+def invite_user(
+    data: InviteUserRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+):
+    if db.query(User).filter(User.email == data.email).first():
+        raise HTTPException(status_code=409, detail="Email already registered")
+    token = generate_reset_or_invite_token()
+    expires = datetime.utcnow() + timedelta(hours=72)
+    new_user = User(
+        email=data.email,
+        hashed_password="",
+        role=data.role,
+        cooperative_id=current_user.cooperative_id,
+        invite_token=token,
+        invite_token_expires_at=expires,
+        must_change_password=True,
+    )
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    import logging
+    logging.getLogger(__name__).info(
+        "Invite for %s: token=%s (valid until %s)", new_user.email, token, expires
+    )
+    return new_user
+
+@router.post("/accept-invite", status_code=200)
+def accept_invite(data: AcceptInviteRequest, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.invite_token == data.invite_token).first()
+    if not user or not invite_token_valid(user):
+        raise HTTPException(status_code=400, detail="Invalid or expired invite token.")
+    user.hashed_password = get_password_hash(data.password)
+    user.invite_token = None
+    user.invite_token_expires_at = None
+    user.must_change_password = False
+    db.commit()
+    return {"message": "Account activated. You may now login."}

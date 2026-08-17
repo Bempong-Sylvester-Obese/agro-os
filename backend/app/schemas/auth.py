@@ -33,6 +33,7 @@ class Token(BaseModel):
     token_type: str
     user: UserResponse | None = None
     organization_type: str | None = None
+    password_change_required: bool = False
 
 class SignupRequest(BaseModel):
     """Combined cooperative + user registration in one step."""
@@ -54,3 +55,26 @@ class SignupResponse(BaseModel):
     subscription_status: str | None = "active"
     organization_type: str = "cooperative"
     onboarding_role: str | None = None
+
+class PasswordResetRequest(BaseModel):
+    email: str
+
+class PasswordResetConfirm(BaseModel):
+    reset_token: str
+    new_password: str
+
+
+class PasswordChangeRequest(BaseModel):
+    new_password: str
+
+
+class InviteUserRequest(BaseModel):
+    email: str
+    role: Literal[
+        "admin", "finance_officer", "farm_owner", "farm_manager", "supervisor"
+    ]
+
+
+class AcceptInviteRequest(BaseModel):
+    invite_token: str
+    password: str

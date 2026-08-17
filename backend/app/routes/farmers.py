@@ -131,6 +131,7 @@ def create_farmer(
         animal_type=farmer_in.animal_type,
         animal_scale=farmer_in.animal_scale,
         farmer_code=code,
+        sms_consent=farmer_in.sms_consent,
     )
     db.add(membership)
     try:
@@ -245,6 +246,7 @@ def update_farmer(
         "animal_type",
         "animal_scale",
         "membership_status",
+        "sms_consent",
     ):
         if field in values:
             setattr(membership, field, values[field])
@@ -360,7 +362,15 @@ def record_attendance(
     farmer_id: int,
     attendance_in: AttendanceCreate,
     db: Session = Depends(get_db),
-    current_user: User | None = Depends(require_roles("admin")),
+    current_user: User | None = Depends(
+        require_roles(
+            "admin",
+            "finance_officer",
+            "farm_owner",
+            "farm_manager",
+            "supervisor",
+        )
+    ),
 ):
     """Record whether a farmer attended a cooperative event."""
     _get_farmer_or_404(farmer_id, db, current_user)
