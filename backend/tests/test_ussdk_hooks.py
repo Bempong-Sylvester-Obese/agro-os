@@ -323,7 +323,7 @@ def test_announcements_unregistered_phone_still_answers(client):
     assert "No announcements yet" in resp.json()["message"]
 
 
-def test_announcements_sends_sms_for_registered_farmer(client, farmer):
+def test_announcements_does_not_send_placeholder_sms(client, farmer):
     with patch(
         "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
         new_callable=AsyncMock,
@@ -335,8 +335,38 @@ def test_announcements_sends_sms_for_registered_farmer(client, farmer):
         )
 
     assert resp.status_code == 200
-    mock_sms.assert_called_once()
-    assert "SMS" in resp.json()["message"]
+    mock_sms.assert_not_awaited()
+    assert "No announcements yet" in resp.json()["message"]
+
+
+def test_announcements_sends_persisted_message_sms(client, farmer, db):
+    from app.models.models import Announcement
+
+    db.add(
+        Announcement(
+            cooperative_id=farmer["cooperative_id"],
+            title="Collection update",
+            body="Collection opens Monday.",
+        )
+    )
+    db.commit()
+
+    with patch(
+        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
+        new_callable=AsyncMock,
+        return_value={"success": True},
+    ) as mock_sms:
+        resp = client.post(
+            "/ussdk/announcements",
+            json=_hook_payload(farmer["phone"]),
+        )
+
+    assert resp.status_code == 200
+    mock_sms.assert_awaited_once_with(
+        recipient=farmer["phone"],
+        message="Collection update: Collection opens Monday.",
+    )
+    assert "Also sent via SMS" in resp.json()["message"]
 
 
 def test_announcements_respects_member_sms_opt_out(client, farmer, db):

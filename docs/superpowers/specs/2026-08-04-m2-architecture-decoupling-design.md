@@ -19,7 +19,8 @@ Create `backend/app/domain/payment_event.py` dataclass with: `provider`, `event_
 
 ### #226 — Domain Services Extraction
 - Move payment processing from `webhooks.py` into `backend/app/services/payment_service.py`
-- Move loan processing into `backend/app/services/loan_service.py`
+- Move loan workflow processing into `backend/app/services/loan_workflow.py`
+- Move loan repayment processing into `backend/app/services/loan_repayment_service.py`
 - Stop route-to-route imports (routes import from services, not from other routes)
 
 ### #227 — Unify USSD Gateways
@@ -38,4 +39,4 @@ Check `main.py` for duplicate router includes and merge.
 Document provider-agnostic fields vs Moolre-specific fields. No rename (breaking), just documentation.
 
 ### #243 — Provider Adapter Docs
-Write `docs/adding-a-provider.md` explaining how to add a new payment/SMS provider.
+Write `docs/architecture/adding-a-provider.md` explaining how to add a new payment/SMS provider.

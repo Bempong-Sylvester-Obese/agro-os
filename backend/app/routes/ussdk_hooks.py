@@ -565,9 +565,9 @@ async def announcements(
 ):
     """Hook for a 'View Announcements' USSD step.
 
-    Shows the announcement on the USSD screen and also sends it via SMS
-    through the configured SMS provider, so the announcement isn't lost when
-    the USSD session times out.
+    Shows persisted announcements on the USSD screen and sends them through
+    the configured SMS provider when the selected membership has consented.
+    Placeholder text is never sent by SMS.
 
     Phone resolution delegates to the shared app.services.ussd_service.
     """
@@ -600,7 +600,7 @@ async def announcements(
     else:
         announcement_text = "No announcements yet. Check with your cooperative leader."
 
-    if farmer and membership and membership.sms_consent:
+    if announcements and farmer and membership and membership.sms_consent:
         sms = get_sms_provider()
         sms_result = await sms.send_sms(
             recipient=farmer.phone,
