@@ -37,6 +37,7 @@ from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.domain.payment_event import PaymentEvent
 from app.models.models import (
+    Announcement,
     CooperativeMembership as Farmer,
     Loan,
     LoanStatus,
@@ -63,8 +64,13 @@ from app.services.loan_request_service import (
     PendingLoanRequestError,
     create_farmer_loan_request,
 )
-from app.services.plans import PLANS, activate_subscription, get_plan
-from app.services.providers.factory import get_payment_provider
+from app.services.plans import (
+    PLANS,
+    activate_subscription,
+    get_plan,
+    resolve_amount,
+)
+from app.services.providers.factory import get_payment_provider, get_sms_provider
 from app.services.trust_score_service import TrustScoreService
 from app.services.ussd_service import resolve_farmer_by_phone
 
@@ -100,10 +106,12 @@ def _verify_signature(body: bytes, signature_header: str | None) -> bool:
     If no secret is configured (dev/sandbox), skip verification.
     """
     if not settings.moolre_webhook_secret:
-        if get_settings().app_env in ("production", "prod"):
-            logger.critical("MOOLRE_WEBHOOK_SECRET not set in production — rejecting webhook")
+        if settings.app_env.lower() in ("production", "prod"):
+            logger.error(
+                "Rejecting Moolre payment webhook because no signature secret is configured"
+            )
             return False
-        logger.warning("MOOLRE_WEBHOOK_SECRET not set — skipping signature verification (non-production)")
+        logger.warning("MOOLRE_WEBHOOK_SECRET not set — skipping signature verification")
         return True
 
     if not signature_header:
@@ -162,16 +170,52 @@ def _process_payment_payload(
     except (TypeError, ValueError):
         amount = 0.0
 
+    if external_ref and external_ref.startswith("sub_pre_"):
+        if moolre_status == 1:
+            from app.models.models import PendingCheckout
+            checkout = (
+                db.query(PendingCheckout)
+                .filter(PendingCheckout.reference == external_ref)
+                .with_for_update()
+                .first()
+            )
+            if checkout and abs(float(checkout.amount) - amount) >= 0.01:
+                logger.warning(
+                    "Pre-checkout amount mismatch for %s: expected=%s received=%s",
+                    checkout.reference,
+                    checkout.amount,
+                    amount,
+                )
+                return {"status": "ok", "message": "amount mismatch — acknowledged"}
+            if checkout and checkout.status == "pending":
+                checkout.status = "paid"
+                db.commit()
+                logger.info("Pending checkout %s marked paid", checkout.reference)
+        return {"status": "ok", "message": "Pre-checkout webhook processed"}
+
     if external_ref and external_ref.startswith("sub_upg_"):
         if moolre_status == 1:
             try:
                 parts = external_ref.split("_")
-                if len(parts) not in (4, 5):
-                    raise ValueError("invalid subscription reference")
-                coop_id = int(parts[2])
-                if len(parts) == 5:
+                if len(parts) >= 6 and parts[3].isdigit():
+                    coop_id = int(parts[2])
+                    plan_key = parts[4]
+                    band_key = "_".join(parts[5:])
+                    expected_amount = resolve_amount(plan_key, band_key)
+                elif len(parts) >= 6 and parts[4].isdigit():
+                    coop_id = int(parts[2])
                     plan_key = parts[3]
-                else:
+                    band_key = "_".join(parts[5:])
+                    expected_amount = resolve_amount(plan_key, band_key)
+                elif len(parts) == 5:
+                    coop_id = int(parts[2])
+                    plan_key = parts[3]
+                    band_key = None
+                    plan = get_plan(plan_key)
+                    expected_amount = plan["price"] if plan else None
+                elif len(parts) == 4:
+                    coop_id = int(parts[2])
+                    band_key = None
                     matching_plans = [
                         key
                         for key, candidate in PLANS.items()
@@ -181,9 +225,21 @@ def _process_payment_payload(
                     if len(matching_plans) != 1:
                         raise ValueError("ambiguous legacy subscription plan")
                     plan_key = matching_plans[0]
+                    expected_amount = PLANS[plan_key]["price"]
+                else:
+                    raise ValueError("invalid subscription reference")
                 plan = get_plan(plan_key)
-                if not plan or plan["price"] <= 0:
+                if not plan or expected_amount is None or expected_amount <= 0:
                     raise ValueError("invalid paid subscription plan")
+                from app.models.models import Cooperative
+                coop = (
+                    db.query(Cooperative)
+                    .filter(Cooperative.id == coop_id)
+                    .with_for_update()
+                    .first()
+                )
+                if not coop:
+                    return {"status": "ok", "message": "Cooperative not found"}
 
                 existing_event = (
                     db.query(PaymentWebhookEvent)
@@ -199,17 +255,6 @@ def _process_payment_payload(
                         "message": "Subscription webhook already processed",
                     }
 
-                from app.models.models import Cooperative
-                coop = (
-                    db.query(Cooperative)
-                    .filter(Cooperative.id == coop_id)
-                    .with_for_update()
-                    .first()
-                )
-                if not coop:
-                    return {"status": "ok", "message": "Cooperative not found"}
-
-                expected_amount = float(plan["price"])
                 if abs(amount - expected_amount) > 0.01:
                     _record_webhook_event(
                         db,
@@ -230,6 +275,7 @@ def _process_payment_payload(
                     }
 
                 activate_subscription(coop, plan_key)
+                coop.subscription_band = band_key
                 db.add(
                     PaymentWebhookEvent(
                         event_type="subscription",
@@ -758,7 +804,7 @@ async def handle_ussd_session(
                 )
                 if sms_result.get("success"):
                     announcement_text += "\n(Also sent via SMS.)"
-            _ussd_sessions.pop(session_id, None)
+            _clear_ussd_state(db, session_id)
             _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=announcement_text, farmer=farmer)
             return {"message": announcement_text, "reply": False}
 

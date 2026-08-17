@@ -427,6 +427,38 @@ def test_ussd_option_1_known_farmer(client, farmer):
     assert farmer["name"] in body["message"]
 
 
+def test_ussd_announcements_are_returned_and_session_is_closed(
+    client, farmer, db, monkeypatch
+):
+    from app.models.models import Announcement
+    from app.routes import webhooks as webhooks_module
+
+    announcement = Announcement(
+        cooperative_id=farmer["cooperative_id"],
+        title="Meeting",
+        body="The monthly meeting starts at 10.",
+    )
+    db.add(announcement)
+    db.commit()
+    sms = AsyncMock()
+    sms.send_sms.return_value = {"success": True}
+    monkeypatch.setattr(webhooks_module, "get_sms_provider", lambda: sms)
+
+    client.post("/webhooks/moolre/ussd", json=_ussd_new("announcements", farmer["phone"]))
+    response = client.post(
+        "/webhooks/moolre/ussd",
+        json=_ussd_step("announcements", farmer["phone"], "4"),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["reply"] is False
+    assert "Meeting" in response.json()["message"]
+    sms.send_sms.assert_awaited_once()
+    assert webhooks_module._get_ussd_state(
+        db, "announcements", farmer["phone"]
+    ) is None
+
+
 def test_ussd_session_state_is_bound_to_phone(client, farmer):
     client.post("/webhooks/moolre/ussd", json=_ussd_new("phone-bound", farmer["phone"]))
 

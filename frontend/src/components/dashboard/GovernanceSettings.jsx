@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Loader2, Plus, RefreshCw, ShieldCheck } from 'lucide-react'
+import { Loader2, Plus, RefreshCw } from 'lucide-react'
 import {
   fetchCooperativeUsers,
   updateCooperativeUser,

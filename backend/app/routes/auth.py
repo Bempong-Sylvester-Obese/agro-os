@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database.db import get_db
-from app.models.models import AdminAuditLog, Cooperative, User
+from app.models.models import AdminAuditLog, Cooperative, PendingCheckout, User
 from app.schemas.auth import (
     AcceptInviteRequest,
     InviteUserRequest,
@@ -44,10 +44,47 @@ async def signup(data: SignupRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == data.email).first():
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    resolved_plan = data.subscription_plan
+    resolved_band = data.subscription_band
+    resolved_org_type = data.organization_type
+    resolved_name = data.cooperative_name
+    resolved_location = data.location
+    resolved_member_count = data.member_count
+    resolved_role = data.onboarding_role
+    subscription_status = "active"
+    subscription_expires_at = None
+
+    if data.checkout_ref:
+        checkout = (
+            db.query(PendingCheckout)
+            .filter(PendingCheckout.reference == data.checkout_ref)
+            .with_for_update()
+            .first()
+        )
+        if not checkout:
+            raise HTTPException(status_code=404, detail="Checkout not found")
+        if checkout.status != "paid":
+            raise HTTPException(status_code=402, detail="Payment not confirmed for this checkout")
+        resolved_plan = checkout.plan_key
+        resolved_band = checkout.band
+        resolved_org_type = checkout.organization_type or data.organization_type
+        resolved_name = checkout.organisation or data.cooperative_name
+        resolved_location = checkout.location or data.location
+        resolved_member_count = checkout.member_count or data.member_count
+        resolved_role = checkout.role or data.onboarding_role
+    elif data.subscription_plan != "starter":
+        raise HTTPException(
+            status_code=400,
+            detail="Paid plans require a completed checkout",
+        )
+
+    if resolved_plan != "starter":
+        subscription_expires_at = datetime.utcnow() + timedelta(days=30)
+
     # 2. Create the cooperative
     description = None
-    if data.member_count:
-        description = f"Approximate member count: {data.member_count}"
+    if resolved_member_count:
+        description = f"Approximate member count: {resolved_member_count}"
 
     import random
     while True:
@@ -56,12 +93,15 @@ async def signup(data: SignupRequest, db: Session = Depends(get_db)):
             break
 
     new_coop = Cooperative(
-        name=data.cooperative_name,
-        location=data.location,
+        name=resolved_name,
+        location=resolved_location,
         description=description,
         currency="GHS",
-        subscription_plan=data.subscription_plan,
-        organization_type=data.organization_type,
+        subscription_plan=resolved_plan,
+        subscription_band=resolved_band,
+        organization_type=resolved_org_type,
+        subscription_status=subscription_status,
+        subscription_expires_at=subscription_expires_at,
         ussd_code=code,
     )
 
@@ -69,7 +109,7 @@ async def signup(data: SignupRequest, db: Session = Depends(get_db)):
     try:
         moolre_svc = get_payment_provider()
         moolre_result = await moolre_svc.create_account(
-            account_name=data.cooperative_name
+            account_name=resolved_name
         )
         if moolre_result.get("success"):
             new_coop.moolre_account_number = moolre_result.get("account_number")
@@ -85,7 +125,7 @@ async def signup(data: SignupRequest, db: Session = Depends(get_db)):
         hashed_password=get_password_hash(data.password),
         role="admin",
         cooperative_id=new_coop.id,
-        onboarding_role=data.onboarding_role,
+        onboarding_role=resolved_role,
     )
     db.add(new_user)
     db.flush()
@@ -99,6 +139,8 @@ async def signup(data: SignupRequest, db: Session = Depends(get_db)):
             details=f"subscription_plan={new_coop.subscription_plan}",
         )
     )
+    if data.checkout_ref:
+        checkout.status = "consumed"
     db.commit()
     db.refresh(new_user)
     db.refresh(new_coop)
@@ -122,7 +164,8 @@ async def signup(data: SignupRequest, db: Session = Depends(get_db)):
         "cooperative_id": new_coop.id,
         "cooperative_name": new_coop.name,
         "subscription_plan": new_coop.subscription_plan,
-        "organization_type": data.organization_type,
+        "subscription_band": new_coop.subscription_band,
+        "organization_type": new_coop.organization_type,
         "onboarding_role": new_user.onboarding_role,
         "password_change_required": False,
     }

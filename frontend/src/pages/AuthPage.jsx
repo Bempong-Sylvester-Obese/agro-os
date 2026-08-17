@@ -1,7 +1,6 @@
 import React, { useEffect, useId, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { acceptInvite, changePassword, confirmPasswordReset, login, requestPasswordReset, signup, storeAuthToken, userFromAuthToken, userFromSignupResponse, warmAuthBackend } from '../api/auth'
-import { createSubscriptionCheckout } from '../api/cooperatives'
 import { Sprout, ArrowLeft, ArrowRight, Building2, Users, MapPin, Mail, Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
@@ -90,6 +89,12 @@ const SIZE_OPTIONS = [
   { label: '500+', value: 750 },
 ]
 
+function subscriptionPlanName(plan) {
+  if (plan === 'growth') return 'Growth'
+  if (plan === 'solo') return 'Solo Farm'
+  return 'Starter'
+}
+
 function SizePills({ value, onChange }) {
   return (
     <fieldset style={{ margin: 0, marginBottom: 16, padding: 0, border: 0 }}>
@@ -176,6 +181,7 @@ export default function AuthPage({ onAuth }) {
     setError(null)
     setStep(0)
     setSuccess(false)
+    setOrganizationType('cooperative')
     setForgotSent(false)
 
     const token = searchParams.get('token')
@@ -196,6 +202,7 @@ export default function AuthPage({ onAuth }) {
           setCooperativeName(intent.organisation || '')
           setLocation(intent.location || '')
           setMemberCount(intent.memberCount ? Number(intent.memberCount) : null)
+          setOrganizationType(intent.org_type || 'cooperative')
         }
       } catch {
         setSubscriptionIntent(null)
@@ -259,6 +266,7 @@ export default function AuthPage({ onAuth }) {
     setLoading(true)
     try {
       const plan = subscriptionIntent?.plan || 'starter'
+      const checkoutRef = subscriptionIntent?.checkout_ref || searchParams.get('checkout')
       const data = await signup({
         email: signupEmail,
         password: signupPassword,
@@ -266,29 +274,13 @@ export default function AuthPage({ onAuth }) {
         location: location || undefined,
         memberCount: memberCount || undefined,
         subscriptionPlan: plan,
+        subscriptionBand: subscriptionIntent?.band,
+        checkoutRef,
         onboardingRole: subscriptionIntent?.role || 'Cooperative administrator',
         organizationType,
       })
       storeAuthToken(data.access_token)
       if (subscriptionIntent) window.sessionStorage.removeItem('agroos-subscription-intent')
-      
-      const user = data.user || userFromAuthToken(data.access_token)
-      
-      if (plan !== 'starter' && user?.cooperative_id) {
-        setLoading(true)
-        // Attempt to redirect to Moolre checkout
-        try {
-          const res = await createSubscriptionCheckout(user.cooperative_id, plan)
-          if (res.authorization_url) {
-            window.location.href = res.authorization_url
-            return
-          }
-        } catch (err) {
-          console.error("Subscription checkout failed:", err)
-          // Fall through to regular login if checkout fails
-        }
-      }
-      
       setSuccess(true)
       setTimeout(() => {
         completeAuth(data, userFromSignupResponse(data, signupEmail.trim()))
@@ -385,8 +377,10 @@ export default function AuthPage({ onAuth }) {
     if (next) params.set('next', next)
     const plan = searchParams.get('plan')
     const onboarding = searchParams.get('onboarding')
+    const checkout = searchParams.get('checkout')
     if (plan) params.set('plan', plan)
     if (onboarding) params.set('onboarding', onboarding)
+    if (checkout) params.set('checkout', checkout)
     const search = params.toString() ? `?${params.toString()}` : ''
     navigate(`/login${search}`, { replace: true })
   }
@@ -850,7 +844,7 @@ export default function AuthPage({ onAuth }) {
               </h2>
               <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 28 }}>
                 {subscriptionIntent
-                  ? `Complete the organisation profile for the ${subscriptionIntent.plan === 'growth' ? 'Growth' : 'Starter'} workspace.`
+                  ? `Complete the organisation profile for the ${subscriptionPlanName(subscriptionIntent.plan)} workspace.`
                   : 'Tell us about your farm or cooperative to get started.'}
               </p>
 
@@ -1002,7 +996,7 @@ export default function AuthPage({ onAuth }) {
                   {loading
                     ? 'Creating account…'
                     : subscriptionIntent
-                    ? `Create ${subscriptionIntent.plan === 'growth' ? 'Growth' : 'Starter'} account →`
+                    ? `Create ${subscriptionPlanName(subscriptionIntent.plan)} account →`
                     : 'Get started free →'}
                 </button>
               </form>

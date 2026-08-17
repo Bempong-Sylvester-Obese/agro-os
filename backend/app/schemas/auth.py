@@ -45,6 +45,8 @@ class SignupRequest(BaseModel):
     subscription_plan: Literal["starter", "growth", "solo"] = "starter"
     organization_type: Literal["cooperative", "solo_farm"] = "cooperative"
     onboarding_role: str | None = Field(default=None, max_length=80)
+    checkout_ref: str | None = None
+    subscription_band: str | None = None
 
 class SignupResponse(BaseModel):
     access_token: str
@@ -55,6 +57,7 @@ class SignupResponse(BaseModel):
     subscription_status: str | None = "active"
     organization_type: str = "cooperative"
     onboarding_role: str | None = None
+    subscription_band: str | None = None
 
 class PasswordResetRequest(BaseModel):
     email: str
