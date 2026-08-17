@@ -3,8 +3,13 @@ import { API_URL, apiFetch, authHeaders } from './config'
 /**
  * Fetch all farmers, optionally filtered to a specific cooperative.
  */
-export async function fetchFarmers(cooperativeId = null, productionFocus = null) {
-  const params = new URLSearchParams({ limit: '100' })
+export async function fetchFarmers(
+  cooperativeId = null,
+  productionFocus = null,
+  skip = 0,
+  limit = 100,
+) {
+  const params = new URLSearchParams({ skip: String(skip), limit: String(limit) })
   if (cooperativeId) params.set('cooperative_id', cooperativeId)
   if (productionFocus) params.set('production_focus', productionFocus)
   const qs = `?${params.toString()}`

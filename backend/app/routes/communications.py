@@ -1,5 +1,7 @@
 """Communications Routes — SMS broadcast and reminder endpoints"""
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -7,7 +9,13 @@ from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.dependencies.cooperative_scope import resolve_cooperative_scope
-from app.models.models import CommunicationLog, Cooperative, User
+from app.models.models import (
+    CommunicationLog,
+    Cooperative,
+    CooperativeMembership,
+    MembershipStatus,
+    User,
+)
 from app.schemas.schemas import (
     CommunicationLogResponse,
     DuesReminderRequest,
@@ -16,6 +24,7 @@ from app.schemas.schemas import (
 )
 from app.services.auth_service import get_current_user, require_roles
 from app.services.communications_service import CommunicationsService
+from app.services.plans import get_plan_limit
 from app.services.providers.factory import get_sms_provider
 
 router = APIRouter(prefix="/communications", tags=["communications"])
@@ -47,9 +56,42 @@ async def broadcast_sms(
         cooperative_id=request.cooperative_id,
         settings=settings,
     )
-    coop = db.query(Cooperative).filter(Cooperative.id == scoped_id).first()
+    coop = (
+        db.query(Cooperative)
+        .filter(Cooperative.id == scoped_id)
+        .with_for_update()
+        .first()
+    )
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
+
+    recipients_count = (
+        db.query(CooperativeMembership)
+        .filter(
+            CooperativeMembership.cooperative_id == scoped_id,
+            CooperativeMembership.membership_status == MembershipStatus.active,
+        )
+        .count()
+    )
+
+    now = datetime.utcnow()
+    if (
+        not coop.sms_month_reset
+        or (coop.sms_month_reset.year, coop.sms_month_reset.month)
+        != (now.year, now.month)
+    ):
+        coop.sms_sent_this_month = 0
+        coop.sms_month_reset = now
+    limit = get_plan_limit(coop.subscription_plan, "sms_per_month")
+    new_total = coop.sms_sent_this_month + recipients_count
+    if limit > 0 and new_total > limit:
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"SMS quota of {limit} exceeded for this month. "
+                "Upgrade your plan for more."
+            ),
+        )
 
     service = CommunicationsService()
     result = await service.broadcast_to_cooperative(
@@ -59,10 +101,13 @@ async def broadcast_sms(
         sent_by=request.sent_by,
     )
     if not result["success"]:
+        db.rollback()
         raise HTTPException(
             status_code=502,
             detail=result.get("message") or "Moolre SMS send failed",
         )
+    coop.sms_sent_this_month = new_total
+    db.commit()
     return SMSResponse(
         status="success",
         recipients_count=result["recipients_count"],

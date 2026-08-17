@@ -35,10 +35,9 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
+from app.domain.payment_event import PaymentEvent
 from app.models.models import (
     CooperativeMembership as Farmer,
-)
-from app.models.models import (
     Loan,
     LoanStatus,
     PaymentWebhookEvent,
@@ -64,10 +63,10 @@ from app.services.loan_request_service import (
     PendingLoanRequestError,
     create_farmer_loan_request,
 )
-from app.services.ussd_service import resolve_farmer_by_phone
+from app.services.plans import PLANS, activate_subscription, get_plan
 from app.services.providers.factory import get_payment_provider
 from app.services.trust_score_service import TrustScoreService
-from app.domain.payment_event import PaymentEvent
+from app.services.ussd_service import resolve_farmer_by_phone
 
 logger = logging.getLogger(__name__)
 
@@ -166,9 +165,40 @@ def _process_payment_payload(
     if external_ref and external_ref.startswith("sub_upg_"):
         if moolre_status == 1:
             try:
-                # Format: sub_upg_{cooperative_id}_{timestamp}
                 parts = external_ref.split("_")
+                if len(parts) not in (4, 5):
+                    raise ValueError("invalid subscription reference")
                 coop_id = int(parts[2])
+                if len(parts) == 5:
+                    plan_key = parts[3]
+                else:
+                    matching_plans = [
+                        key
+                        for key, candidate in PLANS.items()
+                        if candidate["price"] > 0
+                        and abs(float(candidate["price"]) - amount) <= 0.01
+                    ]
+                    if len(matching_plans) != 1:
+                        raise ValueError("ambiguous legacy subscription plan")
+                    plan_key = matching_plans[0]
+                plan = get_plan(plan_key)
+                if not plan or plan["price"] <= 0:
+                    raise ValueError("invalid paid subscription plan")
+
+                existing_event = (
+                    db.query(PaymentWebhookEvent)
+                    .filter(
+                        PaymentWebhookEvent.moolre_reference == external_ref,
+                        PaymentWebhookEvent.processed.is_(True),
+                    )
+                    .first()
+                )
+                if existing_event:
+                    return {
+                        "status": "ok",
+                        "message": "Subscription webhook already processed",
+                    }
+
                 from app.models.models import Cooperative
                 coop = (
                     db.query(Cooperative)
@@ -176,46 +206,53 @@ def _process_payment_payload(
                     .with_for_update()
                     .first()
                 )
-                if coop:
-                    duplicate = (
-                        db.query(PaymentWebhookEvent)
-                        .filter(
-                            PaymentWebhookEvent.moolre_reference == external_ref,
-                            PaymentWebhookEvent.processed.is_(True),
-                            PaymentWebhookEvent.message
-                            == "Subscription payment applied",
-                        )
-                        .first()
+                if not coop:
+                    return {"status": "ok", "message": "Cooperative not found"}
+
+                expected_amount = float(plan["price"])
+                if abs(amount - expected_amount) > 0.01:
+                    _record_webhook_event(
+                        db,
+                        payload=payload,
+                        signature_valid=signature_valid,
+                        processed=False,
+                        message="subscription amount mismatch",
                     )
-                    if duplicate:
-                        return {
-                            "status": "ok",
-                            "message": "Subscription webhook already processed",
-                        }
-                    # In a real app we'd map amount to plan_key or get it from metadata
-                    coop.subscription_status = "active"
-                    # Add 30 days
-                    from datetime import timedelta
-                    now = datetime.utcnow()
-                    if not coop.subscription_expires_at or coop.subscription_expires_at < now:
-                        coop.subscription_expires_at = now + timedelta(days=30)
-                    else:
-                        coop.subscription_expires_at = coop.subscription_expires_at + timedelta(days=30)
-                    db.add(
-                        PaymentWebhookEvent(
-                            event_type="subscription",
-                            moolre_reference=external_ref,
-                            signature_valid=signature_valid,
-                            payload=json.dumps(payload),
-                            processed=True,
-                            message="Subscription payment applied",
-                        )
+                    logger.warning(
+                        "Subscription payment amount %s did not match %s for %s",
+                        amount,
+                        expected_amount,
+                        plan_key,
                     )
-                    db.commit()
-                    logger.info(f"Subscription upgraded for cooperative {coop.id} via webhook")
-            except Exception as e:
+                    return {
+                        "status": "ok",
+                        "message": "Subscription amount mismatch",
+                    }
+
+                activate_subscription(coop, plan_key)
+                db.add(
+                    PaymentWebhookEvent(
+                        event_type="subscription",
+                        moolre_reference=external_ref,
+                        signature_valid=signature_valid,
+                        payload=json.dumps(payload),
+                        processed=True,
+                        message=f"subscription activated: {plan_key}",
+                    )
+                )
+                db.commit()
+                logger.info(
+                    "Subscription upgraded for cooperative %s to %s",
+                    coop.id,
+                    plan_key,
+                )
+            except (TypeError, ValueError, IndexError) as exc:
                 db.rollback()
-                logger.error(f"Failed to process subscription webhook: {e}")
+                logger.warning("Rejected subscription webhook: %s", exc)
+                return {"status": "ok", "message": "Invalid subscription reference"}
+            except Exception as exc:
+                db.rollback()
+                logger.error("Failed to process subscription webhook: %s", exc)
         return {"status": "ok", "message": "Subscription webhook processed"}
 
     tx: Transaction | None = None
