@@ -47,7 +47,7 @@ from app.services.ussd_service import resolve_farmer_by_phone
 from app.services.dues_service import run_dues_collect
 from app.services.customer_action_service import expire_customer_actions, pending_customer_actions, resume_dues_customer_action
 from app.services.loan_repayment_service import start_farmer_loan_repayment, resume_loan_repayment_customer_action
-from app.services.providers.factory import get_payment_provider, get_sms_provider
+from app.services.providers.factory import get_payment_provider
 
 logger = logging.getLogger(__name__)
 
@@ -565,9 +565,8 @@ async def announcements(
 ):
     """Hook for a 'View Announcements' USSD step.
 
-    Shows the announcement on the USSD screen and also sends it via SMS
-    through Moolre's real SMS endpoint (MoolreService.send_single_sms),
-    so the announcement isn't lost when the USSD session times out.
+    Shows the announcement status on the USSD screen. The placeholder is not
+    sent by SMS because there is no persisted announcement to deliver.
 
     Phone resolution delegates to the shared app.services.ussd_service.
     """
@@ -575,21 +574,12 @@ async def announcements(
     msisdn = payload.get("props", {}).get("session", {}).get("msisdn", "")
     values = payload.get("props", {}).get("values", {})
 
-    farmer, membership, memberships = _resolve_membership(
+    _, membership, memberships = _resolve_membership(
         msisdn, values.get("membership_id"), db
     )
     announcement_text = "No new announcements. Check with your cooperative leader."
 
     if not membership and len(memberships) > 1:
         return cooperative_selection_payload(memberships)
-    if farmer:
-        sms = get_sms_provider()
-        sms_result = await sms.send_sms(
-            recipient=farmer.phone,
-            message=announcement_text,
-        )
-        if sms_result.get("success"):
-            return {"message": f"{announcement_text}\n(Also sent via SMS.)"}
-
     return {"message": announcement_text}
 

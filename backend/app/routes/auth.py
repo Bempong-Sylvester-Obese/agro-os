@@ -26,7 +26,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/signup", response_model=SignupResponse, status_code=201)
-def signup(data: SignupRequest, db: Session = Depends(get_db)):
+async def signup(data: SignupRequest, db: Session = Depends(get_db)):
     """
     Combined onboarding: creates a new Cooperative and an admin User in one step.
     Returns a JWT access token immediately so the user is logged in right away.
@@ -96,11 +96,12 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
         ussd_code=code,
     )
 
-    import asyncio
     from app.services.providers.factory import get_payment_provider
     try:
         moolre_svc = get_payment_provider()
-        moolre_result = asyncio.run(moolre_svc.create_account(account_name=resolved_name))
+        moolre_result = await moolre_svc.create_account(
+            account_name=resolved_name
+        )
         if moolre_result.get("success"):
             new_coop.moolre_account_number = moolre_result.get("account_number")
     except Exception as e:

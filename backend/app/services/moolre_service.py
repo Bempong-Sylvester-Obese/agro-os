@@ -14,6 +14,7 @@ Covers all MVP-relevant Moolre endpoints:
 
 import uuid
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -657,13 +658,29 @@ class MoolreService:
         callback: str | None = None,
     ) -> dict[str, Any]:
         """Create a new business wallet (sub-account)."""
+        callback_url = callback
+        if api:
+            callback_url = callback_url or (
+                f"{self.settings.agroos_base_url.rstrip('/')}"
+                "/webhooks/moolre/payment"
+            )
+            parsed_callback = urlsplit(callback_url)
+            if (
+                parsed_callback.scheme not in {"http", "https"}
+                or not parsed_callback.netloc
+            ):
+                raise ValueError(
+                    "API-enabled Moolre accounts require an absolute HTTP(S) "
+                    "callback URL; configure AGROOS_BASE_URL or pass callback"
+                )
+
         # Moolre requires a settlement object and callback if API is enabled
         payload = {
             "type": 1,
             "accountname": account_name,
             "currency": currency,
             "api": api,
-            "callback": callback or f"{self.settings.agroos_base_url}/webhooks/moolre/payment",
+            "callback": callback_url,
             "settlement": {
                 "currency": currency,
                 "frequency": "1",

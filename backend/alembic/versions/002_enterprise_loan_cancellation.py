@@ -13,28 +13,34 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     bind = op.get_bind()
-    if bind.dialect.name == "postgresql":
-        op.execute(
-            sa.text(
-                """
-                DO $body$
-                BEGIN
-                    IF EXISTS (
-                        SELECT 1 FROM pg_type t
-                        JOIN pg_namespace n ON t.typnamespace = n.oid
-                        WHERE t.typname = 'loanstatus'
-                          AND n.nspname = current_schema()
-                    ) THEN
-                        ALTER TYPE loanstatus ADD VALUE IF NOT EXISTS 'cancelled';
-                    END IF;
-                END
-                $body$;
-                """
-            )
-        )
     inspector = sa.inspect(bind)
     if "loans" not in inspector.get_table_names():
         return
+    if bind.dialect.name == "postgresql":
+        enum_type = bind.execute(
+            sa.text(
+                """
+                SELECT type_ns.nspname, type_def.typname
+                FROM pg_attribute attribute
+                JOIN pg_type type_def ON type_def.oid = attribute.atttypid
+                JOIN pg_namespace type_ns ON type_ns.oid = type_def.typnamespace
+                WHERE attribute.attrelid = to_regclass('loans')
+                  AND attribute.attname = 'status'
+                  AND NOT attribute.attisdropped
+                  AND type_def.typtype = 'e'
+                """
+            )
+        ).first()
+        if enum_type:
+            preparer = bind.dialect.identifier_preparer
+            enum_schema, enum_name = enum_type
+            qualified_type = (
+                f"{preparer.quote(enum_schema)}.{preparer.quote(enum_name)}"
+            )
+            op.execute(
+                f"ALTER TYPE {qualified_type} "
+                "ADD VALUE IF NOT EXISTS 'cancelled'"
+            )
     columns = {column["name"] for column in inspector.get_columns("loans")}
     if "cancelled_by" not in columns:
         op.add_column("loans", sa.Column("cancelled_by", sa.String(), nullable=True))

@@ -11,6 +11,19 @@ def _mock_sms_success(*_args, **_kwargs):
     return {"success": True, "message": "SMS queued", "raw": {"data": "ref-123"}}
 
 
+def test_sms_diagnostics_uses_configuration_only_contract(client):
+    with patch(
+        "app.services.providers.moolre_adapter.MoolreSmsAdapter.diagnose_sms",
+        new_callable=AsyncMock,
+        return_value={"ok": True},
+    ) as diagnose:
+        response = client.get("/communications/sms/diagnostics")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    diagnose.assert_awaited_once_with()
+
+
 @patch(
     "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_bulk_sms",
     new_callable=AsyncMock,

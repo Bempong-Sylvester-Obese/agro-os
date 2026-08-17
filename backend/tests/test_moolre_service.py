@@ -1,5 +1,9 @@
 """Tests for MoolreService header construction."""
+from unittest.mock import AsyncMock
 
+import pytest
+
+from app.config import get_settings
 from app.services.moolre_service import MoolreService
 
 
@@ -72,5 +76,42 @@ def test_sandbox_headers_omit_pubkey(monkeypatch) -> None:
         service = MoolreService()
         headers = service._build_base_headers()
         assert "X-API-PUBKEY" not in headers
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_create_account_requires_absolute_callback(monkeypatch) -> None:
+    monkeypatch.setenv("AGROOS_BASE_URL", "")
+    get_settings.cache_clear()
+    try:
+        service = MoolreService()
+        service._post = AsyncMock()
+
+        with pytest.raises(ValueError, match="absolute HTTP"):
+            await service.create_account(account_name="Missing Callback")
+
+        service._post.assert_not_awaited()
+    finally:
+        get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_create_account_normalizes_callback_base(monkeypatch) -> None:
+    monkeypatch.setenv("AGROOS_BASE_URL", "https://api.agroos.example/")
+    get_settings.cache_clear()
+    try:
+        service = MoolreService()
+        service._post = AsyncMock(
+            return_value={"status": 1, "data": {"accountnumber": "ACC-1"}}
+        )
+
+        await service.create_account(account_name="Callback Farm")
+
+        payload = service._post.await_args.args[1]
+        assert (
+            payload["callback"]
+            == "https://api.agroos.example/webhooks/moolre/payment"
+        )
     finally:
         get_settings.cache_clear()

@@ -169,6 +169,59 @@ def test_update_transaction_status_hidden_in_production(client, transaction, dem
         get_settings.cache_clear()
 
 
+def test_wallet_endpoints_use_authenticated_cooperative_account(
+    client, db, demo_admin, monkeypatch
+):
+    monkeypatch.setenv("AUTH_ENABLED", "true")
+    monkeypatch.setenv("SECRET_KEY", "strong-auth-boundary-test-secret-key")
+    monkeypatch.setenv("ADMIN_PASSWORD", "strong-auth-boundary-password")
+    from app.config import get_settings
+    from app.models.models import Cooperative
+    from app.services.auth_service import create_access_token
+
+    cooperative = db.query(Cooperative).filter(
+        Cooperative.id == demo_admin.cooperative_id
+    ).one()
+    cooperative.moolre_account_number = "TENANT-WALLET-1"
+    db.commit()
+    get_settings.cache_clear()
+    token = create_access_token({"sub": demo_admin.email})
+    headers = {"Authorization": f"Bearer {token}"}
+
+    try:
+        with (
+            patch(
+                "app.services.providers.moolre_adapter.MoolrePaymentAdapter.account_status",
+                new_callable=AsyncMock,
+                return_value={"success": True, "balance": "5.00"},
+            ) as account_status,
+            patch(
+                "app.services.providers.moolre_adapter.MoolrePaymentAdapter.list_transactions",
+                new_callable=AsyncMock,
+                return_value={"success": True, "transactions": []},
+            ) as list_transactions,
+        ):
+            balance = client.get(
+                "/transactions/moolre/wallet-balance", headers=headers
+            )
+            transactions = client.get(
+                "/transactions/moolre/account-transactions", headers=headers
+            )
+
+        assert balance.status_code == 200
+        assert transactions.status_code == 200
+        account_status.assert_awaited_once_with(
+            account_number="TENANT-WALLET-1"
+        )
+        assert (
+            list_transactions.await_args.kwargs["account_number"]
+            == "TENANT-WALLET-1"
+        )
+    finally:
+        monkeypatch.setenv("AUTH_ENABLED", "false")
+        get_settings.cache_clear()
+
+
 def test_get_farmer_transactions(client, farmer, transaction):
     resp = client.get(f"/transactions/farmer/{farmer['id']}")
     assert resp.status_code == 200
