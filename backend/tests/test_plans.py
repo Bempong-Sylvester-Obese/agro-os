@@ -18,6 +18,7 @@ def test_resolve_amount_for_growth_bands():
     assert resolve_amount("growth", "base") == 299.0
     assert resolve_amount("growth", "plus_50") == 449.0
     assert resolve_amount("growth", "plus_100") == 599.0
+    assert resolve_amount("growth", "not-a-band") is None
 
 
 def test_resolve_amount_for_solo_bands():

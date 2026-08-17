@@ -20,6 +20,7 @@ const PLANS = [
   { key: 'solo', track: 'farmer', name: 'Solo Farm', price: 'GHS 99', cadence: 'per farm / month', description: 'x', features: [], cta: 'Start Solo Farm onboarding', bands: [
     { key: 'w20', label: 'Up to 20 workers', price: 99 },
     { key: 'w50', label: 'Up to 50 workers', price: 199 },
+    { key: 'custom', label: 'Custom worker count', price: null },
   ] },
 ]
 
@@ -57,5 +58,22 @@ describe('PricingPage', () => {
     expect(await screen.findByText('GHS 449')).toBeTruthy()
     fireEvent.click(screen.getAllByRole('button', { name: /Start Growth onboarding/i })[0])
     expect(screen.getByTestId('loc').textContent).toBe('/subscribe/growth?band=plus_50')
+  })
+
+  it('routes a custom Solo Farm band to sales instead of checkout', async () => {
+    render(
+      <MemoryRouter initialEntries={['/pricing']}>
+        <Routes>
+          <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/book-demo" element={<LocationProbe />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await screen.findByText(/For Independent Farmers/i)
+    const soloBand = screen.getAllByRole('combobox')[1]
+    fireEvent.change(soloBand, { target: { value: 'custom' } })
+    expect(screen.getAllByText('Custom').length).toBeGreaterThan(0)
+    fireEvent.click(screen.getByRole('button', { name: /Talk to sales/i }))
+    expect(screen.getByTestId('loc').textContent).toBe('/book-demo?plan=solo&band=custom&topic=Custom+plan')
   })
 })

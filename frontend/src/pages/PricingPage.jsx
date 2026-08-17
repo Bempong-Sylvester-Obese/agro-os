@@ -25,8 +25,13 @@ export default function PricingPage() {
       navigate('/book-demo?plan=enterprise&topic=Enterprise+implementation')
       return
     }
-    const band = bands[plan.key]
-    navigate(`/subscribe/${plan.key}${band ? `?band=${band}` : ''}`)
+    const bandKey = bands[plan.key]
+    const band = plan.bands?.find((item) => item.key === bandKey) || plan.bands?.[0]
+    if (band && band.price == null) {
+      navigate(`/book-demo?plan=${plan.key}&band=${band.key}&topic=Custom+plan`)
+      return
+    }
+    navigate(`/subscribe/${plan.key}${band ? `?band=${band.key}` : ''}`)
   }
 
   function renderCard(plan) {
@@ -34,7 +39,7 @@ export default function PricingPage() {
     const band = plan.bands
       ? (plan.bands.find((b) => b.key === selectedKey) || plan.bands[0])
       : null
-    const price = band ? `GHS ${band.price}` : plan.price
+    const price = band ? (band.price == null ? 'Custom' : `GHS ${band.price}`) : plan.price
     return (
       <article key={plan.key} className={`pricing-card pricing-card--business${plan.featured ? ' pricing-card--featured' : ''}`}>
         {plan.badge && <div className="pricing-card__badge">{plan.badge}</div>}
@@ -67,7 +72,7 @@ export default function PricingPage() {
           ))}
         </div>
         <button type="button" className="pricing-card__btn" onClick={() => choosePlan(plan)}>
-          {plan.cta} <ArrowRight size={15} />
+          {band?.price == null && band ? 'Talk to sales' : plan.cta} <ArrowRight size={15} />
         </button>
       </article>
     )

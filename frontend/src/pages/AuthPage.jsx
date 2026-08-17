@@ -89,6 +89,12 @@ const SIZE_OPTIONS = [
   { label: '500+', value: 750 },
 ]
 
+function subscriptionPlanName(plan) {
+  if (plan === 'growth') return 'Growth'
+  if (plan === 'solo') return 'Solo Farm'
+  return 'Starter'
+}
+
 function SizePills({ value, onChange }) {
   return (
     <fieldset style={{ margin: 0, marginBottom: 16, padding: 0, border: 0 }}>
@@ -167,6 +173,7 @@ export default function AuthPage({ onAuth }) {
     setError(null)
     setStep(0)
     setSuccess(false)
+    setOrganizationType('cooperative')
 
     if (searchParams.get('onboarding') === 'subscription') {
       try {
@@ -176,6 +183,7 @@ export default function AuthPage({ onAuth }) {
           setCooperativeName(intent.organisation || '')
           setLocation(intent.location || '')
           setMemberCount(intent.memberCount ? Number(intent.memberCount) : null)
+          setOrganizationType(intent.org_type || 'cooperative')
         }
       } catch {
         setSubscriptionIntent(null)
@@ -470,7 +478,7 @@ export default function AuthPage({ onAuth }) {
               </h2>
               <p style={{ color: 'var(--muted)', fontSize: 14, marginBottom: 28 }}>
                 {subscriptionIntent
-                  ? `Complete the organisation profile for the ${subscriptionIntent.plan === 'growth' ? 'Growth' : 'Starter'} workspace.`
+                  ? `Complete the organisation profile for the ${subscriptionPlanName(subscriptionIntent.plan)} workspace.`
                   : 'Tell us about your farm or cooperative to get started.'}
               </p>
 
@@ -622,7 +630,7 @@ export default function AuthPage({ onAuth }) {
                   {loading
                     ? 'Creating account…'
                     : subscriptionIntent
-                    ? `Create ${subscriptionIntent.plan === 'growth' ? 'Growth' : 'Starter'} account →`
+                    ? `Create ${subscriptionPlanName(subscriptionIntent.plan)} account →`
                     : 'Get started free →'}
                 </button>
               </form>

@@ -96,17 +96,24 @@ def get_plan(plan_key: str) -> dict | None:
     return PLANS.get((plan_key or "").lower())
 
 
+def get_band(plan_key: str, band_key: str | None = None) -> dict | None:
+    """Return the selected band, defaulting only when no band was supplied."""
+    plan = get_plan(plan_key)
+    bands = plan.get("bands") if plan else None
+    if not bands:
+        return None
+    if band_key is None:
+        return bands[0]
+    return next((band for band in bands if band["key"] == band_key), None)
+
+
 def resolve_amount(plan_key: str, band_key: str | None = None) -> float | None:
     """Resolve a checkout amount for a plan + optional band.
 
     Returns None when the plan is not self-serve (free Starter, custom
     Enterprise, or the Solo Farm custom band).
     """
-    plan = get_plan(plan_key)
-    if not plan:
+    band = get_band(plan_key, band_key)
+    if not band:
         return None
-    bands = plan.get("bands")
-    if not bands:
-        return None
-    band = next((b for b in bands if b["key"] == band_key), bands[0])
     return band.get("price")

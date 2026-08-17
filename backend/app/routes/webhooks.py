@@ -49,6 +49,7 @@ from app.models.models import (
     UssdSession,
 )
 from app.schemas.schemas import UssdSessionResponse
+from app.plans import resolve_amount
 from app.services.auth_service import get_current_user
 from app.services.communications_service import CommunicationsService
 from app.services.customer_action_service import (
@@ -101,6 +102,11 @@ def _verify_signature(body: bytes, signature_header: str | None) -> bool:
     If no secret is configured (dev/sandbox), skip verification.
     """
     if not settings.moolre_webhook_secret:
+        if settings.app_env.lower() in ("production", "prod"):
+            logger.error(
+                "Rejecting Moolre payment webhook because no signature secret is configured"
+            )
+            return False
         logger.warning("MOOLRE_WEBHOOK_SECRET not set — skipping signature verification")
         return True
 
@@ -166,12 +172,21 @@ def _process_payment_payload(
             checkout = (
                 db.query(PendingCheckout)
                 .filter(PendingCheckout.reference == external_ref)
+                .with_for_update()
                 .first()
             )
-            if checkout and checkout.status != "paid":
+            if checkout and abs(float(checkout.amount) - amount) >= 0.01:
+                logger.warning(
+                    "Pre-checkout amount mismatch for %s: expected=%s received=%s",
+                    checkout.reference,
+                    checkout.amount,
+                    amount,
+                )
+                return {"status": "ok", "message": "amount mismatch — acknowledged"}
+            if checkout and checkout.status == "pending":
                 checkout.status = "paid"
                 db.commit()
-                logger.info(f"Pending checkout {checkout.reference} marked paid")
+                logger.info("Pending checkout %s marked paid", checkout.reference)
         return {"status": "ok", "message": "Pre-checkout webhook processed"}
 
     if external_ref and external_ref.startswith("sub_upg_"):
@@ -180,11 +195,32 @@ def _process_payment_payload(
                 # Format: sub_upg_{cooperative_id}_{timestamp}
                 parts = external_ref.split("_")
                 coop_id = int(parts[2])
+                plan_key = parts[4] if len(parts) >= 6 else None
+                band_key = "_".join(parts[5:]) if len(parts) >= 6 else None
+                if plan_key:
+                    expected_amount = resolve_amount(plan_key, band_key)
+                    if (
+                        expected_amount is None
+                        or abs(float(expected_amount) - amount) >= 0.01
+                    ):
+                        logger.warning(
+                            "Subscription upgrade amount mismatch for %s: "
+                            "expected=%s received=%s",
+                            external_ref,
+                            expected_amount,
+                            amount,
+                        )
+                        return {
+                            "status": "ok",
+                            "message": "amount mismatch — acknowledged",
+                        }
                 from app.models.models import Cooperative
                 coop = db.query(Cooperative).filter(Cooperative.id == coop_id).first()
                 if coop:
-                    # In a real app we'd map amount to plan_key or get it from metadata
                     coop.subscription_status = "active"
+                    if plan_key:
+                        coop.subscription_plan = plan_key
+                        coop.subscription_band = band_key
                     # Add 30 days
                     from datetime import timedelta
                     now = datetime.utcnow()

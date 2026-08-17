@@ -49,6 +49,7 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
         checkout = (
             db.query(PendingCheckout)
             .filter(PendingCheckout.reference == data.checkout_ref)
+            .with_for_update()
             .first()
         )
         if not checkout:
@@ -128,6 +129,8 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
             details=f"subscription_plan={new_coop.subscription_plan}",
         )
     )
+    if data.checkout_ref:
+        checkout.status = "consumed"
     db.commit()
     db.refresh(new_user)
     db.refresh(new_coop)
@@ -152,7 +155,7 @@ def signup(data: SignupRequest, db: Session = Depends(get_db)):
         "cooperative_name": new_coop.name,
         "subscription_plan": new_coop.subscription_plan,
         "subscription_band": new_coop.subscription_band,
-        "organization_type": data.organization_type,
+        "organization_type": new_coop.organization_type,
         "onboarding_role": new_user.onboarding_role,
     }
 

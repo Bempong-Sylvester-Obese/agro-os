@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database.db import get_db
 from app.models.models import Cooperative, PendingCheckout, User
-from app.plans import resolve_amount
+from app.plans import get_band, get_plan, resolve_amount
 from app.services.auth_service import enforce_cooperative_scope, get_current_user
 from app.services.providers.factory import get_payment_provider
 
@@ -41,29 +41,32 @@ async def create_pre_checkout(
 
     Public endpoint: runs before account creation, so no auth dependency.
     """
+    plan = get_plan(req.plan_key)
+    band = get_band(req.plan_key, req.band)
     amount = resolve_amount(req.plan_key, req.band)
-    if amount is None:
+    if not plan or not band or amount is None:
         raise HTTPException(status_code=400, detail="Plan requires a sales conversation")
 
+    plan_key = plan["key"]
     reference = f"sub_pre_{uuid.uuid4().hex}"
     checkout = PendingCheckout(
         reference=reference,
-        plan_key=req.plan_key.lower(),
-        band=req.band,
+        plan_key=plan_key,
+        band=band["key"],
         amount=amount,
         organisation=req.organisation,
         location=req.location,
         member_count=req.member_count,
         role=req.role,
-        organization_type=req.organization_type,
+        organization_type="solo_farm" if plan["track"] == "farmer" else "cooperative",
     )
     db.add(checkout)
-    db.commit()
-    db.refresh(checkout)
+    db.flush()
 
     settings = get_settings()
     redirect_url = (
-        f"{settings.agroos_base_url}/login?mode=signup&onboarding=subscription&checkout={reference}"
+        f"{settings.agroos_base_url}/login?mode=signup&plan={plan_key}"
+        f"&onboarding=subscription&checkout={reference}"
     )
     provider = get_payment_provider()
     result = await provider.generate_payment_link(
@@ -74,13 +77,16 @@ async def create_pre_checkout(
         redirect_url=redirect_url,
         reusable=False,
     )
-    if not result.get("success"):
+    payment_url = result.get("payment_url")
+    if not result.get("success") or not payment_url:
+        db.rollback()
         raise HTTPException(status_code=400, detail="Failed to generate payment link")
+    db.commit()
 
     return {
         "checkout_id": checkout.id,
         "reference": reference,
-        "authorization_url": result.get("payment_url"),
+        "authorization_url": payment_url,
         "amount": amount,
     }
 
@@ -98,12 +104,17 @@ async def create_checkout(
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
 
+    plan = get_plan(req.plan_key)
+    band = get_band(req.plan_key, req.band)
     amount = resolve_amount(req.plan_key, req.band)
-    if amount is None:
+    if not plan or not band or amount is None:
         raise HTTPException(status_code=400, detail="Invalid paid plan selected")
 
     provider = get_payment_provider()
-    ext_ref = f"sub_upg_{coop.id}_{int(datetime.utcnow().timestamp())}"
+    ext_ref = (
+        f"sub_upg_{coop.id}_{int(datetime.utcnow().timestamp())}"
+        f"_{plan['key']}_{band['key']}"
+    )
     
     user_email = current_user.email if current_user else f"admin@{coop.name.replace(' ', '').lower()}.com"
 
