@@ -25,7 +25,7 @@ from app.models.models import (
 from app.models.models import (
     CooperativeMembership as Farmer,
 )
-from app.routes.transactions import (
+from app.services.customer_action_service import (
     CUSTOMER_ACTION_TTL,
     INITIATING_ACTION_TTL,
     PROCESSING_ACTION_TTL,
@@ -46,7 +46,7 @@ from app.services.auth_service import (
     require_roles,
 )
 from app.services.communications_service import CommunicationsService
-from app.services.moolre_service import MoolreService
+from app.services.providers.factory import get_payment_provider
 from app.services.trust_score_service import TrustScoreService
 
 router = APIRouter(prefix="/loans", tags=["loans"])
@@ -567,11 +567,11 @@ async def get_disbursement_status(
     ):
         payout_id = payout.id
         transfer_ref = payout.moolre_transfer_ref
-        moolre = MoolreService()
-        account_number, wallet_error = await moolre.resolve_verified_account(None)
+        provider = get_payment_provider()
+        account_number, wallet_error = await provider.resolve_verified_account(None)
         if wallet_error:
             raise HTTPException(status_code=502, detail=wallet_error)
-        status_result = await moolre.transfer_status(
+        status_result = await provider.transfer_status(
             reference=transfer_ref,
             account_number=account_number,
             id_type="2",
@@ -622,9 +622,9 @@ async def disburse_loan(
     db.commit()
 
     ext_ref = _disburse_external_ref(loan.id)
-    moolre = MoolreService()
+    provider = get_payment_provider()
     # Always disburse from the platform merchant wallet (MoMo-enabled), not an alternate coop wallet.
-    account_number, wallet_error = await moolre.resolve_verified_account(None)
+    account_number, wallet_error = await provider.resolve_verified_account(None)
     if wallet_error:
         raise HTTPException(status_code=502, detail=wallet_error)
 
@@ -651,7 +651,7 @@ async def disburse_loan(
         existing_id = existing_tx.id
         existing_ref = existing_tx.moolre_transfer_ref
         db.commit()
-        status_result = await moolre.transfer_status(
+        status_result = await provider.transfer_status(
             reference=existing_ref,
             account_number=account_number,
             id_type="2",
@@ -718,7 +718,7 @@ async def disburse_loan(
     db.refresh(attempt_tx)
     attempt_id = attempt_tx.id
 
-    transfer_result = await moolre.initiate_transfer(
+    transfer_result = await provider.initiate_transfer(
         receiver_phone=farmer.phone,
         amount=loan.amount,
         currency=loan.currency,
@@ -748,7 +748,7 @@ async def disburse_loan(
         )
 
     transfer_ref = transfer_result.get("moolre_transfer_ref") or attempt_tx.moolre_transfer_ref
-    status_result = await moolre.transfer_status(
+    status_result = await provider.transfer_status(
         reference=transfer_ref,
         account_number=account_number,
         id_type="2",
@@ -785,7 +785,7 @@ async def start_farmer_loan_repayment(
             detail=f"Cannot repay loan in '{loan.status}' state. Must be 'disbursed'.",
         )
 
-    moolre = MoolreService()
+    provider = get_payment_provider()
     account_number = _cooperative_account(farmer, db)
 
     expire_customer_actions(db, loan_id=loan.id)
@@ -811,7 +811,7 @@ async def start_farmer_loan_repayment(
             ):
                 return loan
         if existing_tx is not None:
-            status_result = await moolre.payment_status(
+            status_result = await provider.payment_status(
                 external_ref=existing_tx.moolre_reference,
                 account_number=account_number,
             )
@@ -842,7 +842,7 @@ async def start_farmer_loan_repayment(
     db.refresh(tx)
 
     try:
-        payment_result = await moolre.initiate_payment(
+        payment_result = await provider.initiate_payment(
             payer_phone=farmer.phone,
             amount=loan.amount,
             currency=loan.currency,
@@ -899,7 +899,7 @@ async def start_farmer_loan_repayment(
             )
         return loan
 
-    status_result = await moolre.payment_status(
+    status_result = await provider.payment_status(
         external_ref=payment_result.get("external_ref") or ext_ref,
         account_number=account_number,
     )
@@ -981,9 +981,9 @@ async def resume_loan_repayment_customer_action(
 
     transaction_id = locked_transaction.id
     ext_ref = locked_transaction.moolre_reference or _repay_external_ref(loan.id)
-    moolre = MoolreService()
+    provider = get_payment_provider()
     account_number = _cooperative_account(farmer, db)
-    payment_result = await moolre.initiate_payment(
+    payment_result = await provider.initiate_payment(
         payer_phone=farmer.phone,
         amount=loan.amount,
         currency=loan.currency,
@@ -1024,7 +1024,7 @@ async def resume_loan_repayment_customer_action(
     transaction.action_expires_at = datetime.utcnow() + CUSTOMER_ACTION_TTL
     db.commit()
 
-    status_result = await moolre.payment_status(
+    status_result = await provider.payment_status(
         external_ref=payment_result.get("external_ref") or ext_ref,
         account_number=account_number,
     )

@@ -21,14 +21,19 @@ from app.models.models import (
 from app.models.models import (
     CooperativeMembership as Farmer,
 )
-from app.services.moolre_service import MoolreService
+from app.services.providers.base import SmsProvider
+
+
+def _default_sms_provider():
+    from app.services.providers.factory import get_sms_provider
+    return get_sms_provider()
 
 
 class CommunicationsService:
     """Send SMS messages and log all communication."""
 
-    def __init__(self) -> None:
-        self.moolre = MoolreService()
+    def __init__(self, sms_provider: SmsProvider | None = None) -> None:
+        self.sms = sms_provider or _default_sms_provider()
 
     # ------------------------------------------------------------------
     # Public methods
@@ -53,10 +58,9 @@ class CommunicationsService:
             f"Dial {ussd_code} and choose Pay Dues. - AgroOS"
         )
 
-        result = await self.moolre.send_single_sms(
-            phone=farmer.phone,
+        result = await self.sms.send_sms(
+            recipient=farmer.phone,
             message=message,
-            ref=str(uuid.uuid4()),
         )
 
         log = self._log(
@@ -88,10 +92,9 @@ class CommunicationsService:
             f"AgroOS: Payment of GHS {amount:.2f} received. Ref: {reference}. "
             f"Your Trust Score has been updated. Thank you!"
         )
-        result = await self.moolre.send_single_sms(
-            phone=farmer.phone,
+        result = await self.sms.send_sms(
+            recipient=farmer.phone,
             message=message,
-            ref=reference,
         )
         log = self._log(
             db=db,
@@ -118,10 +121,9 @@ class CommunicationsService:
             f"AgroOS: Your loan request #{loan.id} for GHS {loan.amount:.2f} "
             f"was not approved. Reason: {reason}"
         )
-        result = await self.moolre.send_single_sms(
-            phone=farmer.phone,
+        result = await self.sms.send_sms(
+            recipient=farmer.phone,
             message=message[:160],
-            ref=f"loan-rejected-{loan.id}",
         )
         log = self._log(
             db=db,
@@ -187,10 +189,9 @@ class CommunicationsService:
             f"{due_date}. Dial {ussd_code} and choose Repay Loan. Never share your OTP."
         )
         reminder.attempts += 1
-        result = await self.moolre.send_single_sms(
-            phone=farmer.phone,
+        result = await self.sms.send_sms(
+            recipient=farmer.phone,
             message=message,
-            ref=f"loan-reminder-{loan.id}-{scheduled_for.isoformat()}-{reminder_kind}",
         )
         reminder.status = "sent" if result["success"] else "failed"
         reminder.sent_at = datetime.utcnow() if result["success"] else None
@@ -228,10 +229,9 @@ class CommunicationsService:
             f"Dial {ussd_code} and choose Complete Pending Payment. "
             "Never share your OTP with cooperative staff."
         )
-        result = await self.moolre.send_single_sms(
-            phone=farmer.phone,
+        result = await self.sms.send_sms(
+            recipient=farmer.phone,
             message=message,
-            ref=reference,
         )
         log = self._log(
             db=db,
@@ -261,10 +261,9 @@ class CommunicationsService:
             f"{line.deductions_total:.2f}, paid GHS {line.net_amount:.2f}. "
             f"Ref: {line.payout_reference}"
         )[:160]
-        result = await self.moolre.send_single_sms(
-            phone=farmer.phone,
+        result = await self.sms.send_sms(
+            recipient=farmer.phone,
             message=message,
-            ref=f"settlement-statement-{line.id}",
         )
         log = self._log(
             db=db,
@@ -306,12 +305,10 @@ class CommunicationsService:
         if not farmers:
             return {"success": True, "recipients_count": 0, "message": "No active members found."}
 
-        recipients = [
-            {"recipient": f.phone, "message": message, "ref": str(uuid.uuid4())}
-            for f in farmers
-        ]
-
-        result = await self.moolre.send_sms(recipients)
+        result = await self.sms.send_bulk_sms(
+            recipients=[f.phone for f in farmers],
+            message=message,
+        )
 
         log = self._log(
             db=db,
@@ -361,19 +358,15 @@ class CommunicationsService:
         if not farmers:
             return {"success": True, "recipients_count": 0, "message": "No active members."}
 
-        recipients = [
-            {
-                "recipient": f.phone,
-                "message": (
-                    f"Dear {f.name}, your cooperative dues of GHS {amount:.2f} are due by {due_date}. "
-                    f"Dial {ussd_code} and choose Pay Dues. - AgroOS"
-                ),
-                "ref": str(uuid.uuid4()),
-            }
-            for f in farmers
-        ]
+        common_message = (
+            f"Your cooperative dues of GHS {amount:.2f} are due by {due_date}. "
+            f"Dial {ussd_code} and choose Pay Dues. - AgroOS"
+        )
 
-        result = await self.moolre.send_sms(recipients)
+        result = await self.sms.send_bulk_sms(
+            recipients=[f.phone for f in farmers],
+            message=common_message,
+        )
 
         log = self._log(
             db=db,
@@ -401,10 +394,9 @@ class CommunicationsService:
         cooperative_id: int | None = None,
     ) -> dict:
         """Send a single SMS without a farmer object."""
-        result = await self.moolre.send_single_sms(
-            phone=recipient,
+        result = await self.sms.send_sms(
+            recipient=recipient,
             message=message,
-            ref=str(uuid.uuid4()),
         )
         if db is not None:
             self._log(

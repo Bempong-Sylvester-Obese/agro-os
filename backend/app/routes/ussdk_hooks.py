@@ -1,6 +1,8 @@
 """
 USSDK Hook Adapter Routes
 
+# USSD Gateway (USSDK hooks format) — delegates to app.services.ussd_service
+
 USSDK (https://www.ussdk.me) builds the USSD menu/screens visually and calls
 these endpoints as "hooks" before rendering each step. This module translates
 USSDK's hook payload shape into calls against the existing dues-collection
@@ -29,6 +31,7 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database.db import get_db
 from app.models.models import (
+    Announcement,
     Cooperative,
     Loan,
     LoanStatus,
@@ -36,29 +39,42 @@ from app.models.models import (
     TransactionStatus,
     TransactionType,
 )
-from app.routes.loans import (
-    resume_loan_repayment_customer_action,
-    start_farmer_loan_repayment,
-)
-from app.routes.transactions import (
-    _run_dues_collect,
-    expire_customer_actions,
-    pending_customer_actions,
-    resume_dues_customer_action,
-)
 from app.services.loan_request_service import (
     PendingLoanRequestError,
     create_farmer_loan_request,
 )
-from app.services.membership_service import (
-    cooperative_selection_payload,
-    resolve_phone_membership,
-)
-from app.services.moolre_service import MoolreService
+from app.services.membership_service import cooperative_selection_payload
+from app.services.ussd_service import resolve_farmer_by_phone
+from app.services.dues_service import run_dues_collect
+from app.services.customer_action_service import expire_customer_actions, pending_customer_actions, resume_dues_customer_action
+from app.services.loan_repayment_service import start_farmer_loan_repayment, resume_loan_repayment_customer_action
+from app.services.providers.factory import get_payment_provider, get_sms_provider
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ussdk", tags=["ussdk"])
+
+
+def _resolve_membership(msisdn: str, membership_id: int | str | None, db: Session):
+    """Resolve a farmer and membership from phone using the shared ussd_service.
+
+    Returns (farmer, membership, memberships) where:
+      - farmer is the Farmer identity record (or None)
+      - membership is the single CooperativeMembership for this call (or None)
+      - memberships is the complete list
+    """
+    farmer, memberships = resolve_farmer_by_phone(msisdn, db)
+
+    if membership_id not in (None, ""):
+        try:
+            selected_id = int(membership_id)
+        except (TypeError, ValueError):
+            return farmer, None, memberships
+        membership = next((m for m in memberships if m.id == selected_id), None)
+    else:
+        membership = memberships[0] if len(memberships) == 1 else None
+
+    return farmer, membership, memberships
 
 
 def _verify_ussdk_signature(body: bytes, signature: str | None) -> bool:
@@ -106,17 +122,17 @@ async def loan_balance(
     msisdn = payload.get("props", {}).get("session", {}).get("msisdn", "")
     values = payload.get("props", {}).get("values", {})
 
-    farmer, memberships = resolve_phone_membership(
-        msisdn, db, membership_id=values.get("membership_id")
+    farmer, membership, memberships = _resolve_membership(
+        msisdn, values.get("membership_id"), db
     )
-    if not farmer:
+    if not membership:
         if len(memberships) > 1:
             return cooperative_selection_payload(memberships)
         return {"registered": False, "balance": None, "name": None}
 
     active_loans = (
         db.query(Loan)
-        .filter(Loan.farmer_id == farmer.id, Loan.status == LoanStatus.disbursed)
+        .filter(Loan.farmer_id == membership.id, Loan.status == LoanStatus.disbursed)
         .all()
     )
     total = sum(ln.amount for ln in active_loans)
@@ -129,16 +145,19 @@ async def loan_request(
     db: Session = Depends(get_db),
     x_ussdk_signature: str | None = Header(default=None),
 ):
-    """Create a farmer-originated loan request from a signed USSDK screen."""
+    """Create a farmer-originated loan request from a signed USSDK screen.
+
+    Phone resolution delegates to the shared app.services.ussd_service.
+    """
     payload = await _parsed_and_verified(request, x_ussdk_signature)
     session = payload.get("props", {}).get("session", {})
     values = payload.get("props", {}).get("values", {})
-    farmer, memberships = resolve_phone_membership(
+    farmer, membership, memberships = _resolve_membership(
         session.get("msisdn", ""),
+        values.get("membership_id"),
         db,
-        membership_id=values.get("membership_id"),
     )
-    if not farmer:
+    if not membership:
         if len(memberships) > 1:
             return cooperative_selection_payload(memberships)
         return {
@@ -154,7 +173,7 @@ async def loan_request(
     purpose = str(values.get("purpose", "")).strip()
     try:
         loan = create_farmer_loan_request(
-            membership=farmer,
+            membership=membership,
             amount=amount,
             purpose=purpose,
             db=db,
@@ -205,10 +224,10 @@ async def pay_dues(
     except (TypeError, ValueError):
         return {"action": "retry", "message": "Enter a valid amount."}
 
-    farmer, memberships = resolve_phone_membership(
-        msisdn, db, membership_id=values.get("membership_id")
+    farmer, membership, memberships = _resolve_membership(
+        msisdn, values.get("membership_id"), db
     )
-    if not farmer:
+    if not membership:
         if len(memberships) > 1:
             return cooperative_selection_payload(memberships)
         return {
@@ -216,8 +235,8 @@ async def pay_dues(
             "message": "Phone not registered with AgroOS. Contact your cooperative.",
         }
 
-    result = await _run_dues_collect(
-        farmer=farmer,
+    result = await run_dues_collect(
+        farmer=membership,
         amount=amount,
         channel="13",
         description="Cooperative dues (USSD)",
@@ -252,16 +271,19 @@ async def loan_repayment(
     db: Session = Depends(get_db),
     x_ussdk_signature: str | None = Header(default=None),
 ):
-    """Start or resume a full loan repayment from the farmer's USSD session."""
+    """Start or resume a full loan repayment from the farmer's USSD session.
+
+    Phone resolution delegates to the shared app.services.ussd_service.
+    """
     payload = await _parsed_and_verified(request, x_ussdk_signature)
     session = payload.get("props", {}).get("session", {})
     values = payload.get("props", {}).get("values", {})
-    farmer, memberships = resolve_phone_membership(
+    farmer, membership, memberships = _resolve_membership(
         session.get("msisdn", ""),
+        values.get("membership_id"),
         db,
-        membership_id=values.get("membership_id"),
     )
-    if not farmer:
+    if not membership:
         if len(memberships) > 1:
             return cooperative_selection_payload(memberships)
         return {"action": "end", "message": "Phone not registered with AgroOS."}
@@ -277,7 +299,7 @@ async def loan_repayment(
             db.query(Transaction)
             .filter(
                 Transaction.id == selected_transaction_id,
-                Transaction.farmer_id == farmer.id,
+                Transaction.farmer_id == membership.id,
                 Transaction.transaction_type == TransactionType.repayment,
             )
             .first()
@@ -286,7 +308,7 @@ async def loan_repayment(
             return {"action": "end", "message": "Pending repayment not found."}
         loan = await resume_loan_repayment_customer_action(
             transaction=tx,
-            farmer=farmer,
+            farmer=membership,
             otp_code=otp_code,
             db=db,
         )
@@ -304,7 +326,7 @@ async def loan_repayment(
         loans = (
             db.query(Loan)
             .filter(
-                Loan.farmer_id == farmer.id,
+                Loan.farmer_id == membership.id,
                 Loan.status == LoanStatus.disbursed,
             )
             .order_by(Loan.expected_repayment_date, Loan.id)
@@ -334,7 +356,7 @@ async def loan_repayment(
 
     loan = await start_farmer_loan_repayment(
         loan_id=selected_loan_id,
-        farmer=farmer,
+        farmer=membership,
         db=db,
         initiation_channel="ussdk",
     )
@@ -367,23 +389,26 @@ async def pending_payment(
     db: Session = Depends(get_db),
     x_ussdk_signature: str | None = Header(default=None),
 ):
-    """List or resume payment actions owned by the calling farmer phone."""
+    """List or resume payment actions owned by the calling farmer phone.
+
+    Phone resolution delegates to the shared app.services.ussd_service.
+    """
     payload = await _parsed_and_verified(request, x_ussdk_signature)
     session = payload.get("props", {}).get("session", {})
     values = payload.get("props", {}).get("values", {})
-    farmer, memberships = resolve_phone_membership(
+    farmer, membership, memberships = _resolve_membership(
         session.get("msisdn", ""),
+        values.get("membership_id"),
         db,
-        membership_id=values.get("membership_id"),
     )
-    if not farmer:
+    if not membership:
         if len(memberships) > 1:
             return cooperative_selection_payload(memberships)
         return {"action": "end", "message": "Phone not registered with AgroOS."}
 
     transaction_id = values.get("transaction_id")
     if not transaction_id:
-        actions = pending_customer_actions(farmer=farmer, db=db)
+        actions = pending_customer_actions(farmer=membership, db=db)
         return {
             "action": "select_payment" if actions else "end",
             "message": (
@@ -406,12 +431,12 @@ async def pending_payment(
         selected_id = int(transaction_id)
     except (TypeError, ValueError):
         return {"action": "retry", "message": "Choose a valid pending payment."}
-    expire_customer_actions(db, farmer_id=farmer.id)
+    expire_customer_actions(db, farmer_id=membership.id)
     tx = (
         db.query(Transaction)
         .filter(
             Transaction.id == selected_id,
-            Transaction.farmer_id == farmer.id,
+            Transaction.farmer_id == membership.id,
             Transaction.status == TransactionStatus.pending,
             Transaction.customer_action.in_(("otp", "processing_otp", "approval")),
             Transaction.action_expires_at > datetime.utcnow(),
@@ -442,7 +467,7 @@ async def pending_payment(
         if tx.transaction_type == TransactionType.dues:
             result = await resume_dues_customer_action(
                 transaction=tx,
-                farmer=farmer,
+                farmer=membership,
                 otp_code=otp_code,
                 db=db,
             )
@@ -451,7 +476,7 @@ async def pending_payment(
         elif tx.transaction_type == TransactionType.repayment:
             loan = await resume_loan_repayment_customer_action(
                 transaction=tx,
-                farmer=farmer,
+                farmer=membership,
                 otp_code=otp_code,
                 db=db,
             )
@@ -491,18 +516,19 @@ async def wallet_balance(
 ):
     """Hook for a 'Check Cooperative Wallet Balance' USSD step.
 
-    Calls Moolre's real account/status endpoint via MoolreService.account_status,
-    using the farmer's cooperative wallet if set, falling back to the server-wide
-    MOOLRE_ACCOUNT_NUMBER otherwise.
+    Calls the configured payment provider's account-status endpoint, using the
+    farmer's cooperative wallet when one is configured.
+
+    Phone resolution delegates to the shared app.services.ussd_service.
     """
     payload = await _parsed_and_verified(request, x_ussdk_signature)
     msisdn = payload.get("props", {}).get("session", {}).get("msisdn", "")
     values = payload.get("props", {}).get("values", {})
 
-    farmer, memberships = resolve_phone_membership(
-        msisdn, db, membership_id=values.get("membership_id")
+    farmer, membership, memberships = _resolve_membership(
+        msisdn, values.get("membership_id"), db
     )
-    if not farmer:
+    if not membership:
         if len(memberships) > 1:
             return cooperative_selection_payload(memberships)
         return {
@@ -511,12 +537,12 @@ async def wallet_balance(
         }
 
     cooperative = (
-        db.query(Cooperative).filter(Cooperative.id == farmer.cooperative_id).first()
+        db.query(Cooperative).filter(Cooperative.id == membership.cooperative_id).first()
     )
     coop_account = cooperative.moolre_account_number if cooperative else None
 
-    moolre = MoolreService()
-    result = await moolre.account_status(account_number=coop_account)
+    provider = get_payment_provider()
+    result = await provider.account_status(account_number=coop_account)
 
     if not result.get("success"):
         return {
@@ -540,18 +566,22 @@ async def announcements(
     """Hook for a 'View Announcements' USSD step.
 
     Shows the announcement on the USSD screen and also sends it via SMS
-    through Moolre's real SMS endpoint (MoolreService.send_single_sms),
-    so the announcement isn't lost when the USSD session times out.
+    through the configured SMS provider, so the announcement isn't lost when
+    the USSD session times out.
+
+    Phone resolution delegates to the shared app.services.ussd_service.
     """
     payload = await _parsed_and_verified(request, x_ussdk_signature)
     msisdn = payload.get("props", {}).get("session", {}).get("msisdn", "")
     values = payload.get("props", {}).get("values", {})
 
-    farmer, memberships = resolve_phone_membership(
-        msisdn, db, membership_id=values.get("membership_id")
+    farmer, membership, memberships = _resolve_membership(
+        msisdn, values.get("membership_id"), db
     )
-    from app.models.models import Announcement
-    coop_id = farmer.cooperative_id if farmer else None
+    if not membership and len(memberships) > 1:
+        return cooperative_selection_payload(memberships)
+
+    coop_id = membership.cooperative_id if membership else None
     announcements = (
         db.query(Announcement)
         .filter(
@@ -570,14 +600,11 @@ async def announcements(
     else:
         announcement_text = "No announcements yet. Check with your cooperative leader."
 
-    if not farmer and len(memberships) > 1:
-        return cooperative_selection_payload(memberships)
-    if farmer and farmer.sms_consent:
-        moolre = MoolreService()
-        sms_result = await moolre.send_single_sms(
-            phone=farmer.phone,
+    if farmer and membership and membership.sms_consent:
+        sms = get_sms_provider()
+        sms_result = await sms.send_sms(
+            recipient=farmer.phone,
             message=announcement_text,
-            ref=f"announce-{farmer.id}",
         )
         if sms_result.get("success"):
             return {"message": f"{announcement_text}\n(Also sent via SMS.)"}

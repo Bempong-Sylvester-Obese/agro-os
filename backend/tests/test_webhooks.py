@@ -253,6 +253,75 @@ def test_ussd_option_1_known_farmer(client, farmer):
     assert farmer["name"] in body["message"]
 
 
+def test_ussd_announcements_use_provider_and_respect_consent(
+    client, farmer, db
+):
+    from app.models.models import Announcement, CooperativeMembership
+
+    membership = (
+        db.query(CooperativeMembership)
+        .filter(CooperativeMembership.id == farmer["id"])
+        .one()
+    )
+    db.add_all(
+        [
+            Announcement(
+                cooperative_id=membership.cooperative_id,
+                title="Visible update",
+                body="Collection opens Monday.",
+            ),
+            Announcement(
+                cooperative_id=membership.cooperative_id,
+                title="Deleted update",
+                body="This should stay hidden.",
+                deleted_at=membership.created_at,
+            ),
+        ]
+    )
+    db.commit()
+
+    with patch(
+        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
+        new_callable=AsyncMock,
+        return_value={"success": True},
+    ) as send_sms:
+        client.post(
+            "/webhooks/moolre/ussd",
+            json=_ussd_new("announcement-visible", farmer["phone"]),
+        )
+        response = client.post(
+            "/webhooks/moolre/ussd",
+            json=_ussd_step("announcement-visible", farmer["phone"], "4"),
+        )
+
+    assert response.status_code == 200
+    assert "Visible update" in response.json()["message"]
+    assert "Deleted update" not in response.json()["message"]
+    send_sms.assert_awaited_once_with(
+        recipient=farmer["phone"],
+        message="Visible update: Collection opens Monday.",
+    )
+
+    membership.sms_consent = False
+    db.commit()
+    with patch(
+        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
+        new_callable=AsyncMock,
+    ) as send_sms:
+        client.post(
+            "/webhooks/moolre/ussd",
+            json=_ussd_new("announcement-opt-out", farmer["phone"]),
+        )
+        response = client.post(
+            "/webhooks/moolre/ussd",
+            json=_ussd_step("announcement-opt-out", farmer["phone"], "4"),
+        )
+
+    assert response.status_code == 200
+    assert "Visible update" in response.json()["message"]
+    send_sms.assert_not_awaited()
+
+
 def test_direct_ussd_requires_cooperative_selection_for_multi_membership(client, farmer):
     second_coop = client.post(
         "/cooperatives/",
@@ -316,7 +385,7 @@ def test_direct_ussd_resumes_dashboard_payment_without_logging_otp(client, farme
         "message": "Payment request sent",
     }
     with patch(
-        "app.routes.transactions.MoolreService.initiate_payment",
+        "app.services.providers.moolre_adapter.MoolrePaymentAdapter.initiate_payment",
         new_callable=AsyncMock,
         side_effect=[tp14, tp14, tr099],
     ):

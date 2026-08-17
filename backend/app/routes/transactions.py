@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -40,266 +40,21 @@ from app.services.auth_service import (
     require_roles,
 )
 from app.services.communications_service import CommunicationsService
-from app.services.moolre_service import MoolreService
+from app.services.customer_action_service import (
+    CUSTOMER_ACTION_TTL,
+    INITIATING_ACTION_TTL,
+    PROCESSING_ACTION_TTL,
+    expire_customer_actions,
+    pending_customer_actions,
+    resume_dues_customer_action,
+)
+from app.services.dues_service import _dues_collect_response, run_dues_collect
+from app.services.providers.factory import get_payment_provider
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
-CUSTOMER_ACTION_TTL = timedelta(minutes=15)
-INITIATING_ACTION_TTL = timedelta(minutes=2)
-PROCESSING_ACTION_TTL = timedelta(minutes=2)
 logger = logging.getLogger(__name__)
 
-
-def _cooperative_account(farmer: Farmer, db: Session) -> str | None:
-    cooperative = db.query(Cooperative).filter(Cooperative.id == farmer.cooperative_id).first()
-    return cooperative.moolre_account_number if cooperative else None
-
-
-def _dues_collect_response(tx: Transaction, result: dict) -> DuesCollectResponse:
-    verification_required = result.get("verification_required", False)
-    outcome = result.get("outcome")
-    if outcome is None:
-        if verification_required:
-            outcome = "verification_required"
-        elif result.get("success"):
-            outcome = "push_sent"
-        else:
-            outcome = "failed"
-
-    if tx.status == TransactionStatus.completed:
-        status = "completed"
-    elif tx.status == TransactionStatus.failed:
-        status = "failed"
-    elif outcome == "verification_required":
-        status = "verification_required"
-    elif (
-        outcome in ("initiating", "processing_otp", "push_sent")
-        or result.get("success")
-        or verification_required
-    ):
-        status = "pending"
-    else:
-        status = "failed"
-
-    return DuesCollectResponse(
-        transaction_id=tx.id,
-        moolre_reference=tx.moolre_reference,
-        status=status,
-        message=result.get("message")
-        or ("Payment request sent" if result.get("success") else "Moolre request failed"),
-        verification_required=verification_required,
-        outcome=outcome,
-        moolre_code=result.get("moolre_code"),
-        customer_action=tx.customer_action,
-        action_expires_at=tx.action_expires_at,
-    )
-
-
-async def _run_dues_collect(
-    *,
-    farmer: Farmer,
-    amount: float,
-    channel: str,
-    description: str | None,
-    external_ref: str,
-    otp_code: str | None,
-    db: Session,
-    initiation_channel: str = "ussd",
-) -> DuesCollectResponse:
-    tx = (
-        db.query(Transaction)
-        .filter(
-            Transaction.moolre_reference == external_ref,
-            Transaction.farmer_id == farmer.id,
-        )
-        .first()
-    )
-    if not tx:
-        tx = Transaction(
-            farmer_id=farmer.id,
-            transaction_type=TransactionType.dues,
-            amount=amount,
-            currency="GHS",
-            status=TransactionStatus.pending,
-            moolre_reference=external_ref,
-            payer_phone=farmer.phone,
-            channel=channel,
-            description=description,
-            initiation_channel=initiation_channel,
-            customer_action="initiating",
-            action_expires_at=datetime.utcnow() + INITIATING_ACTION_TTL,
-        )
-        db.add(tx)
-        db.commit()
-        db.refresh(tx)
-    else:
-        if tx.transaction_type != TransactionType.dues:
-            raise HTTPException(status_code=409, detail="Payment reference type mismatch")
-        if tx.status != TransactionStatus.pending:
-            raise HTTPException(status_code=409, detail="Payment is no longer pending")
-        if abs(float(tx.amount) - float(amount)) >= 0.01:
-            raise HTTPException(status_code=409, detail="Payment amount mismatch")
-
-    moolre = MoolreService()
-    coop_account = _cooperative_account(farmer, db)
-    try:
-        result = await moolre.initiate_payment(
-            payer_phone=farmer.phone,
-            amount=amount,
-            currency="GHS",
-            channel=channel,
-            external_ref=external_ref,
-            otpcode=otp_code,
-            reference=description or "Cooperative dues",
-            account_number=coop_account,
-        )
-    except Exception:
-        # A timeout may happen after Moolre accepted the request. Preserve the
-        # reference for reconciliation instead of allowing a duplicate charge.
-        raise
-
-    db.expire_all()
-    tx = (
-        db.query(Transaction)
-        .filter(
-            Transaction.moolre_reference == external_ref,
-            Transaction.farmer_id == farmer.id,
-        )
-        .with_for_update()
-        .one()
-    )
-    if tx.status in (TransactionStatus.completed, TransactionStatus.failed):
-        return _dues_collect_response(
-            tx,
-            {
-                "outcome": tx.status.value,
-                "message": f"Payment already {tx.status.value}.",
-            },
-        )
-
-    if result.get("moolre_reference") and result["moolre_reference"] != external_ref:
-        ref_val = str(result["moolre_reference"]).lower()
-        if ref_val not in ("all", "phoneno", "externalref", "senderid"):
-            tx.moolre_reference = result["moolre_reference"]
-
-    verification_required = result.get("verification_required", False) or result.get("outcome") == "verification_required"
-    if verification_required:
-        tx.customer_action = "otp"
-        tx.action_expires_at = datetime.utcnow() + CUSTOMER_ACTION_TTL
-    elif result.get("success") or result.get("outcome") == "push_sent":
-        tx.customer_action = "approval"
-        tx.action_expires_at = datetime.utcnow() + CUSTOMER_ACTION_TTL
-    else:
-        tx.status = TransactionStatus.failed
-        tx.customer_action = "none"
-        tx.action_expires_at = None
-    db.commit()
-
-    result = {**result, "verification_required": verification_required}
-
-    return _dues_collect_response(tx, result)
-
-
-def expire_customer_actions(
-    db: Session,
-    *,
-    farmer_id: int | None = None,
-    cooperative_id: int | None = None,
-    loan_id: int | None = None,
-    transaction_type: TransactionType | None = None,
-) -> int:
-    """Mark elapsed customer actions failed while retaining an expired label."""
-    now = datetime.utcnow()
-    query = db.query(Transaction).filter(
-        Transaction.status == TransactionStatus.pending,
-        Transaction.customer_action.in_(("otp", "approval")),
-        Transaction.action_expires_at.is_not(None),
-        Transaction.action_expires_at <= now,
-    )
-    if farmer_id is not None:
-        query = query.filter(Transaction.farmer_id == farmer_id)
-    if cooperative_id is not None:
-        query = query.join(Farmer, Transaction.farmer_id == Farmer.id).filter(
-            Farmer.cooperative_id == cooperative_id
-        )
-    if loan_id is not None:
-        query = query.filter(Transaction.loan_id == loan_id)
-    if transaction_type is not None:
-        query = query.filter(Transaction.transaction_type == transaction_type)
-    expired = query.with_for_update().all()
-    for tx in expired:
-        tx.status = TransactionStatus.failed
-        tx.customer_action = "expired"
-    if expired:
-        db.commit()
-    return len(expired)
-
-
-def pending_customer_actions(
-    *,
-    farmer: Farmer,
-    db: Session,
-) -> list[Transaction]:
-    """Return unexpired payment actions owned by a phone-resolved membership."""
-    expire_customer_actions(db, farmer_id=farmer.id)
-    return (
-        db.query(Transaction)
-        .filter(
-            Transaction.farmer_id == farmer.id,
-            Transaction.status == TransactionStatus.pending,
-            Transaction.customer_action.in_(("otp", "processing_otp", "approval")),
-            Transaction.action_expires_at > datetime.utcnow(),
-        )
-        .order_by(Transaction.created_at.desc())
-        .all()
-    )
-
-
-async def resume_dues_customer_action(
-    *,
-    transaction: Transaction,
-    farmer: Farmer,
-    otp_code: str,
-    db: Session,
-) -> DuesCollectResponse:
-    """Resume an OTP-gated dues request from the payer's phone channel."""
-    now = datetime.utcnow()
-    claimed = (
-        db.query(Transaction)
-        .filter(
-            Transaction.id == transaction.id,
-            Transaction.farmer_id == farmer.id,
-            Transaction.transaction_type == TransactionType.dues,
-            Transaction.status == TransactionStatus.pending,
-            Transaction.customer_action == "otp",
-            Transaction.action_expires_at > now,
-        )
-        .update(
-            {
-                Transaction.customer_action: "processing_otp",
-                Transaction.action_expires_at: now + PROCESSING_ACTION_TTL,
-            },
-            synchronize_session=False,
-        )
-    )
-    db.commit()
-    if claimed != 1:
-        raise HTTPException(
-            status_code=409,
-            detail="Payment verification is already processing or unavailable",
-        )
-    transaction = (
-        db.query(Transaction).filter(Transaction.id == transaction.id).one()
-    )
-    return await _run_dues_collect(
-        farmer=farmer,
-        amount=transaction.amount,
-        channel=transaction.channel or "13",
-        description=transaction.description,
-        external_ref=transaction.moolre_reference,
-        otp_code=otp_code,
-        db=db,
-        initiation_channel=transaction.initiation_channel,
-    )
+_run_dues_collect = run_dues_collect
 
 
 # ---------------------------------------------------------------------------
@@ -481,17 +236,17 @@ async def reconcile_transaction(
     cooperative = db.query(Cooperative).filter(
         Cooperative.id == cooperative_id
     ).first()
-    moolre = MoolreService()
+    provider = get_payment_provider()
     if transaction_type == TransactionType.payout and moolre_transfer_ref:
-        result = await moolre.transfer_status(
+        result = await provider.transfer_status(
             reference=moolre_transfer_ref,
-            account_number=moolre.resolve_account_number(None),
+            account_number=provider.resolve_account_number(None),
             id_type="2",
         )
     else:
-        result = await moolre.payment_status(
+        result = await provider.payment_status(
             external_ref=moolre_reference,
-            account_number=moolre.resolve_account_number(
+            account_number=provider.resolve_account_number(
                 cooperative.moolre_account_number if cooperative else None
             ),
         )
@@ -650,9 +405,12 @@ async def collect_dues(
                 and existing.action_expires_at <= datetime.utcnow()
             ):
                 try:
-                    provider = await MoolreService().payment_status(
+                    payment_provider = get_payment_provider()
+                    coop = db.query(Cooperative).filter(Cooperative.id == farmer.cooperative_id).first()
+                    coop_account = coop.moolre_account_number if coop else None
+                    status_result = await payment_provider.payment_status(
                         external_ref=existing.moolre_reference,
-                        account_number=_cooperative_account(farmer, db),
+                        account_number=coop_account,
                     )
                 except Exception as exc:
                     raise HTTPException(
@@ -669,7 +427,7 @@ async def collect_dues(
                     .with_for_update()
                     .one()
                 )
-                provider_status = provider.get("status", "pending")
+                provider_status = status_result.get("status", "pending")
                 if provider_status == "completed":
                     existing.status = TransactionStatus.completed
                     existing.customer_action = "none"
@@ -785,9 +543,9 @@ async def create_payment_link(
     db.commit()
     db.refresh(tx)
 
-    moolre = MoolreService()
+    provider = get_payment_provider()
     try:
-        result = await moolre.generate_payment_link(
+        result = await provider.generate_payment_link(
             amount=request.amount,
             email=request.email,
             currency=request.currency,
@@ -827,8 +585,8 @@ async def list_moolre_transactions(
     Proxy to Moolre List Transactions API for the cooperative wallet.
     Returns raw Moolre transaction data for the finance dashboard.
     """
-    moolre = MoolreService()
-    return await moolre.list_transactions(
+    provider = get_payment_provider()
+    return await provider.list_transactions(
         start_date=start_date,
         end_date=end_date,
         limit=limit,
@@ -840,5 +598,5 @@ async def get_wallet_balance(
     current_user: User | None = Depends(require_roles("admin", "finance_officer")),
 ):
     """Check cooperative Moolre wallet balance."""
-    moolre = MoolreService()
-    return await moolre.account_status()
+    provider = get_payment_provider()
+    return await provider.account_status()

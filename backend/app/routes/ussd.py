@@ -1,11 +1,14 @@
+# USSD Gateway (Africa's Talking format) — delegates to app.services.ussd_service
+
 from fastapi import APIRouter, Form, Depends, Request, Response
 from sqlalchemy.orm import Session
 import logging
 
 from app.database.db import get_db
 from app.models.models import Farmer, CooperativeMembership, Cooperative, Loan, LoanStatus
-from app.services.membership_service import resolve_phone_membership
-from app.routes.transactions import _run_dues_collect
+from app.services.ussd_service import resolve_farmer_by_phone
+from app.services.dues_service import run_dues_collect
+from app.services.loan_repayment_service import start_farmer_loan_repayment
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +28,10 @@ async def ussd_callback(
     """
     inputs = text.split("*") if text else []
     
-    # 1. Resolve phone membership
-    farmer, memberships = resolve_phone_membership(phoneNumber, db)
+    # 1. Resolve phone membership (shared ussd_service)
+    farmer, memberships = resolve_farmer_by_phone(phoneNumber, db)
     
-    if not farmer:
+    if not memberships:
         # User is not registered yet. Enter Hybrid Onboarding flow.
         if len(inputs) == 0:
             return Response(content="CON Welcome to AgroOS.\nEnter your 4-digit Cooperative Code:", media_type="text/plain")
@@ -85,8 +88,9 @@ async def ussd_callback(
             external_ref = str(uuid.uuid4())
             
             # Use existing logic
-            result = await _run_dues_collect(
-                farmer=farmer,
+            membership = memberships[0]
+            result = await run_dues_collect(
+                farmer=membership,
                 amount=amount,
                 channel="13", # Moolre generic mobile money channel
                 description="Cooperative dues (USSD)",
@@ -112,7 +116,13 @@ async def ussd_callback(
             from app.services.loan_request_service import create_farmer_loan_request, PendingLoanRequestError
             try:
                 membership = memberships[0] # Simplification
-                create_farmer_loan_request(farmer.id, membership.cooperative_id, amount, db)
+                create_farmer_loan_request(
+                    membership=membership,
+                    amount=amount,
+                    purpose="Loan request via USSD",
+                    db=db,
+                    request_channel="ussd_native",
+                )
                 return Response(content=f"END Loan request for GHS {amount} submitted successfully for review.", media_type="text/plain")
             except PendingLoanRequestError:
                 return Response(content="END You already have a pending loan request.", media_type="text/plain")
@@ -130,7 +140,6 @@ async def ussd_callback(
             except ValueError:
                 return Response(content="END Invalid amount.", media_type="text/plain")
                 
-            from app.routes.loans import start_farmer_loan_repayment
             from app.schemas.schemas import LoanRepaymentInit
             import uuid
             try:
