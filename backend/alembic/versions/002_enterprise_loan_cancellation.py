@@ -13,6 +13,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if "loans" not in inspector.get_table_names():
+        return
     if bind.dialect.name == "postgresql":
         enum_type = bind.execute(
             sa.text(
@@ -38,7 +41,7 @@ def upgrade() -> None:
                 f"ALTER TYPE {qualified_type} "
                 "ADD VALUE IF NOT EXISTS 'cancelled'"
             )
-    columns = {column["name"] for column in sa.inspect(bind).get_columns("loans")}
+    columns = {column["name"] for column in inspector.get_columns("loans")}
     if "cancelled_by" not in columns:
         op.add_column("loans", sa.Column("cancelled_by", sa.String(), nullable=True))
     if "cancelled_at" not in columns:
