@@ -299,6 +299,7 @@ class CommunicationsService:
         query = db.query(Farmer).filter(Farmer.cooperative_id == cooperative_id)
         if active_only:
             query = query.filter(Farmer.membership_status == MembershipStatus.active)
+        query = query.filter(Farmer.sms_consent.is_(True))
 
         farmers = query.all()
         if not farmers:
@@ -350,6 +351,7 @@ class CommunicationsService:
             .filter(
                 Farmer.cooperative_id == cooperative_id,
                 Farmer.membership_status == MembershipStatus.active,
+                Farmer.sms_consent.is_(True),
             )
             .all()
         )

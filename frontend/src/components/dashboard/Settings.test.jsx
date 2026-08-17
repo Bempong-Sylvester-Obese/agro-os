@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Settings from './Settings'
 import * as adminApi from '../../api/admin'
+import * as farmersApi from '../../api/farmers'
 
 vi.mock('../../api/admin', () => ({
   previewDemoReset: vi.fn(),
@@ -10,7 +11,12 @@ vi.mock('../../api/admin', () => ({
 }))
 
 vi.mock('../../api/cooperatives', () => ({
+  createSubscriptionCheckout: vi.fn(),
   updateCooperative: vi.fn(),
+}))
+
+vi.mock('../../api/farmers', () => ({
+  fetchFarmers: vi.fn(),
 }))
 
 const cooperative = {
@@ -74,5 +80,33 @@ describe('Settings demo reset', () => {
       expect(onRefresh).toHaveBeenCalled()
     })
     expect(await screen.findByText('Demo data was reset successfully.')).toBeTruthy()
+  })
+})
+
+describe('Settings subscription usage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('loads all member pages for the Growth usage meter', async () => {
+    farmersApi.fetchFarmers
+      .mockResolvedValueOnce(Array.from({ length: 100 }, (_, id) => ({ id })))
+      .mockResolvedValueOnce(Array.from({ length: 5 }, (_, id) => ({ id: id + 100 })))
+
+    render(
+      <Settings
+        cooperative={{
+          ...cooperative,
+          subscription_plan: 'growth',
+          subscription_status: 'active',
+        }}
+        cooperativeId={1}
+        loading={false}
+      />,
+    )
+
+    expect(await screen.findByText('Active members: 105 of 500')).toBeTruthy()
+    expect(farmersApi.fetchFarmers).toHaveBeenNthCalledWith(1, 1, null, 0, 100)
+    expect(farmersApi.fetchFarmers).toHaveBeenNthCalledWith(2, 1, null, 100, 100)
   })
 })

@@ -1,7 +1,7 @@
 """Pricing catalog tests."""
 
 from app.models.models import PendingCheckout
-from app.plans import PLANS, get_plan, resolve_amount
+from app.services.plans import PLANS, get_plan, resolve_amount
 
 
 def test_plans_catalog_has_two_tracks():

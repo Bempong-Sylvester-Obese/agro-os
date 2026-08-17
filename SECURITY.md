@@ -21,8 +21,17 @@ areas are in scope for security review:
 
 ## Authentication Model
 
-The backend uses JWT authentication and cooperative-scoped roles. Production
-deployments must set `AUTH_ENABLED=true`.
+The backend uses JWT-based authentication with configurable token TTL.
+JWTs include `cooperative_id` and `role`. `admin` can manage cooperative
+profiles, members, production, finance, loans, and communications.
+`finance_officer` is limited to finance, loan, and communication operations.
+Authenticated reads and writes are constrained to the user's cooperative;
+request body and query-string cooperative IDs cannot override that scope.
+
+Password reset uses time-limited, single-use tokens sent to the user's
+registered email.
+
+Production deployments must set `AUTH_ENABLED=true`.
 
 | Setting | Default | Behaviour |
 |---|---|---|
@@ -32,21 +41,54 @@ deployments must set `AUTH_ENABLED=true`.
 Public routes are limited to signup/login, root and health probes, and the exact
 Moolre/USSDK callback paths configured in `backend/main.py`.
 
-JWTs include `cooperative_id` and `role`. `admin` can manage cooperative
-profiles, members, production, finance, loans, and communications.
-`finance_officer` is limited to finance, loan, and communication operations.
-Authenticated reads and writes are constrained to the user's cooperative;
-request body and query-string cooperative IDs cannot override that scope.
+## Token Configuration
+
+| Setting | Default | Description |
+|---|---|---|
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | 30 | JWT access token TTL in minutes |
+| `JWT_SECRET_KEY` | (required) | HMAC signing secret for JWTs |
+
+## Demo Feature Gating
+
+Features intended only for demonstration or which carry elevated risk are
+gated behind feature flags and must not be active in production:
+
+| Feature | Flag | Production Status |
+|---|---|---|
+| USSD sandbox mode | `USSD_SANDBOX=true` | Must be disabled in production |
+| Unauthenticated routes | `AUTH_ENABLED=false` | Must be enabled in production |
+| Mock payment webhooks | `MOOLRE_WEBHOOK_SECRET` unset | Must be set in production |
 
 ## Webhook Security
 
 | Endpoint | Verification |
 |---|---|
 | `POST /webhooks/moolre/payment` | HMAC-SHA256 via `X-Moolre-Signature` when `MOOLRE_WEBHOOK_SECRET` is set |
-| `POST /webhooks/moolre/ussd` | No signature verification today (see open issues) |
+| `POST /webhooks/moolre/ussd` | Query-string shared secret via `MOOLRE_USSD_SECRET` |
+| `POST /ussd/callback` | Query-string shared secret via `USSD_CALLBACK_SECRET` |
+| `POST /ussdk/*` | HMAC-SHA256 via `X-USSDK-Signature` and `USSDK_HOOK_SECRET` |
 
 When `MOOLRE_WEBHOOK_SECRET` is unset, payment webhook signature checks are
 skipped (development/sandbox only). Production deployments must set the secret.
+
+USSD callbacks fail closed in production when their endpoint-specific secret is
+unset. Development and test environments may omit these secrets.
+
+## Tenant Isolation
+
+Cross-cooperative data isolation follows a defense-in-depth model:
+
+1. **API-layer enforcement (primary):** Protected route handlers call
+   `enforce_cooperative_scope` to compare the requested cooperative with the
+   authenticated user's cooperative. Query-string and request-body cooperative
+   IDs cannot override that scope on those routes.
+
+2. **Supabase RLS reference policies:** The reference SQL scopes SELECT access
+   on `farmers`, `transactions`, `loans`, `productions`, and `trust_scores` to
+   `app.current_cooperative_id`. See
+   `supabase/migrations/009_tenant_rls_policies.sql`. These files are not
+   applied by backend Alembic, so the deployed API currently relies on the
+   API-layer guard rather than RLS for tenant isolation.
 
 ## Rate Limits
 
@@ -54,14 +96,6 @@ Abuse-sensitive POST routes use per-client, one-minute limits: login 10,
 Moolre/USSDK callbacks 120, SMS sends 5, and dues collection 10. A rejected
 request returns HTTP 429 with `Retry-After`. Limits can be adjusted with the
 `RATE_LIMIT_*` environment variables; health probes are always exempt.
-
-## Known Limitations (Hackathon Phase)
-
-- USSD webhook callbacks are not authenticated
-- Supabase row-level security policies are not yet deployed
-
-For production hardening work in progress, see the open GitHub issues labeled
-`priority: p0` and `priority: p1`.
 
 ## Data Privacy
 

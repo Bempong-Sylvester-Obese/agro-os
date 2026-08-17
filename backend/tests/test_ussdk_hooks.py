@@ -320,7 +320,7 @@ def test_announcements_unregistered_phone_still_answers(client):
         json=_hook_payload("0200000000"),
     )
     assert resp.status_code == 200
-    assert "No new announcements" in resp.json()["message"]
+    assert "No announcements yet" in resp.json()["message"]
 
 
 def test_announcements_does_not_send_placeholder_sms(client, farmer):
@@ -336,4 +336,117 @@ def test_announcements_does_not_send_placeholder_sms(client, farmer):
 
     assert resp.status_code == 200
     mock_sms.assert_not_awaited()
-    assert "No new announcements" in resp.json()["message"]
+    assert "No announcements yet" in resp.json()["message"]
+
+
+def test_announcements_sends_persisted_message_sms(client, farmer, db):
+    from app.models.models import Announcement
+
+    db.add(
+        Announcement(
+            cooperative_id=farmer["cooperative_id"],
+            title="Collection update",
+            body="Collection opens Monday.",
+        )
+    )
+    db.commit()
+
+    with patch(
+        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
+        new_callable=AsyncMock,
+        return_value={"success": True},
+    ) as mock_sms:
+        resp = client.post(
+            "/ussdk/announcements",
+            json=_hook_payload(farmer["phone"]),
+        )
+
+    assert resp.status_code == 200
+    mock_sms.assert_awaited_once_with(
+        recipient=farmer["phone"],
+        message="Collection update: Collection opens Monday.",
+    )
+    assert "Also sent via SMS" in resp.json()["message"]
+
+
+def test_announcements_respects_member_sms_opt_out(client, farmer, db):
+    from app.models.models import CooperativeMembership
+
+    membership = (
+        db.query(CooperativeMembership)
+        .filter(CooperativeMembership.id == farmer["id"])
+        .one()
+    )
+    membership.sms_consent = False
+    db.commit()
+
+    with patch(
+        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
+        new_callable=AsyncMock,
+    ) as mock_sms:
+        resp = client.post(
+            "/ussdk/announcements",
+            json=_hook_payload(farmer["phone"]),
+        )
+
+    assert resp.status_code == 200
+    mock_sms.assert_not_awaited()
+    assert "Also sent via SMS" not in resp.json()["message"]
+
+
+def test_announcements_require_selection_and_use_selected_cooperative(
+    client, farmer, db
+):
+    from app.models.models import Announcement
+
+    second_coop = client.post(
+        "/cooperatives/",
+        json={"name": "Second Announcement Cooperative", "currency": "GHS"},
+    ).json()
+    second_membership = client.post(
+        "/farmers/",
+        json={
+            "name": farmer["name"],
+            "phone": farmer["phone"],
+            "cooperative_id": second_coop["id"],
+        },
+    ).json()
+    db.add_all(
+        [
+            Announcement(
+                cooperative_id=farmer["cooperative_id"],
+                title="First cooperative",
+                body="First message",
+            ),
+            Announcement(
+                cooperative_id=second_coop["id"],
+                title="Second cooperative",
+                body="Second message",
+            ),
+        ]
+    )
+    db.commit()
+
+    choose = client.post(
+        "/ussdk/announcements",
+        json=_hook_payload(farmer["phone"]),
+    )
+    assert choose.status_code == 200
+    assert choose.json()["requires_cooperative_selection"] is True
+
+    with patch(
+        "app.services.providers.moolre_adapter.MoolreSmsAdapter.send_sms",
+        new_callable=AsyncMock,
+        return_value={"success": True},
+    ):
+        selected = client.post(
+            "/ussdk/announcements",
+            json=_hook_payload(
+                farmer["phone"],
+                {"membership_id": second_membership["id"]},
+            ),
+        )
+
+    assert selected.status_code == 200
+    assert "Second cooperative" in selected.json()["message"]
+    assert "First cooperative" not in selected.json()["message"]

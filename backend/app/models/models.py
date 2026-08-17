@@ -22,6 +22,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    JSON,
     Numeric,
     String,
     Text,
@@ -159,6 +160,11 @@ class User(Base):
     cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    reset_token = Column(String, nullable=True)
+    reset_token_expires_at = Column(DateTime, nullable=True)
+    invite_token = Column(String, nullable=True)
+    invite_token_expires_at = Column(DateTime, nullable=True)
+    must_change_password = Column(Boolean, default=False, nullable=False)
 
     # Relationship to cooperative
     cooperative = relationship("Cooperative")
@@ -188,6 +194,8 @@ class Cooperative(Base):
     )
     subscription_band = Column(String, nullable=True)
     subscription_expires_at = Column(DateTime, nullable=True)
+    sms_sent_this_month = Column(Integer, default=0, server_default="0", nullable=False)
+    sms_month_reset = Column(DateTime, nullable=True)
     # Moolre wallet that holds cooperative funds
     moolre_account_number = Column(String, nullable=True)
     # 4-digit code for USSD onboarding
@@ -252,6 +260,7 @@ class CooperativeMembership(Base):
     trust_score = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    sms_consent = Column(Boolean, default=True, nullable=False)
 
     farmer = relationship("Farmer", back_populates="memberships")
     cooperative = relationship("Cooperative", back_populates="memberships")
@@ -615,6 +624,7 @@ class UssdSession(Base):
         ForeignKey("cooperative_memberships.id"),
         nullable=True,
     )
+    session_state = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -957,3 +967,26 @@ class DisbursementBatch(Base):
     transactions = relationship(
         "Transaction", foreign_keys="Transaction.disbursement_batch_id"
     )
+
+
+# ---------------------------------------------------------------------------
+# Announcements
+# ---------------------------------------------------------------------------
+
+
+class Announcement(Base):
+    __tablename__ = "announcements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    cooperative_id = Column(
+        Integer, ForeignKey("cooperatives.id"), nullable=False, index=True
+    )
+    title = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    send_sms = Column(Boolean, default=False, nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
+
+    cooperative = relationship("Cooperative")
+    creator = relationship("User")

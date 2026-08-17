@@ -91,6 +91,20 @@ def test_pre_checkout_rejects_custom_solo_band(client):
     assert resp.status_code == 400
 
 
+def test_pre_checkout_rejects_size_above_selected_band(client):
+    resp = client.post(
+        "/subscriptions/pre-checkout",
+        json={
+            "plan_key": "growth",
+            "band": "base",
+            "organisation": "Oversized Cooperative",
+            "member_count": 75,
+        },
+    )
+    assert resp.status_code == 400
+    assert "up to 50" in resp.json()["detail"]
+
+
 def test_webhook_marks_pending_checkout_paid(client, db):
     checkout = PendingCheckout(
         reference="sub_pre_wh123",

@@ -9,8 +9,8 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.database.db import get_db
 from app.models.models import Cooperative, PendingCheckout, User
-from app.plans import get_band, get_plan, resolve_amount
 from app.services.auth_service import enforce_cooperative_scope, get_current_user
+from app.services.plans import get_band, get_plan, resolve_amount
 from app.services.providers.factory import get_payment_provider
 
 router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
@@ -46,6 +46,14 @@ async def create_pre_checkout(
     amount = resolve_amount(req.plan_key, req.band)
     if not plan or not band or amount is None:
         raise HTTPException(status_code=400, detail="Plan requires a sales conversation")
+    capacity = band.get("capacity")
+    if req.member_count is not None and req.member_count <= 0:
+        raise HTTPException(status_code=400, detail="Organisation size must be positive")
+    if capacity is not None and req.member_count is not None and req.member_count > capacity:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Selected band supports up to {capacity} members or workers",
+        )
 
     plan_key = plan["key"]
     reference = f"sub_pre_{uuid.uuid4().hex}"
@@ -109,17 +117,20 @@ async def create_checkout(
     amount = resolve_amount(req.plan_key, req.band)
     if not plan or not band or amount is None:
         raise HTTPException(status_code=400, detail="Invalid paid plan selected")
+    plan_key = plan["key"]
 
     provider = get_payment_provider()
     ext_ref = (
-        f"sub_upg_{coop.id}_{int(datetime.utcnow().timestamp())}"
-        f"_{plan['key']}_{band['key']}"
+        f"sub_upg_{coop.id}_{plan['key']}_{int(datetime.utcnow().timestamp())}"
+        f"_{band['key']}"
     )
-    
-    user_email = current_user.email if current_user else f"admin@{coop.name.replace(' ', '').lower()}.com"
 
-    # We want the subscription to be paid to the Master Wallet, not the sub-wallet!
-    # generate_payment_link without account_number defaults to the Master account.
+    user_email = (
+        current_user.email
+        if current_user
+        else f"admin@{coop.name.replace(' ', '').lower()}.com"
+    )
+
     result = await provider.generate_payment_link(
         amount=amount,
         email=user_email,

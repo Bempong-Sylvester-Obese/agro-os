@@ -25,6 +25,8 @@ import Activity from '../components/dashboard/Activity'
 import Workers from '../components/dashboard/Workers'
 import Tasks from '../components/dashboard/Tasks'
 import Attendance from '../components/dashboard/Attendance'
+import CooperativeAttendance from '../components/dashboard/CooperativeAttendance'
+import Announcements from '../components/dashboard/Announcements'
 import Payroll from '../components/dashboard/Payroll'
 import Intake from '../components/dashboard/Intake'
 import Aggregation from '../components/dashboard/Aggregation'
@@ -33,7 +35,7 @@ import Sales from '../components/dashboard/Sales'
 import Settlements from '../components/dashboard/Settlements'
 import DashboardUserMenu from '../components/dashboard/DashboardUserMenu'
 import { SidebarCoopSkeleton } from '../components/dashboard/DashboardSkeleton'
-import { BarChart3, Users, CreditCard, Star, MessageSquare, Settings, Sprout, Banknote, Tractor, Phone, RefreshCw, ClipboardList, Inbox, Boxes, Store, ShoppingCart, WalletCards } from 'lucide-react'
+import { BarChart3, Users, CreditCard, Star, MessageSquare, Settings, Sprout, Banknote, Tractor, Phone, RefreshCw, ClipboardList, Inbox, Boxes, Store, ShoppingCart, WalletCards, Megaphone } from 'lucide-react'
 
 function getNavGroups(organizationType) {
   if (organizationType === 'solo_farm') {
@@ -71,6 +73,7 @@ function getNavGroups(organizationType) {
       items: [
         { key: 'overview', icon: <BarChart3 size={18} />, label: 'Overview' },
         { key: 'members', icon: <Users size={18} />, label: 'Members' },
+        { key: 'attendance', icon: <Users size={18} />, label: 'Attendance' },
         { key: 'production', icon: <Tractor size={18} />, label: 'Production' },
         { key: 'scores', icon: <Star size={18} />, label: 'Agro-AI scores' },
       ],
@@ -97,6 +100,7 @@ function getNavGroups(organizationType) {
       items: [
         { key: 'sms', icon: <MessageSquare size={18} />, label: 'SMS broadcasts' },
         { key: 'ussd', icon: <Phone size={18} />, label: 'USSD activity' },
+        { key: 'announcements', icon: <Megaphone size={18} />, label: 'Announcements' },
       ],
     },
     {
@@ -128,6 +132,7 @@ const TITLES = {
   sales: 'Buyer sales',
   settlements: 'Farmer settlements',
   settings: 'Settings',
+  announcements: 'Announcements',
 }
 
 const SECTION_RESOURCES = {
@@ -315,7 +320,70 @@ export default function DashboardPage({ user, onLogout }) {
         },
       ]
     : navGroups
-  const NAV_ITEMS = filteredNavGroups.flatMap((group) => group.items)
+  const coopedNavGroups = organizationType !== 'solo_farm' && userRole === 'finance_officer'
+    ? [
+        {
+          label: 'Operations',
+          items: [
+            { key: 'overview', icon: <BarChart3 size={18} />, label: 'Overview' },
+            { key: 'members', icon: <Users size={18} />, label: 'Members' },
+            { key: 'attendance', icon: <Users size={18} />, label: 'Attendance' },
+            { key: 'production', icon: <Tractor size={18} />, label: 'Production' },
+            { key: 'scores', icon: <Star size={18} />, label: 'Agro-AI scores' },
+          ],
+        },
+        {
+          label: 'Finance',
+          items: [
+            { key: 'payments', icon: <CreditCard size={18} />, label: 'Payments' },
+            { key: 'loans', icon: <Banknote size={18} />, label: 'Loans' },
+          ],
+        },
+        {
+          label: 'Communications',
+          items: [
+            { key: 'sms', icon: <MessageSquare size={18} />, label: 'SMS broadcasts' },
+            { key: 'ussd', icon: <Phone size={18} />, label: 'USSD activity' },
+            { key: 'announcements', icon: <Megaphone size={18} />, label: 'Announcements' },
+          ],
+        },
+        {
+          label: 'Governance',
+          items: [
+            { key: 'activity', icon: <ClipboardList size={18} />, label: 'Activity log' },
+          ],
+        },
+      ]
+    : organizationType !== 'solo_farm' && userRole && ['farm_owner', 'farm_manager', 'supervisor'].includes(userRole)
+    ? [
+        {
+          label: 'Operations',
+          items: [
+            { key: 'overview', icon: <BarChart3 size={18} />, label: 'Overview' },
+            { key: 'members', icon: <Users size={18} />, label: 'Members' },
+            { key: 'attendance', icon: <Users size={18} />, label: 'Attendance' },
+            { key: 'production', icon: <Tractor size={18} />, label: 'Production' },
+            { key: 'scores', icon: <Star size={18} />, label: 'Agro-AI scores' },
+          ],
+        },
+        {
+          label: 'Communications',
+          items: [
+            { key: 'sms', icon: <MessageSquare size={18} />, label: 'SMS broadcasts' },
+            { key: 'ussd', icon: <Phone size={18} />, label: 'USSD activity' },
+            { key: 'announcements', icon: <Megaphone size={18} />, label: 'Announcements' },
+          ],
+        },
+        {
+          label: 'Governance',
+          items: [
+            { key: 'activity', icon: <ClipboardList size={18} />, label: 'Activity log' },
+          ],
+        },
+      ]
+    : null
+  const displayNavGroups = filteredNavGroups || coopedNavGroups || navGroups
+  const NAV_ITEMS = displayNavGroups.flatMap((group) => group.items)
 
   if (urlSection && !DASHBOARD_SECTIONS.includes(urlSection)) {
     return <Navigate to={dashboardPath('overview')} replace />
@@ -330,6 +398,12 @@ export default function DashboardPage({ user, onLogout }) {
     const supervisorSections = ['overview', 'attendance', 'activity', 'settings']
     if (!supervisorSections.includes(section)) {
       return <Navigate to={dashboardPath('attendance')} replace />
+    }
+  }
+  if (organizationType !== 'solo_farm' && userRole && ['farm_owner', 'farm_manager', 'supervisor'].includes(userRole)) {
+    const allowedSections = ['overview', 'members', 'attendance', 'production', 'scores', 'sms', 'ussd', 'announcements', 'activity', 'settings']
+    if (!allowedSections.includes(section)) {
+      return <Navigate to={dashboardPath('overview')} replace />
     }
   }
 
@@ -360,7 +434,7 @@ export default function DashboardPage({ user, onLogout }) {
         </label>
 
         <nav className="admin-nav" aria-label="Dashboard sections">
-          {filteredNavGroups.map((group) => (
+          {displayNavGroups.map((group) => (
             <div className="admin-nav-group" key={group.label}>
               <div className="admin-nav-lbl">{group.label}</div>
               {group.items.map(({ key, icon, label }) => (
@@ -470,8 +544,14 @@ export default function DashboardPage({ user, onLogout }) {
           {section === 'tasks' && (
             <Tasks cooperativeId={cooperativeId} />
           )}
-          {section === 'attendance' && (
+          {section === 'attendance' && organizationType === 'solo_farm' && (
             <Attendance cooperativeId={cooperativeId} />
+          )}
+          {section === 'attendance' && organizationType !== 'solo_farm' && (
+            <CooperativeAttendance cooperativeId={cooperativeId} farmers={farmers} />
+          )}
+          {section === 'announcements' && (
+            <Announcements cooperativeId={cooperativeId} userRole={userRole} />
           )}
           {section === 'payroll' && (
             <Payroll cooperativeId={cooperativeId} />

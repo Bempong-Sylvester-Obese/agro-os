@@ -34,3 +34,11 @@ export function updateCooperativeUser(userId, payload) {
     body: JSON.stringify(payload),
   })
 }
+
+export async function inviteCooperativeUser(email, role) {
+  return fetchJson(`${API_URL}/auth/invite`, {
+    method: 'POST',
+    headers: authHeaders(true),
+    body: JSON.stringify({ email, role }),
+  })
+}

@@ -35,10 +35,10 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
+from app.domain.payment_event import PaymentEvent
 from app.models.models import (
+    Announcement,
     CooperativeMembership as Farmer,
-)
-from app.models.models import (
     Loan,
     LoanStatus,
     PaymentWebhookEvent,
@@ -49,7 +49,6 @@ from app.models.models import (
     UssdSession,
 )
 from app.schemas.schemas import UssdSessionResponse
-from app.plans import resolve_amount
 from app.services.auth_service import get_current_user
 from app.services.communications_service import CommunicationsService
 from app.services.customer_action_service import (
@@ -65,10 +64,15 @@ from app.services.loan_request_service import (
     PendingLoanRequestError,
     create_farmer_loan_request,
 )
-from app.services.ussd_service import resolve_farmer_by_phone
-from app.services.providers.factory import get_payment_provider
+from app.services.plans import (
+    PLANS,
+    activate_subscription,
+    get_plan,
+    resolve_amount,
+)
+from app.services.providers.factory import get_payment_provider, get_sms_provider
 from app.services.trust_score_service import TrustScoreService
-from app.domain.payment_event import PaymentEvent
+from app.services.ussd_service import resolve_farmer_by_phone
 
 logger = logging.getLogger(__name__)
 
@@ -192,28 +196,41 @@ def _process_payment_payload(
     if external_ref and external_ref.startswith("sub_upg_"):
         if moolre_status == 1:
             try:
-                # Format: sub_upg_{cooperative_id}_{timestamp}
                 parts = external_ref.split("_")
-                coop_id = int(parts[2])
-                plan_key = parts[4] if len(parts) >= 6 else None
-                band_key = "_".join(parts[5:]) if len(parts) >= 6 else None
-                if plan_key:
+                if len(parts) >= 6 and parts[3].isdigit():
+                    coop_id = int(parts[2])
+                    plan_key = parts[4]
+                    band_key = "_".join(parts[5:])
                     expected_amount = resolve_amount(plan_key, band_key)
-                    if (
-                        expected_amount is None
-                        or abs(float(expected_amount) - amount) >= 0.01
-                    ):
-                        logger.warning(
-                            "Subscription upgrade amount mismatch for %s: "
-                            "expected=%s received=%s",
-                            external_ref,
-                            expected_amount,
-                            amount,
-                        )
-                        return {
-                            "status": "ok",
-                            "message": "amount mismatch — acknowledged",
-                        }
+                elif len(parts) >= 6 and parts[4].isdigit():
+                    coop_id = int(parts[2])
+                    plan_key = parts[3]
+                    band_key = "_".join(parts[5:])
+                    expected_amount = resolve_amount(plan_key, band_key)
+                elif len(parts) == 5:
+                    coop_id = int(parts[2])
+                    plan_key = parts[3]
+                    band_key = None
+                    plan = get_plan(plan_key)
+                    expected_amount = plan["price"] if plan else None
+                elif len(parts) == 4:
+                    coop_id = int(parts[2])
+                    band_key = None
+                    matching_plans = [
+                        key
+                        for key, candidate in PLANS.items()
+                        if candidate["price"] > 0
+                        and abs(float(candidate["price"]) - amount) <= 0.01
+                    ]
+                    if len(matching_plans) != 1:
+                        raise ValueError("ambiguous legacy subscription plan")
+                    plan_key = matching_plans[0]
+                    expected_amount = PLANS[plan_key]["price"]
+                else:
+                    raise ValueError("invalid subscription reference")
+                plan = get_plan(plan_key)
+                if not plan or expected_amount is None or expected_amount <= 0:
+                    raise ValueError("invalid paid subscription plan")
                 from app.models.models import Cooperative
                 coop = (
                     db.query(Cooperative)
@@ -221,48 +238,67 @@ def _process_payment_payload(
                     .with_for_update()
                     .first()
                 )
-                if coop:
-                    duplicate = (
-                        db.query(PaymentWebhookEvent)
-                        .filter(
-                            PaymentWebhookEvent.moolre_reference == external_ref,
-                            PaymentWebhookEvent.processed.is_(True),
-                            PaymentWebhookEvent.message
-                            == "Subscription payment applied",
-                        )
-                        .first()
+                if not coop:
+                    return {"status": "ok", "message": "Cooperative not found"}
+
+                existing_event = (
+                    db.query(PaymentWebhookEvent)
+                    .filter(
+                        PaymentWebhookEvent.moolre_reference == external_ref,
+                        PaymentWebhookEvent.processed.is_(True),
                     )
-                    if duplicate:
-                        return {
-                            "status": "ok",
-                            "message": "Subscription webhook already processed",
-                        }
-                    coop.subscription_status = "active"
-                    if plan_key:
-                        coop.subscription_plan = plan_key
-                        coop.subscription_band = band_key
-                    # Add 30 days
-                    from datetime import timedelta
-                    now = datetime.utcnow()
-                    if not coop.subscription_expires_at or coop.subscription_expires_at < now:
-                        coop.subscription_expires_at = now + timedelta(days=30)
-                    else:
-                        coop.subscription_expires_at = coop.subscription_expires_at + timedelta(days=30)
-                    db.add(
-                        PaymentWebhookEvent(
-                            event_type="subscription",
-                            moolre_reference=external_ref,
-                            signature_valid=signature_valid,
-                            payload=json.dumps(payload),
-                            processed=True,
-                            message="Subscription payment applied",
-                        )
+                    .first()
+                )
+                if existing_event:
+                    return {
+                        "status": "ok",
+                        "message": "Subscription webhook already processed",
+                    }
+
+                if abs(amount - expected_amount) > 0.01:
+                    _record_webhook_event(
+                        db,
+                        payload=payload,
+                        signature_valid=signature_valid,
+                        processed=False,
+                        message="subscription amount mismatch",
                     )
-                    db.commit()
-                    logger.info(f"Subscription upgraded for cooperative {coop.id} via webhook")
-            except Exception as e:
+                    logger.warning(
+                        "Subscription payment amount %s did not match %s for %s",
+                        amount,
+                        expected_amount,
+                        plan_key,
+                    )
+                    return {
+                        "status": "ok",
+                        "message": "Subscription amount mismatch",
+                    }
+
+                activate_subscription(coop, plan_key)
+                coop.subscription_band = band_key
+                db.add(
+                    PaymentWebhookEvent(
+                        event_type="subscription",
+                        moolre_reference=external_ref,
+                        signature_valid=signature_valid,
+                        payload=json.dumps(payload),
+                        processed=True,
+                        message=f"subscription activated: {plan_key}",
+                    )
+                )
+                db.commit()
+                logger.info(
+                    "Subscription upgraded for cooperative %s to %s",
+                    coop.id,
+                    plan_key,
+                )
+            except (TypeError, ValueError, IndexError) as exc:
                 db.rollback()
-                logger.error(f"Failed to process subscription webhook: {e}")
+                logger.warning("Rejected subscription webhook: %s", exc)
+                return {"status": "ok", "message": "Invalid subscription reference"}
+            except Exception as exc:
+                db.rollback()
+                logger.error("Failed to process subscription webhook: %s", exc)
         return {"status": "ok", "message": "Subscription webhook processed"}
 
     tx: Transaction | None = None
@@ -497,14 +533,8 @@ async def handle_moolre_payment_webhook(
 #
 # Unlike Africa's Talking-style gateways, "message" is NOT a cumulative
 # dialed string — it is only what the user typed at *this* step. Session
-# continuity comes entirely from "sessionId", so we keep a small in-memory
-# state machine keyed by sessionId. This resets if the Render dyno restarts,
-# which is an acceptable tradeoff for the demo (Issue #16 tracks moving this
-# to persistent storage later).
-#
-# Per SECURITY.md (Issue #30): the USSD callback is unsigned by Moolre,
-# unlike the HMAC-signed /moolre/payment webhook above, so no signature
-# check is applied here.
+# continuity comes from "sessionId", with state persisted in the database so
+# sessions survive process restarts and work across multiple app instances.
 # ---------------------------------------------------------------------------
 
 USSD_MENU_MAIN = (
@@ -519,8 +549,42 @@ USSD_MENU_MAIN = (
 
 NOT_REGISTERED_MSG = "Phone not registered with AgroOS. Contact your cooperative."
 
-# In-memory USSD session state: {sessionId: {...}}. See module docstring above.
-_ussd_sessions: dict[str, dict] = {}
+_USSD_SESSION_TTL_SECONDS = 3600
+
+
+def _get_ussd_state(db: Session, session_id: str, phone: str) -> dict | None:
+    rows = (
+        db.query(UssdSession)
+        .filter(
+            UssdSession.session_id == session_id,
+            UssdSession.phone == phone,
+        )
+        .order_by(UssdSession.created_at.desc())
+        .all()
+    )
+    for row in rows:
+        if row.session_state is not None:
+            if (datetime.utcnow() - row.created_at).total_seconds() <= _USSD_SESSION_TTL_SECONDS:
+                return row.session_state
+    return None
+
+
+def _clear_ussd_state(db: Session, session_id: str) -> None:
+    db.query(UssdSession).filter(
+        UssdSession.session_id == session_id
+    ).update({UssdSession.session_state: None}, synchronize_session=False)
+    db.commit()
+
+
+def _persist_state(db: Session, session_id: str, phone: str, state: dict) -> None:
+    db.add(
+        UssdSession(
+            session_id=session_id or None,
+            phone=phone,
+            session_state=state,
+        )
+    )
+    db.commit()
 
 
 def _log_ussd_session(
@@ -531,6 +595,7 @@ def _log_ussd_session(
     input_path: str,
     response_text: str,
     farmer: Farmer | None,
+    state: dict | None = None,
 ) -> None:
     db.add(
         UssdSession(
@@ -539,6 +604,7 @@ def _log_ussd_session(
             input_path=input_path or None,
             response_text=response_text,
             farmer_id=farmer.id if farmer else None,
+            session_state=state,
         )
     )
     db.commit()
@@ -571,6 +637,16 @@ async def handle_ussd_session(
 ):
     """Handle USSD session callbacks from Moolre. See module docstring above
     for the request/response contract."""
+    configured_secret = settings.moolre_ussd_secret
+    if not configured_secret:
+        if settings.app_env.lower() in ("production", "prod"):
+            logger.error("MOOLRE_USSD_SECRET is required in production")
+            raise HTTPException(status_code=401, detail="Invalid USSD callback secret")
+    else:
+        supplied_secret = request.query_params.get("secret", "")
+        if not hmac.compare_digest(supplied_secret, configured_secret):
+            raise HTTPException(status_code=401, detail="Invalid USSD callback secret")
+
     body = await request.body()
     try:
         payload = json.loads(body)
@@ -585,8 +661,10 @@ async def handle_ussd_session(
     if not session_id:
         raise HTTPException(status_code=400, detail="Missing sessionId")
 
-    # ---- Fresh session: silently resolve the farmer's membership, then show the menu
-    if is_new or session_id not in _ussd_sessions:
+    state = None if is_new else _get_ussd_state(db, session_id, msisdn)
+
+    # ---- Fresh or expired session: resolve the membership, then show the menu
+    if state is None:
         farmer_obj, memberships = resolve_farmer_by_phone(msisdn, db)
         if len(memberships) > 1:
             options = "\n".join(
@@ -594,7 +672,7 @@ async def handle_ussd_session(
                 for index, membership in enumerate(memberships, start=1)
             )
             msg = f"Choose your cooperative:\n{options}"
-            _ussd_sessions[session_id] = {
+            state = {
                 "step": "select_cooperative",
                 "membership_ids": [membership.id for membership in memberships],
             }
@@ -605,18 +683,25 @@ async def handle_ussd_session(
                 input_path="new",
                 response_text=msg,
                 farmer=None,
+                state=state,
             )
             return {"message": msg, "reply": True}
 
         primary_membership = memberships[0] if memberships else None
-        _ussd_sessions[session_id] = {
+        state = {
             "step": "main",
             "farmer_id": primary_membership.id if primary_membership else None,
         }
-        _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path="new", response_text=USSD_MENU_MAIN, farmer=primary_membership)
+        _log_ussd_session(
+            db,
+            session_id=session_id,
+            phone=msisdn,
+            input_path="new",
+            response_text=USSD_MENU_MAIN,
+            farmer=primary_membership,
+            state=state,
+        )
         return {"message": USSD_MENU_MAIN, "reply": True}
-
-    state = _ussd_sessions[session_id]
 
     if state["step"] == "select_cooperative":
         try:
@@ -635,7 +720,7 @@ async def handle_ussd_session(
             .first()
         )
         if not farmer:
-            _ussd_sessions.pop(session_id, None)
+            _clear_ussd_state(db, session_id)
             return {"message": NOT_REGISTERED_MSG, "reply": False}
         state["step"] = "main"
         state["farmer_id"] = farmer.id
@@ -646,6 +731,7 @@ async def handle_ussd_session(
             input_path=message,
             response_text=USSD_MENU_MAIN,
             farmer=farmer,
+            state=state,
         )
         return {"message": USSD_MENU_MAIN, "reply": True}
 
@@ -655,7 +741,7 @@ async def handle_ussd_session(
     if state["step"] == "main":
         if message == "1":
             if not farmer:
-                _ussd_sessions.pop(session_id, None)
+                _clear_ussd_state(db, session_id)
                 _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=NOT_REGISTERED_MSG, farmer=None)
                 return {"message": NOT_REGISTERED_MSG, "reply": False}
             active_loans = (
@@ -668,47 +754,72 @@ async def handle_ussd_session(
             else:
                 total = sum(ln.amount for ln in active_loans)
                 msg = f"Hello {farmer.name}, active loan balance: GHS {total:.2f}"
-            _ussd_sessions.pop(session_id, None)
+            _clear_ussd_state(db, session_id)
             _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
             return {"message": msg, "reply": False}
 
         if message == "2":
             if not farmer:
-                _ussd_sessions.pop(session_id, None)
+                _clear_ussd_state(db, session_id)
                 _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=NOT_REGISTERED_MSG, farmer=None)
                 return {"message": NOT_REGISTERED_MSG, "reply": False}
             state["step"] = "pay_amount"
             msg = "Enter amount to pay (GHS):"
-            _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
+            _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer, state=state)
             return {"message": msg, "reply": True}
 
         if message == "3":
             if not farmer:
-                _ussd_sessions.pop(session_id, None)
+                _clear_ussd_state(db, session_id)
                 _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=NOT_REGISTERED_MSG, farmer=None)
                 return {"message": NOT_REGISTERED_MSG, "reply": False}
             state["step"] = "loan_amount"
             msg = "Enter requested loan amount (GHS):"
-            _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
+            _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer, state=state)
             return {"message": msg, "reply": True}
 
         if message == "4":
-            announcement_text = "No new announcements. Check with your cooperative leader."
-            _ussd_sessions.pop(session_id, None)
+            announcements = (
+                db.query(Announcement)
+                .filter(
+                    Announcement.cooperative_id == farmer.cooperative_id,
+                    Announcement.deleted_at.is_(None),
+                )
+                .order_by(Announcement.created_at.desc())
+                .limit(3)
+                .all()
+            ) if farmer else []
+            if announcements:
+                lines = []
+                for a in announcements:
+                    lines.append(f"{a.title}: {a.body[:120]}")
+                announcement_text = "\n---\n".join(lines)
+            else:
+                announcement_text = "No announcements yet. Check with your cooperative leader."
+            if announcements and farmer and farmer.sms_consent:
+                sms = get_sms_provider()
+                sms_result = await sms.send_sms(
+                    recipient=farmer.phone,
+                    message=announcement_text,
+                )
+                if sms_result.get("success"):
+                    announcement_text += "\n(Also sent via SMS.)"
+            _clear_ussd_state(db, session_id)
             _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=announcement_text, farmer=farmer)
             return {"message": announcement_text, "reply": False}
 
         if message == "5":
             if not farmer:
-                _ussd_sessions.pop(session_id, None)
+                _clear_ussd_state(db, session_id)
                 return {"message": NOT_REGISTERED_MSG, "reply": False}
             actions = pending_customer_actions(farmer=farmer, db=db)
             if not actions:
-                _ussd_sessions.pop(session_id, None)
+                _clear_ussd_state(db, session_id)
                 return {"message": "You have no pending payments.", "reply": False}
             if len(actions) > 1:
                 state["step"] = "pending_payment_select"
                 state["transaction_ids"] = [tx.id for tx in actions]
+                _persist_state(db, session_id, msisdn, state)
                 options = "\n".join(
                     f"{index}. {tx.transaction_type.value.title()} GHS {tx.amount:.2f}"
                     for index, tx in enumerate(actions, start=1)
@@ -716,7 +827,7 @@ async def handle_ussd_session(
                 return {"message": f"Choose a pending payment:\n{options}", "reply": True}
             tx = actions[0]
             if tx.customer_action == "approval":
-                _ussd_sessions.pop(session_id, None)
+                _clear_ussd_state(db, session_id)
                 return {
                     "message": (
                         f"GHS {tx.amount:.2f} is waiting for approval on your phone."
@@ -724,13 +835,14 @@ async def handle_ussd_session(
                     "reply": False,
                 }
             if tx.customer_action == "processing_otp":
-                _ussd_sessions.pop(session_id, None)
+                _clear_ussd_state(db, session_id)
                 return {
                     "message": "Your OTP is already being processed. Check again shortly.",
                     "reply": False,
                 }
             state["step"] = "pending_payment_otp"
             state["transaction_id"] = tx.id
+            _persist_state(db, session_id, msisdn, state)
             return {
                 "message": (
                     f"Complete {tx.transaction_type.value} payment of "
@@ -741,7 +853,7 @@ async def handle_ussd_session(
 
         if message == "6":
             if not farmer:
-                _ussd_sessions.pop(session_id, None)
+                _clear_ussd_state(db, session_id)
                 return {"message": NOT_REGISTERED_MSG, "reply": False}
             loans = (
                 db.query(Loan)
@@ -753,11 +865,12 @@ async def handle_ussd_session(
                 .all()
             )
             if not loans:
-                _ussd_sessions.pop(session_id, None)
+                _clear_ussd_state(db, session_id)
                 return {"message": "You have no active loans to repay.", "reply": False}
             state["loan_ids"] = [loan.id for loan in loans]
             if len(loans) > 1:
                 state["step"] = "repay_loan_select"
+                _persist_state(db, session_id, msisdn, state)
                 options = "\n".join(
                     f"{index}. Loan #{loan.id} GHS {loan.amount:.2f}"
                     for index, loan in enumerate(loans, start=1)
@@ -765,6 +878,7 @@ async def handle_ussd_session(
                 return {"message": f"Choose a loan to repay:\n{options}", "reply": True}
             state["step"] = "repay_confirm"
             state["loan_id"] = loans[0].id
+            _persist_state(db, session_id, msisdn, state)
             return {
                 "message": (
                     f"Repay loan #{loans[0].id} of GHS {loans[0].amount:.2f}?\n"
@@ -787,10 +901,11 @@ async def handle_ussd_session(
             return {"message": "Choose a valid loan number:", "reply": True}
         loan = db.query(Loan).filter(Loan.id == loan_id).first()
         if not loan:
-            _ussd_sessions.pop(session_id, None)
+            _clear_ussd_state(db, session_id)
             return {"message": "Loan not found.", "reply": False}
         state["step"] = "repay_confirm"
         state["loan_id"] = loan.id
+        _persist_state(db, session_id, msisdn, state)
         return {
             "message": (
                 f"Repay loan #{loan.id} of GHS {loan.amount:.2f}?\n"
@@ -801,7 +916,7 @@ async def handle_ussd_session(
 
     if state["step"] == "repay_confirm":
         if message != "1":
-            _ussd_sessions.pop(session_id, None)
+            _clear_ussd_state(db, session_id)
             return {"message": "Loan repayment cancelled.", "reply": False}
         try:
             loan = await start_farmer_loan_repayment(
@@ -811,7 +926,7 @@ async def handle_ussd_session(
                 initiation_channel="moolre_ussd",
             )
         except HTTPException as exc:
-            _ussd_sessions.pop(session_id, None)
+            _clear_ussd_state(db, session_id)
             return {"message": str(exc.detail), "reply": False}
         tx = (
             db.query(Transaction)
@@ -823,16 +938,17 @@ async def handle_ussd_session(
             .first()
         )
         if loan.status == LoanStatus.repaid:
-            _ussd_sessions.pop(session_id, None)
+            _clear_ussd_state(db, session_id)
             return {"message": "Loan repayment completed.", "reply": False}
         if tx and tx.customer_action == "otp":
             state["step"] = "repay_otp"
             state["transaction_id"] = tx.id
+            _persist_state(db, session_id, msisdn, state)
             return {
                 "message": "Enter the OTP Moolre sent to your phone:",
                 "reply": True,
             }
-        _ussd_sessions.pop(session_id, None)
+        _clear_ussd_state(db, session_id)
         return {
             "message": "Approve the repayment prompt on your phone to complete.",
             "reply": False,
@@ -848,7 +964,7 @@ async def handle_ussd_session(
             .first()
         )
         if not tx:
-            _ussd_sessions.pop(session_id, None)
+            _clear_ussd_state(db, session_id)
             return {"message": "Pending repayment not found.", "reply": False}
         try:
             loan = await resume_loan_repayment_customer_action(
@@ -859,16 +975,16 @@ async def handle_ussd_session(
             )
         except HTTPException as exc:
             if exc.status_code in (404, 410):
-                _ussd_sessions.pop(session_id, None)
+                _clear_ussd_state(db, session_id)
                 return {"message": str(exc.detail), "reply": False}
             return {"message": str(exc.detail), "reply": True}
         if loan.status == LoanStatus.repaid:
-            _ussd_sessions.pop(session_id, None)
+            _clear_ussd_state(db, session_id)
             return {"message": "Loan repayment completed.", "reply": False}
         refreshed = db.query(Transaction).filter(Transaction.id == tx.id).first()
         if refreshed and refreshed.customer_action == "otp":
             return {"message": "OTP still required. Try again:", "reply": True}
-        _ussd_sessions.pop(session_id, None)
+        _clear_ussd_state(db, session_id)
         return {
             "message": "OTP accepted. Approve the repayment prompt on your phone.",
             "reply": False,
@@ -894,22 +1010,23 @@ async def handle_ussd_session(
             .first()
         )
         if not tx:
-            _ussd_sessions.pop(session_id, None)
+            _clear_ussd_state(db, session_id)
             return {"message": "Pending payment not found.", "reply": False}
         if tx.customer_action == "approval":
-            _ussd_sessions.pop(session_id, None)
+            _clear_ussd_state(db, session_id)
             return {
                 "message": f"GHS {tx.amount:.2f} is waiting for approval on your phone.",
                 "reply": False,
             }
         if tx.customer_action == "processing_otp":
-            _ussd_sessions.pop(session_id, None)
+            _clear_ussd_state(db, session_id)
             return {
                 "message": "Your OTP is already being processed. Check again shortly.",
                 "reply": False,
             }
         state["step"] = "pending_payment_otp"
         state["transaction_id"] = tx.id
+        _persist_state(db, session_id, msisdn, state)
         return {
             "message": f"Enter the OTP for GHS {tx.amount:.2f}:",
             "reply": True,
@@ -925,7 +1042,7 @@ async def handle_ussd_session(
             .first()
         )
         if not tx:
-            _ussd_sessions.pop(session_id, None)
+            _clear_ussd_state(db, session_id)
             return {"message": "Pending payment not found.", "reply": False}
         try:
             if tx.transaction_type == TransactionType.dues:
@@ -955,9 +1072,10 @@ async def handle_ussd_session(
         except Exception:
             logger.exception("Pending USSD payment failed for transaction %s", tx.id)
             msg = "Payment could not be completed. Check again shortly."
+        db.refresh(tx)
         retry_otp = tx.customer_action == "otp" and tx.status == TransactionStatus.pending
         if not retry_otp:
-            _ussd_sessions.pop(session_id, None)
+            _clear_ussd_state(db, session_id)
         _log_ussd_session(
             db,
             session_id=session_id,
@@ -981,6 +1099,7 @@ async def handle_ussd_session(
             }
         state["amount"] = amount
         state["step"] = "loan_purpose"
+        _persist_state(db, session_id, msisdn, state)
         return {"message": "What will the loan be used for?", "reply": True}
 
     if state["step"] == "loan_purpose":
@@ -992,6 +1111,7 @@ async def handle_ussd_session(
             }
         state["purpose"] = purpose
         state["step"] = "loan_confirm"
+        _persist_state(db, session_id, msisdn, state)
         return {
             "message": (
                 f"Request GHS {state['amount']:.2f} for {purpose}?\n"
@@ -1002,7 +1122,7 @@ async def handle_ussd_session(
 
     if state["step"] == "loan_confirm":
         if message == "2":
-            _ussd_sessions.pop(session_id, None)
+            _clear_ussd_state(db, session_id)
             msg = "Loan request cancelled."
             _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
             return {"message": msg, "reply": False}
@@ -1021,7 +1141,7 @@ async def handle_ussd_session(
             msg = str(exc)
         except ValueError as exc:
             msg = str(exc)
-        _ussd_sessions.pop(session_id, None)
+        _clear_ussd_state(db, session_id)
         _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
         return {"message": msg, "reply": False}
 
@@ -1049,7 +1169,7 @@ async def handle_ussd_session(
             )
         except Exception:
             logger.exception("Could not initiate USSD dues payment for farmer %s", farmer.id)
-            _ussd_sessions.pop(session_id, None)
+            _clear_ussd_state(db, session_id)
             return {
                 "message": "Payment could not be started. Try again later.",
                 "reply": False,
@@ -1059,10 +1179,10 @@ async def handle_ussd_session(
             state["external_ref"] = result.moolre_reference or external_ref
             state["amount"] = amount
             msg = "Enter the OTP sent to your phone:"
-            _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
+            _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer, state=state)
             return {"message": msg, "reply": True}
 
-        _ussd_sessions.pop(session_id, None)
+        _clear_ussd_state(db, session_id)
         msg = result.message or (
             "Payment request sent. Approve the prompt on your phone." if result.status == "pending" else "Payment could not be started. Try again later."
         )
@@ -1080,7 +1200,7 @@ async def handle_ussd_session(
             .first()
         )
         if not tx:
-            _ussd_sessions.pop(session_id, None)
+            _clear_ussd_state(db, session_id)
             return {"message": "Pending payment not found.", "reply": False}
         try:
             result = await resume_dues_customer_action(
@@ -1100,12 +1220,12 @@ async def handle_ussd_session(
             tx.status == TransactionStatus.pending and tx.customer_action == "otp"
         )
         if not retry_otp:
-            _ussd_sessions.pop(session_id, None)
+            _clear_ussd_state(db, session_id)
         _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path="[otp-redacted]", response_text=msg, farmer=farmer)
         return {"message": msg, "reply": retry_otp}
 
     # ---- Unknown state (shouldn't happen) — reset gracefully
-    _ussd_sessions.pop(session_id, None)
+    _clear_ussd_state(db, session_id)
     msg = "Session expired. Please dial again."
     _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=None)
     return {"message": msg, "reply": False}

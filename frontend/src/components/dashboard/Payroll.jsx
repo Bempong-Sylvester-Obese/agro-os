@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { CheckCircle, XCircle, Clock, AlertTriangle } from 'lucide-react'
 import { fetchPayrollSummary, approvePayroll, disbursePayroll, fetchPayrollHistory } from '../../api/payroll'
-import { fetchWorkers } from '../../api/workers'
 import DashboardTableToolbar from './DashboardTableToolbar'
 import DashboardPagination from './DashboardPagination'
 
@@ -126,7 +125,7 @@ export default function Payroll({ cooperativeId }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {paged.map((item, i) => (
+                  {paged.map((item) => (
                     <tr key={item.worker_id}>
                       <td>{item.worker_name}</td>
                       <td>{item.phone}</td>

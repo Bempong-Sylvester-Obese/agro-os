@@ -1,3 +1,6 @@
+-- ⚠️ REFERENCE ONLY — actual schema is managed by Alembic (backend/alembic/versions/).
+-- Do NOT apply this SQL directly. Use `alembic upgrade head` instead.
+--
 -- RLS policies for M5 Solo Farm / Worker Platform tables
 -- Mirrors the pattern in 002_rls_policies.sql
 

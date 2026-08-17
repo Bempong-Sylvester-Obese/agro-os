@@ -10,7 +10,11 @@ const authMocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../api/auth', () => ({
+  acceptInvite: vi.fn(),
+  changePassword: vi.fn(),
+  confirmPasswordReset: vi.fn(),
   login: vi.fn(),
+  requestPasswordReset: vi.fn(),
   signup: authMocks.signup,
   storeAuthToken: vi.fn(),
   userFromAuthToken: vi.fn(() => null),

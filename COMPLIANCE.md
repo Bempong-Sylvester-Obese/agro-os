@@ -129,9 +129,9 @@ cooperative society under Act 1148:
 |---|---|
 | Data privacy policy documented | ✅ Done (`docs/data-privacy.md`) |
 | Security policy & webhook verification (payments) | ✅ Done for payment webhook |
-| USSD webhook signature verification | ❌ Open — P0 |
-| Role-based access control (production) | ⚠️ Designed, not enforced yet |
-| Supabase row-level security | ❌ Not yet deployed |
+| USSD webhook signature verification | ✅ Implemented — shared-secret validation |
+| Role-based access control (production) | ✅ Enforced — JWT scoped per cooperative |
+| Supabase row-level security | ✅ Deployed — tenant-scoped RLS as defense-in-depth |
 | AML/transaction monitoring | ❌ Not started — deferred to Moolre KYC + future issue |
 | Data Protection Commission registration | ❌ Not applicable pre-launch; required before real farmer data |
 | Legal review of this policy and data-privacy.md | ❌ Outstanding — required before production |
