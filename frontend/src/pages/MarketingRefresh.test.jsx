@@ -35,6 +35,7 @@ describe('marketing refresh', () => {
     expect(screen.getByRole('link', { name: /Contact enterprise sales/i }).getAttribute('href')).toBe(
       '/book-demo?plan=enterprise&topic=Enterprise+implementation',
     )
+    expect(screen.getByLabelText('AgroOS dashboard preview')).toBeTruthy()
     fireEvent.click(screen.getAllByRole('button', { name: /Create free workspace/i })[0])
     expect(screen.getByTestId('location').textContent).toBe('/subscribe/starter')
   })
