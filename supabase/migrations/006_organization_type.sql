@@ -1,3 +1,6 @@
+-- ⚠️ REFERENCE ONLY — actual schema is managed by Alembic (backend/alembic/versions/).
+-- Do NOT apply this SQL directly. Use `alembic upgrade head` instead.
+--
 -- Add organization type, subscription, and role columns to cooperatives and users
 -- to match backend/app/models/models.py (Cooperative and User SQLAlchemy models)
 

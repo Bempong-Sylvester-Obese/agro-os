@@ -218,8 +218,8 @@ def test_demo_reset_is_hidden_in_production(client, db, monkeypatch):
     monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("SECRET_KEY", "strong-production-reset-test-secret-key")
     monkeypatch.setenv("ADMIN_PASSWORD", "strong-production-admin-password")
+    monkeypatch.setenv("MOOLRE_WEBHOOK_SECRET", "test-production-webhook-secret")
     from app.config import get_settings
-
     get_settings.cache_clear()
     cooperative = Cooperative(name=DEMO_COOPERATIVE_NAME, currency="GHS")
     db.add(cooperative)
