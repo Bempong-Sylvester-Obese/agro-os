@@ -943,12 +943,15 @@ class Announcement(Base):
     __tablename__ = "announcements"
 
     id = Column(Integer, primary_key=True, index=True)
-    cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=False)
+    cooperative_id = Column(
+        Integer, ForeignKey("cooperatives.id"), nullable=False, index=True
+    )
     title = Column(String, nullable=False)
     body = Column(Text, nullable=False)
     send_sms = Column(Boolean, default=False, nullable=False)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    deleted_at = Column(DateTime, nullable=True)
 
     cooperative = relationship("Cooperative")
     creator = relationship("User")

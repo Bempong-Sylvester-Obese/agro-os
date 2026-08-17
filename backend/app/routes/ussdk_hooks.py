@@ -554,7 +554,10 @@ async def announcements(
     coop_id = farmer.cooperative_id if farmer else None
     announcements = (
         db.query(Announcement)
-        .filter(Announcement.cooperative_id == coop_id)
+        .filter(
+            Announcement.cooperative_id == coop_id,
+            Announcement.deleted_at.is_(None),
+        )
         .order_by(Announcement.created_at.desc())
         .limit(3)
         .all()
@@ -569,7 +572,7 @@ async def announcements(
 
     if not farmer and len(memberships) > 1:
         return cooperative_selection_payload(memberships)
-    if farmer:
+    if farmer and farmer.sms_consent:
         moolre = MoolreService()
         sms_result = await moolre.send_single_sms(
             phone=farmer.phone,

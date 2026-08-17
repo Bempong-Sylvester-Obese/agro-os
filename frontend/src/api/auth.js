@@ -51,6 +51,17 @@ export async function acceptInvite(inviteToken, password) {
   })
 }
 
+export async function changePassword(accessToken, newPassword) {
+  await fetchJson(`${API_URL}/auth/change-password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ new_password: newPassword }),
+  })
+}
+
 async function authFetch(path, body, { retries = 2 } = {}) {
   let lastError
   for (let attempt = 0; attempt <= retries; attempt += 1) {

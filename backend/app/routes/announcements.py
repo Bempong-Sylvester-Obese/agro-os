@@ -1,9 +1,16 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+
 from app.database.db import get_db
-from app.models.models import Announcement, Cooperative, CooperativeMembership, User
+from app.models.models import Announcement, CooperativeMembership, User
 from app.schemas.announcement import AnnouncementCreate, AnnouncementResponse
-from app.services.auth_service import enforce_cooperative_scope, get_current_user, require_roles
+from app.services.auth_service import (
+    enforce_cooperative_scope,
+    get_current_user,
+    require_roles,
+)
 
 router = APIRouter(prefix="/announcements", tags=["announcements"])
 
@@ -18,7 +25,10 @@ def list_announcements(
     enforce_cooperative_scope(current_user, cooperative_id)
     return (
         db.query(Announcement)
-        .filter(Announcement.cooperative_id == cooperative_id)
+        .filter(
+            Announcement.cooperative_id == cooperative_id,
+            Announcement.deleted_at.is_(None),
+        )
         .order_by(Announcement.created_at.desc())
         .offset(skip)
         .limit(limit)
@@ -52,7 +62,7 @@ async def create_announcement(
             .filter(
                 CooperativeMembership.cooperative_id == cooperative_id,
                 CooperativeMembership.membership_status == "active",
-                CooperativeMembership.sms_consent == True,
+                CooperativeMembership.sms_consent.is_(True),
             )
             .all()
         )
@@ -77,10 +87,14 @@ def delete_announcement(
     enforce_cooperative_scope(current_user, cooperative_id)
     announcement = (
         db.query(Announcement)
-        .filter(Announcement.id == announcement_id, Announcement.cooperative_id == cooperative_id)
+        .filter(
+            Announcement.id == announcement_id,
+            Announcement.cooperative_id == cooperative_id,
+            Announcement.deleted_at.is_(None),
+        )
         .first()
     )
     if not announcement:
         raise HTTPException(status_code=404, detail="Announcement not found")
-    db.delete(announcement)
+    announcement.deleted_at = datetime.now(timezone.utc)
     db.commit()

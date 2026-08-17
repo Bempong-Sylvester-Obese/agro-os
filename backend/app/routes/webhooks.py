@@ -594,7 +594,10 @@ async def handle_ussd_session(
             from app.models.models import Announcement
             announcements = (
                 db.query(Announcement)
-                .filter(Announcement.cooperative_id == farmer.cooperative_id)
+                .filter(
+                    Announcement.cooperative_id == farmer.cooperative_id,
+                    Announcement.deleted_at.is_(None),
+                )
                 .order_by(Announcement.created_at.desc())
                 .limit(3)
                 .all()
@@ -606,7 +609,7 @@ async def handle_ussd_session(
                 announcement_text = "\n---\n".join(lines)
             else:
                 announcement_text = "No announcements yet. Check with your cooperative leader."
-            if farmer:
+            if farmer and farmer.sms_consent:
                 moolre = MoolreService()
                 sms_result = await moolre.send_single_sms(
                     phone=farmer.phone, message=announcement_text, ref=f"announce-{farmer.id}"

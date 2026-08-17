@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Trash2, Loader2, Megaphone, MessageSquare } from 'lucide-react'
 import { fetchAnnouncements, createAnnouncement, deleteAnnouncement } from '../../api/announcements'
 
-export default function Announcements({ cooperativeId }) {
+export default function Announcements({ cooperativeId, userRole }) {
   const [announcements, setAnnouncements] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -12,6 +12,8 @@ export default function Announcements({ cooperativeId }) {
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [sendSMS, setSendSMS] = useState(false)
+  const canCreate = !userRole || ['admin', 'finance_officer'].includes(userRole)
+  const canDelete = !userRole || userRole === 'admin'
 
   function load() {
     if (!cooperativeId) return
@@ -66,11 +68,11 @@ export default function Announcements({ cooperativeId }) {
   }
 
   if (loading) return <div className="skeleton-box" style={{ height: 400 }} />
-  if (error) return <div className="error-banner">Failed to load announcements</div>
+  if (error) return <div className="error-banner" role="alert">Failed to load announcements</div>
 
   return (
     <div>
-      <div className="section-card" style={{ marginBottom: 24 }}>
+      {canCreate && <div className="section-card" style={{ marginBottom: 24 }}>
         <div className="section-header">
           <h2>Post announcement</h2>
         </div>
@@ -132,7 +134,7 @@ export default function Announcements({ cooperativeId }) {
           </button>
           <style>{`.spin { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </form>
-      </div>
+      </div>}
 
       <div className="admin-card">
         <div className="section-header">
@@ -183,7 +185,7 @@ export default function Announcements({ cooperativeId }) {
                     {formatDate(a.created_at)}
                   </div>
                 </div>
-                <button
+                {canDelete && <button
                   type="button"
                   onClick={() => handleDelete(a.id)}
                   disabled={deletingId === a.id}
@@ -198,9 +200,10 @@ export default function Announcements({ cooperativeId }) {
                     opacity: deletingId === a.id ? 0.5 : 1,
                   }}
                   title="Delete announcement"
+                  aria-label={`Delete announcement: ${a.title}`}
                 >
                   <Trash2 size={16} />
-                </button>
+                </button>}
               </div>
             ))}
           </div>

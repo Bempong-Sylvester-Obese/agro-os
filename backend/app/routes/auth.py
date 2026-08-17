@@ -8,6 +8,7 @@ from app.models.models import AdminAuditLog, Cooperative, User
 from app.schemas.auth import (
     AcceptInviteRequest,
     InviteUserRequest,
+    PasswordChangeRequest,
     PasswordResetConfirm,
     PasswordResetRequest,
     SignupRequest,
@@ -22,6 +23,7 @@ from app.services.auth_service import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
     generate_reset_or_invite_token,
+    get_password_change_user,
     get_password_hash,
     invite_token_valid,
     require_roles,
@@ -299,6 +301,21 @@ def password_reset_confirm(data: PasswordResetConfirm, db: Session = Depends(get
     user.must_change_password = False
     db.commit()
     return {"message": "Password has been reset successfully."}
+
+
+@router.post("/change-password", status_code=200)
+def change_password(
+    data: PasswordChangeRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_password_change_user),
+):
+    if current_user is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    current_user.hashed_password = get_password_hash(data.new_password)
+    current_user.must_change_password = False
+    db.commit()
+    return {"message": "Password has been changed successfully."}
+
 
 @router.post("/invite", response_model=UserResponse, status_code=201)
 def invite_user(

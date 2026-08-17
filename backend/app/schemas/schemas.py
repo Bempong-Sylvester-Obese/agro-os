@@ -67,6 +67,7 @@ class FarmerBase(BaseModel):
     animal_type: Optional[str] = None
     animal_scale: Optional[float] = Field(default=None, ge=0)
     cooperative_id: int
+    sms_consent: bool = True
 
 
 class FarmerCreate(FarmerBase):
@@ -85,6 +86,7 @@ class FarmerUpdate(BaseModel):
     animal_scale: Optional[float] = Field(default=None, ge=0)
     membership_status: Optional[MembershipStatus] = None
     cooperative_id: Optional[int] = None
+    sms_consent: Optional[bool] = None
 
 
 class FarmerResponse(FarmerBase):

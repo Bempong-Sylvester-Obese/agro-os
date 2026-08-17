@@ -57,7 +57,7 @@ def decode_access_token(token: str) -> dict:
         ) from exc
 
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def _authenticated_user(token: str | None, db: Session) -> User | None:
     settings = get_settings()
     if not settings.auth_enabled:
         return None
@@ -79,6 +79,27 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     if user is None or not user.is_active:
         raise credentials_exception
     return user
+
+
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+):
+    user = _authenticated_user(token, db)
+    if user is not None and user.must_change_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Password change required",
+        )
+    return user
+
+
+def get_password_change_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db),
+):
+    """Authenticate a user without blocking the required-password-change endpoint."""
+    return _authenticated_user(token, db)
 
 
 def get_optional_user(

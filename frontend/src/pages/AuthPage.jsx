@@ -1,8 +1,7 @@
 import React, { useEffect, useId, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { login, signup, storeAuthToken, userFromAuthToken, userFromSignupResponse, warmAuthBackend, requestPasswordReset, confirmPasswordReset, acceptInvite } from '../api/auth'
+import { acceptInvite, changePassword, confirmPasswordReset, login, requestPasswordReset, signup, storeAuthToken, userFromAuthToken, userFromSignupResponse, warmAuthBackend } from '../api/auth'
 import { createSubscriptionCheckout } from '../api/cooperatives'
-import { updateCooperativeUser } from '../api/governance'
 import { Sprout, ArrowLeft, ArrowRight, Building2, Users, MapPin, Mail, Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
@@ -221,7 +220,6 @@ export default function AuthPage({ onAuth }) {
     setLoading(true)
     try {
       const data = await login(email, password)
-      storeAuthToken(data.access_token)
       if (data.password_change_required) {
         setPendingLoginData(data)
         setPendingLoginToken(data.access_token)
@@ -229,6 +227,7 @@ export default function AuthPage({ onAuth }) {
         setLoading(false)
         return
       }
+      storeAuthToken(data.access_token)
       completeAuth(data, {
         email: data.user?.email || email.trim(),
         cooperative_id: data.user?.cooperative_id ?? userFromAuthToken(data.access_token)?.cooperative_id ?? null,
@@ -351,10 +350,8 @@ export default function AuthPage({ onAuth }) {
     setError(null)
     setLoading(true)
     try {
-      const userId = pendingLoginData?.user?.id
-      if (userId) {
-        await updateCooperativeUser(userId, { password: resetPassword })
-      }
+      await changePassword(pendingLoginToken, resetPassword)
+      storeAuthToken(pendingLoginToken)
       setError(null)
       completeAuth(pendingLoginData, {
         email: pendingLoginData?.user?.email || email.trim(),

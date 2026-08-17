@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
-import { CheckSquare, Square, UserPlus } from 'lucide-react'
-import { API_URL, apiFetch, authHeaders } from '../../api/config'
-import DashboardTableToolbar from './DashboardTableToolbar'
+import { CheckSquare, Square } from 'lucide-react'
+import { API_URL, authHeaders, fetchJson } from '../../api/config'
 import DashboardPagination from './DashboardPagination'
 
 const PAGE_SIZE = 20
@@ -27,12 +26,10 @@ export default function CooperativeAttendance({ cooperativeId, farmers = [] }) {
         if (ids.length === 0) { setRecords([]); return }
         const allRecords = await Promise.all(
           ids.map(id =>
-            apiFetch(
+            fetchJson(
               `${API_URL}/farmers/${id}/attendance?cooperative_id=${cooperativeId}&limit=5`,
               { headers: authHeaders() },
             )
-              .then(r => r.ok ? r.json() : [])
-              .catch(() => [])
           ),
         )
         const merged = allRecords.flat().sort((a, b) => {
@@ -87,10 +84,11 @@ export default function CooperativeAttendance({ cooperativeId, farmers = [] }) {
       .map(([id]) => parseInt(id, 10))
 
     try {
-      for (const farmerId of farmers.map(f => f.id)) {
-        if (!checked.includes(farmerId) && !Object.prototype.hasOwnProperty.call(attendanceMap, farmerId)) continue
+      await Promise.all(farmers.map(async (farmer) => {
+        const farmerId = farmer.id
+        if (!checked.includes(farmerId) && !Object.prototype.hasOwnProperty.call(attendanceMap, farmerId)) return
         const attended = checked.includes(farmerId)
-        await apiFetch(`${API_URL}/farmers/${farmerId}/attendance?cooperative_id=${cooperativeId}`, {
+        await fetchJson(`${API_URL}/farmers/${farmerId}/attendance?cooperative_id=${cooperativeId}`, {
           method: 'POST',
           headers: authHeaders(true),
           body: JSON.stringify({
@@ -101,7 +99,7 @@ export default function CooperativeAttendance({ cooperativeId, farmers = [] }) {
             attended,
           }),
         })
-      }
+      }))
 
       setEventName('')
       setEventDate('')
@@ -114,12 +112,10 @@ export default function CooperativeAttendance({ cooperativeId, farmers = [] }) {
         if (ids.length > 0) {
           const allRecords = await Promise.all(
             ids.map(id =>
-              apiFetch(
+              fetchJson(
                 `${API_URL}/farmers/${id}/attendance?cooperative_id=${cooperativeId}&limit=5`,
                 { headers: authHeaders() },
               )
-                .then(r => r.ok ? r.json() : [])
-                .catch(() => [])
             ),
           )
           const merged = allRecords.flat().sort((a, b) => {
@@ -151,7 +147,7 @@ export default function CooperativeAttendance({ cooperativeId, farmers = [] }) {
   return (
     <div>
       {error && (
-        <div className="error-banner" style={{ marginBottom: 16 }}>
+        <div className="error-banner" role="alert" style={{ marginBottom: 16 }}>
           Failed to load attendance records
         </div>
       )}
@@ -218,14 +214,14 @@ export default function CooperativeAttendance({ cooperativeId, farmers = [] }) {
                   }}
                 >
                   {attendanceMap[farmer.id]
-                    ? <CheckSquare size={18} color="var(--g)" />
-                    : <Square size={18} color="var(--muted)" />
+                    ? <CheckSquare size={18} color="var(--g)" aria-hidden="true" />
+                    : <Square size={18} color="var(--muted)" aria-hidden="true" />
                   }
                   <input
                     type="checkbox"
                     checked={attendanceMap[farmer.id] || false}
                     onChange={() => toggleFarmer(farmer.id)}
-                    style={{ display: 'none' }}
+                    className="sr-only"
                   />
                   <span style={{ flex: 1 }}>
                     <strong>{farmer.name}</strong>

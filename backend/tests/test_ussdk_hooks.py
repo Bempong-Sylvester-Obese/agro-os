@@ -337,3 +337,28 @@ def test_announcements_sends_sms_for_registered_farmer(client, farmer):
     assert resp.status_code == 200
     mock_sms.assert_called_once()
     assert "SMS" in resp.json()["message"]
+
+
+def test_announcements_respects_member_sms_opt_out(client, farmer, db):
+    from app.models.models import CooperativeMembership
+
+    membership = (
+        db.query(CooperativeMembership)
+        .filter(CooperativeMembership.id == farmer["id"])
+        .one()
+    )
+    membership.sms_consent = False
+    db.commit()
+
+    with patch(
+        "app.routes.ussdk_hooks.MoolreService.send_single_sms",
+        new_callable=AsyncMock,
+    ) as mock_sms:
+        resp = client.post(
+            "/ussdk/announcements",
+            json=_hook_payload(farmer["phone"]),
+        )
+
+    assert resp.status_code == 200
+    mock_sms.assert_not_awaited()
+    assert "Also sent via SMS" not in resp.json()["message"]
