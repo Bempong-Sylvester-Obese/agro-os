@@ -1,38 +1,81 @@
 """Abstract provider ports for payment and SMS operations."""
 from abc import ABC, abstractmethod
-from typing import Any
 
 
 class PaymentProvider(ABC):
     """Port for payment operations (collections, disbursements, transfers)."""
 
     @abstractmethod
-    async def initiate_payment(self, *, payer_phone: str, amount: str, currency: str = "GHS", channel: str = "13", external_ref: str = "", otpcode: str | None = None, reference: str = "", account_number: str | None = None) -> dict:
+    async def initiate_payment(
+        self,
+        *,
+        payer_phone: str,
+        amount: float,
+        currency: str = "GHS",
+        channel: str = "13",
+        external_ref: str | None = None,
+        otpcode: str | None = None,
+        reference: str = "Cooperative dues",
+        account_number: str | None = None,
+    ) -> dict:
         """Initiate a mobile money payment push. Returns dict with success/outcome."""
         ...
 
     @abstractmethod
-    async def initiate_transfer(self, *, receiver_phone: str, amount: float, currency: str = "GHS", external_ref: str = "", reference: str = "", account_number: str | None = None) -> dict:
+    async def initiate_transfer(
+        self,
+        *,
+        receiver_phone: str,
+        amount: float,
+        currency: str = "GHS",
+        channel: str | None = None,
+        external_ref: str | None = None,
+        reference: str = "Loan disbursement",
+        account_number: str | None = None,
+    ) -> dict:
         """Disburse funds to a mobile money wallet."""
         ...
 
     @abstractmethod
-    async def payment_status(self, external_ref: str, account_number: str | None = None, id_type: str = "1") -> dict:
+    async def payment_status(
+        self, external_ref: str, account_number: str | None = None
+    ) -> dict:
         """Check status of a previously initiated payment."""
         ...
 
     @abstractmethod
-    async def transfer_status(self, reference: str, account_number: str | None = None, id_type: str = "2") -> dict:
+    async def transfer_status(
+        self,
+        reference: str,
+        account_number: str | None = None,
+        id_type: str = "1",
+    ) -> dict:
         """Check status of a transfer/disbursement."""
         ...
 
     @abstractmethod
-    async def create_account(self, *, account_name: str) -> dict:
+    async def create_account(
+        self,
+        *,
+        account_name: str,
+        currency: str = "GHS",
+        api: int = 1,
+        callback: str | None = None,
+    ) -> dict:
         """Create a sub-wallet/account."""
         ...
 
     @abstractmethod
-    async def internal_transfer(self, *, from_account: str, to_account: str, amount: float, reference: str) -> dict:
+    async def internal_transfer(
+        self,
+        *,
+        receiver_account: str,
+        amount: float,
+        currency: str = "GHS",
+        external_ref: str | None = None,
+        reference: str = "Internal Transfer",
+        from_account_number: str | None = None,
+    ) -> dict:
         """Internal wallet-to-wallet transfer."""
         ...
 
@@ -42,12 +85,25 @@ class PaymentProvider(ABC):
         ...
 
     @abstractmethod
-    async def generate_payment_link(self, *, amount: float, description: str, redirect_url: str, external_ref: str) -> dict:
+    async def generate_payment_link(
+        self,
+        *,
+        amount: float,
+        email: str,
+        currency: str = "GHS",
+        external_ref: str | None = None,
+        callback_url: str | None = None,
+        redirect_url: str | None = None,
+        reusable: bool = False,
+        expiration_minutes: int = 60,
+        account_number: str | None = None,
+        metadata: dict | None = None,
+    ) -> dict:
         """Generate a hosted payment link. Returns dict with url."""
         ...
 
     @abstractmethod
-    async def account_status(self, account_number: str) -> dict:
+    async def account_status(self, account_number: str | None = None) -> dict:
         """Get wallet/account balance and status."""
         ...
 
@@ -57,7 +113,14 @@ class PaymentProvider(ABC):
         ...
 
     @abstractmethod
-    async def list_transactions(self, account_number: str | None = None, start_date: str | None = None, end_date: str | None = None, limit: int = 50, status: str | None = None) -> dict:
+    async def list_transactions(
+        self,
+        account_number: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        limit: int = 50,
+        status: str | None = None,
+    ) -> dict:
         """List account transactions from the provider."""
         ...
 
@@ -76,6 +139,6 @@ class SmsProvider(ABC):
         ...
 
     @abstractmethod
-    async def diagnose_sms(self, recipient: str) -> dict:
-        """Run SMS connectivity diagnostics for a recipient."""
+    async def diagnose_sms(self) -> dict:
+        """Run configuration-only SMS connectivity diagnostics."""
         ...

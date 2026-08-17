@@ -79,9 +79,16 @@ def _provider_amount_matches(expected: float, provider_amount) -> bool:
 
 
 def _get_loan_or_404(
-    loan_id: int, db: Session, current_user: User | None = None
+    loan_id: int,
+    db: Session,
+    current_user: User | None = None,
+    *,
+    lock: bool = False,
 ) -> Loan:
-    loan = db.query(Loan).filter(Loan.id == loan_id).first()
+    query = db.query(Loan).filter(Loan.id == loan_id)
+    if lock:
+        query = query.with_for_update()
+    loan = query.first()
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
     farmer = db.query(Farmer).filter(Farmer.id == loan.farmer_id).first()
@@ -399,7 +406,7 @@ def approve_loan(
     current_user: User | None = Depends(require_roles("admin", "finance_officer")),
 ):
     """Approve a requested loan."""
-    loan = _get_loan_or_404(loan_id, db, current_user)
+    loan = _get_loan_or_404(loan_id, db, current_user, lock=True)
     if loan.status != LoanStatus.requested:
         raise HTTPException(
             status_code=409,

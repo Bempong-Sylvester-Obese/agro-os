@@ -38,7 +38,7 @@ def format_loan_balance_response(phone: str, db: Session) -> str:
     """Calculate and format loan balance for USSD display. Shared logic."""
     from app.models.models import CooperativeMembership, Loan
 
-    farmer, memberships = resolve_farmer_by_phone(phone, db)
+    _, memberships = resolve_farmer_by_phone(phone, db)
     if not memberships:
         return "END Phone not registered. Contact your cooperative."
 

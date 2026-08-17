@@ -193,6 +193,81 @@ def test_repayment_webhook_finalizes_linked_loan(db, farmer):
     assert loan.status == LoanStatus.repaid
 
 
+def test_replayed_success_webhook_does_not_repeat_side_effects(db, farmer):
+    from fastapi import BackgroundTasks
+
+    from app.models.models import Transaction, TransactionStatus, TransactionType
+    from app.routes.webhooks import _process_payment_payload
+
+    tx = Transaction(
+        farmer_id=farmer["id"],
+        transaction_type=TransactionType.dues,
+        amount=50,
+        status=TransactionStatus.pending,
+        moolre_reference="duplicate-success-ref",
+    )
+    db.add(tx)
+    db.commit()
+    first_tasks = BackgroundTasks()
+    second_tasks = BackgroundTasks()
+
+    first = _process_payment_payload(
+        _make_payment_payload("duplicate-success-ref"),
+        db,
+        first_tasks,
+        signature_valid=True,
+    )
+    second = _process_payment_payload(
+        _make_payment_payload("duplicate-success-ref"),
+        db,
+        second_tasks,
+        signature_valid=True,
+    )
+
+    assert "confirmed" in first["message"].lower()
+    assert second["message"] == "transaction already completed"
+    assert len(first_tasks.tasks) == 1
+    assert second_tasks.tasks == []
+
+
+def test_replayed_subscription_webhook_extends_once(db, cooperative):
+    from app.models.models import Cooperative, PaymentWebhookEvent
+    from app.routes.webhooks import _process_payment_payload
+    from fastapi import BackgroundTasks
+
+    external_ref = f"sub_upg_{cooperative['id']}_12345"
+    payload = _make_payment_payload(external_ref, amount="299.00")
+
+    first = _process_payment_payload(
+        payload,
+        db,
+        BackgroundTasks(),
+        signature_valid=True,
+    )
+    coop = db.query(Cooperative).filter(Cooperative.id == cooperative["id"]).one()
+    first_expiry = coop.subscription_expires_at
+    second = _process_payment_payload(
+        payload,
+        db,
+        BackgroundTasks(),
+        signature_valid=True,
+    )
+    db.refresh(coop)
+
+    assert first["message"] == "Subscription webhook processed"
+    assert second["message"] == "Subscription webhook already processed"
+    assert coop.subscription_expires_at == first_expiry
+    assert (
+        db.query(PaymentWebhookEvent)
+        .filter(
+            PaymentWebhookEvent.moolre_reference == external_ref,
+            PaymentWebhookEvent.processed.is_(True),
+        )
+        .count()
+        == 1
+    )
+
+
 def test_webhook_invalid_json(client):
     resp = client.post(
         "/webhooks/moolre/payment",

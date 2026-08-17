@@ -407,7 +407,9 @@ async def collect_dues(
                 try:
                     payment_provider = get_payment_provider()
                     coop = db.query(Cooperative).filter(Cooperative.id == farmer.cooperative_id).first()
-                    coop_account = coop.moolre_account_number if coop else None
+                    coop_account = payment_provider.resolve_account_number(
+                        coop.moolre_account_number if coop else None
+                    )
                     status_result = await payment_provider.payment_status(
                         external_ref=existing.moolre_reference,
                         account_number=coop_account,
@@ -579,6 +581,7 @@ async def list_moolre_transactions(
     start_date: str | None = None,
     end_date: str | None = None,
     limit: int = 50,
+    db: Session = Depends(get_db),
     current_user: User | None = Depends(require_roles("admin", "finance_officer")),
 ):
     """
@@ -586,7 +589,21 @@ async def list_moolre_transactions(
     Returns raw Moolre transaction data for the finance dashboard.
     """
     provider = get_payment_provider()
+    cooperative_account = None
+    if current_user and current_user.cooperative_id:
+        cooperative = db.query(Cooperative).filter(
+            Cooperative.id == current_user.cooperative_id
+        ).first()
+        cooperative_account = (
+            cooperative.moolre_account_number if cooperative else None
+        )
+        if not cooperative_account:
+            raise HTTPException(
+                status_code=409,
+                detail="Cooperative wallet is not provisioned",
+            )
     return await provider.list_transactions(
+        account_number=provider.resolve_account_number(cooperative_account),
         start_date=start_date,
         end_date=end_date,
         limit=limit,
@@ -595,8 +612,24 @@ async def list_moolre_transactions(
 
 @router.get("/moolre/wallet-balance")
 async def get_wallet_balance(
+    db: Session = Depends(get_db),
     current_user: User | None = Depends(require_roles("admin", "finance_officer")),
 ):
     """Check cooperative Moolre wallet balance."""
     provider = get_payment_provider()
-    return await provider.account_status()
+    cooperative_account = None
+    if current_user and current_user.cooperative_id:
+        cooperative = db.query(Cooperative).filter(
+            Cooperative.id == current_user.cooperative_id
+        ).first()
+        cooperative_account = (
+            cooperative.moolre_account_number if cooperative else None
+        )
+        if not cooperative_account:
+            raise HTTPException(
+                status_code=409,
+                detail="Cooperative wallet is not provisioned",
+            )
+    return await provider.account_status(
+        account_number=provider.resolve_account_number(cooperative_account)
+    )
