@@ -1,9 +1,12 @@
 # USSD Gateway (Africa's Talking format) — delegates to app.services.ussd_service
 
-from fastapi import APIRouter, Form, Depends, Request, Response
-from sqlalchemy.orm import Session
+import hmac
 import logging
 
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
+from sqlalchemy.orm import Session
+
+from app.config import get_settings
 from app.database.db import get_db
 from app.models.models import Farmer, CooperativeMembership, Cooperative, Loan, LoanStatus
 from app.services.ussd_service import resolve_farmer_by_phone
@@ -27,12 +30,16 @@ async def ussd_callback(
     Native USSD Gateway Router using Africa's Talking format.
     State is managed by the `text` string which contains inputs separated by '*'.
     """
-    from app.config import get_settings
     settings = get_settings()
-    if settings.ussd_callback_secret:
-        secret = request.query_params.get("secret", "")
-        if secret != settings.ussd_callback_secret:
-            return Response(content="END Invalid request", media_type="text/plain")
+    configured_secret = settings.ussd_callback_secret
+    if not configured_secret:
+        if settings.app_env.lower() in ("production", "prod"):
+            logger.error("USSD_CALLBACK_SECRET is required in production")
+            raise HTTPException(status_code=401, detail="Invalid USSD callback secret")
+    else:
+        supplied_secret = request.query_params.get("secret", "")
+        if not hmac.compare_digest(supplied_secret, configured_secret):
+            raise HTTPException(status_code=401, detail="Invalid USSD callback secret")
 
     inputs = text.split("*") if text else []
     

@@ -420,14 +420,8 @@ async def handle_moolre_payment_webhook(
 #
 # Unlike Africa's Talking-style gateways, "message" is NOT a cumulative
 # dialed string — it is only what the user typed at *this* step. Session
-# continuity comes entirely from "sessionId", so we keep a small in-memory
-# state machine keyed by sessionId. This resets if the Render dyno restarts,
-# which is an acceptable tradeoff for the demo (Issue #16 tracks moving this
-# to persistent storage later).
-#
-# Per SECURITY.md (Issue #30): the USSD callback is unsigned by Moolre,
-# unlike the HMAC-signed /moolre/payment webhook above, so no signature
-# check is applied here.
+# continuity comes from "sessionId", with state persisted in the database so
+# sessions survive process restarts and work across multiple app instances.
 # ---------------------------------------------------------------------------
 
 USSD_MENU_MAIN = (
@@ -445,10 +439,13 @@ NOT_REGISTERED_MSG = "Phone not registered with AgroOS. Contact your cooperative
 _USSD_SESSION_TTL_SECONDS = 3600
 
 
-def _get_ussd_state(db: Session, session_id: str) -> dict | None:
+def _get_ussd_state(db: Session, session_id: str, phone: str) -> dict | None:
     rows = (
         db.query(UssdSession)
-        .filter(UssdSession.session_id == session_id)
+        .filter(
+            UssdSession.session_id == session_id,
+            UssdSession.phone == phone,
+        )
         .order_by(UssdSession.created_at.desc())
         .all()
     )
@@ -527,10 +524,15 @@ async def handle_ussd_session(
 ):
     """Handle USSD session callbacks from Moolre. See module docstring above
     for the request/response contract."""
-    if settings.moolre_ussd_secret:
-        secret = request.query_params.get("secret", "")
-        if secret != settings.moolre_ussd_secret:
-            return {"message": "END Invalid request", "reply": False}
+    configured_secret = settings.moolre_ussd_secret
+    if not configured_secret:
+        if settings.app_env.lower() in ("production", "prod"):
+            logger.error("MOOLRE_USSD_SECRET is required in production")
+            raise HTTPException(status_code=401, detail="Invalid USSD callback secret")
+    else:
+        supplied_secret = request.query_params.get("secret", "")
+        if not hmac.compare_digest(supplied_secret, configured_secret):
+            raise HTTPException(status_code=401, detail="Invalid USSD callback secret")
 
     body = await request.body()
     try:
@@ -546,8 +548,10 @@ async def handle_ussd_session(
     if not session_id:
         raise HTTPException(status_code=400, detail="Missing sessionId")
 
-    # ---- Fresh session: silently resolve the farmer's membership, then show the menu
-    if is_new or session_id not in _ussd_sessions:
+    state = None if is_new else _get_ussd_state(db, session_id, msisdn)
+
+    # ---- Fresh or expired session: resolve the membership, then show the menu
+    if state is None:
         farmer_obj, memberships = resolve_farmer_by_phone(msisdn, db)
         if len(memberships) > 1:
             options = "\n".join(
@@ -571,14 +575,20 @@ async def handle_ussd_session(
             return {"message": msg, "reply": True}
 
         primary_membership = memberships[0] if memberships else None
-        _ussd_sessions[session_id] = {
+        state = {
             "step": "main",
             "farmer_id": primary_membership.id if primary_membership else None,
         }
-        _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path="new", response_text=USSD_MENU_MAIN, farmer=primary_membership)
+        _log_ussd_session(
+            db,
+            session_id=session_id,
+            phone=msisdn,
+            input_path="new",
+            response_text=USSD_MENU_MAIN,
+            farmer=primary_membership,
+            state=state,
+        )
         return {"message": USSD_MENU_MAIN, "reply": True}
-
-    state = _get_ussd_state(db, session_id)
 
     if state["step"] == "select_cooperative":
         try:

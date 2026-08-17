@@ -64,31 +64,31 @@ gated behind feature flags and must not be active in production:
 | Endpoint | Verification |
 |---|---|
 | `POST /webhooks/moolre/payment` | HMAC-SHA256 via `X-Moolre-Signature` when `MOOLRE_WEBHOOK_SECRET` is set |
-| `POST /webhooks/moolre/ussd` | Shared-secret verification via `USSD_SHARED_SECRET` |
+| `POST /webhooks/moolre/ussd` | Query-string shared secret via `MOOLRE_USSD_SECRET` |
+| `POST /ussd/callback` | Query-string shared secret via `USSD_CALLBACK_SECRET` |
+| `POST /ussdk/*` | HMAC-SHA256 via `X-USSDK-Signature` and `USSDK_HOOK_SECRET` |
 
 When `MOOLRE_WEBHOOK_SECRET` is unset, payment webhook signature checks are
 skipped (development/sandbox only). Production deployments must set the secret.
 
-USSD webhooks are authenticated using a pre-shared secret (`USSD_SHARED_SECRET`)
-validated on every callback. This closes the USSD integrity gap identified in
-earlier versions of this policy.
+USSD callbacks fail closed in production when their endpoint-specific secret is
+unset. Development and test environments may omit these secrets.
 
 ## Tenant Isolation
 
 Cross-cooperative data isolation follows a defense-in-depth model:
 
-1. **API-layer enforcement (primary):** The `enforce_cooperative_scope`
-   middleware extracts `cooperative_id` from the authenticated JWT and
-   enforces it on every request. Query-string and request-body cooperative
-   IDs cannot override this scope.
+1. **API-layer enforcement (primary):** Protected route handlers call
+   `enforce_cooperative_scope` to compare the requested cooperative with the
+   authenticated user's cooperative. Query-string and request-body cooperative
+   IDs cannot override that scope on those routes.
 
-2. **Row-level security (defense-in-depth):** Supabase RLS policies scope
-   SELECT access on `farmers`, `transactions`, `loans`, `productions`, and
-   `trust_scores` to the cooperative identified by
-   `app.current_cooperative_id`. See `supabase/migrations/009_tenant_rls_policies.sql`.
-
-RLS functions as a secondary enforcement layer — if the API-layer guard is
-ever bypassed, the database still prevents cross-cooperative data access.
+2. **Supabase RLS reference policies:** The reference SQL scopes SELECT access
+   on `farmers`, `transactions`, `loans`, `productions`, and `trust_scores` to
+   `app.current_cooperative_id`. See
+   `supabase/migrations/009_tenant_rls_policies.sql`. These files are not
+   applied by backend Alembic, so the deployed API currently relies on the
+   API-layer guard rather than RLS for tenant isolation.
 
 ## Rate Limits
 
