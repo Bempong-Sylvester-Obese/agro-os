@@ -28,7 +28,7 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
     location: '',
     description: '',
     default_currency: 'GHS',
-    moolre_account_number: ''
+    integration_account_number: ''
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -49,7 +49,7 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
         location: cooperative.location || '',
         description: cooperative.description || '',
         default_currency: cooperative.currency || cooperative.default_currency || 'GHS',
-        moolre_account_number: cooperative.moolre_account_number || ''
+        integration_account_number: cooperative.moolre_account_number || ''
       })
     }
   }, [cooperative])
@@ -111,10 +111,11 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
     setSuccessMsg(null)
 
     try {
-      const { default_currency, ...rest } = form
+      const { default_currency, integration_account_number, ...rest } = form
       await updateCooperative(cooperative.id, {
         ...rest,
         currency: default_currency,
+        moolre_account_number: integration_account_number,
       })
       setSuccessMsg('Settings updated successfully.')
       if (onRefresh) onRefresh()
@@ -261,8 +262,8 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
                   </select>
                 </div>
                 <div style={{ flex: 2 }}>
-                  <label htmlFor="settings-moolre-account" style={labelStyle}>Moolre Account Number</label>
-                  <input id="settings-moolre-account" style={inputStyle} type="text" value={form.moolre_account_number} onChange={e => setForm({...form, moolre_account_number: e.target.value})} placeholder="e.g. 1089700..." required disabled={saving}/>
+                  <label htmlFor="settings-integration-account" style={labelStyle}>Moolre Account Number</label>
+                  <input id="settings-integration-account" style={inputStyle} type="text" value={form.integration_account_number} onChange={e => setForm({...form, integration_account_number: e.target.value})} placeholder="e.g. 1089700..." required disabled={saving}/>
                 </div>
               </div>
             </div>
