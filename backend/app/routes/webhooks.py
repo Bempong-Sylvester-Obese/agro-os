@@ -66,12 +66,7 @@ from app.services.loan_request_service import (
     PendingLoanRequestError,
     create_farmer_loan_request,
 )
-from app.services.plans import (
-    PLANS,
-    activate_subscription,
-    get_plan,
-    resolve_amount,
-)
+from app.services.subscription_service import process_pre_checkout, process_subscription_upgrade
 from app.services.providers.factory import get_payment_provider, get_sms_provider
 from app.services.trust_score_service import TrustScoreService
 from app.services.ussd_service import resolve_farmer_by_phone
@@ -164,135 +159,22 @@ def _process_payment_payload(
         amount = 0.0
 
     if external_ref and external_ref.startswith("sub_pre_"):
-        if moolre_status == 1:
-            from app.models.models import PendingCheckout
-            checkout = (
-                db.query(PendingCheckout)
-                .filter(PendingCheckout.reference == external_ref)
-                .with_for_update()
-                .first()
-            )
-            if checkout and abs(float(checkout.amount) - amount) >= 0.01:
-                logger.warning(
-                    "Pre-checkout amount mismatch for %s: expected=%s received=%s",
-                    checkout.reference,
-                    checkout.amount,
-                    amount,
-                )
-                return {"status": "ok", "message": "amount mismatch — acknowledged"}
-            if checkout and checkout.status == "pending":
-                checkout.status = "paid"
-                db.commit()
-                logger.info("Pending checkout %s marked paid", checkout.reference)
-        return {"status": "ok", "message": "Pre-checkout webhook processed"}
+        return process_pre_checkout(
+            db,
+            external_ref=external_ref,
+            amount=amount,
+            status_code=moolre_status,
+        )
 
     if external_ref and external_ref.startswith("sub_upg_"):
-        if moolre_status == 1:
-            try:
-                parts = external_ref.split("_")
-                if len(parts) >= 6 and parts[3].isdigit():
-                    coop_id = int(parts[2])
-                    plan_key = parts[4]
-                    band_key = "_".join(parts[5:])
-                    expected_amount = resolve_amount(plan_key, band_key)
-                elif len(parts) >= 6 and parts[4].isdigit():
-                    coop_id = int(parts[2])
-                    plan_key = parts[3]
-                    band_key = "_".join(parts[5:])
-                    expected_amount = resolve_amount(plan_key, band_key)
-                elif len(parts) == 5:
-                    coop_id = int(parts[2])
-                    plan_key = parts[3]
-                    band_key = None
-                    plan = get_plan(plan_key)
-                    expected_amount = plan["price"] if plan else None
-                elif len(parts) == 4:
-                    coop_id = int(parts[2])
-                    band_key = None
-                    matching_plans = [
-                        key
-                        for key, candidate in PLANS.items()
-                        if candidate["price"] > 0
-                        and abs(float(candidate["price"]) - amount) <= 0.01
-                    ]
-                    if len(matching_plans) != 1:
-                        raise ValueError("ambiguous legacy subscription plan")
-                    plan_key = matching_plans[0]
-                    expected_amount = PLANS[plan_key]["price"]
-                else:
-                    raise ValueError("invalid subscription reference")
-                plan = get_plan(plan_key)
-                if not plan or expected_amount is None or expected_amount <= 0:
-                    raise ValueError("invalid paid subscription plan")
-                from app.models.models import Cooperative
-                coop = (
-                    db.query(Cooperative)
-                    .filter(Cooperative.id == coop_id)
-                    .with_for_update()
-                    .first()
-                )
-                if not coop:
-                    return {"status": "ok", "message": "Cooperative not found"}
-
-                existing_event = (
-                    db.query(PaymentWebhookEvent)
-                    .filter(
-                        PaymentWebhookEvent.provider_payment_ref == external_ref,
-                        PaymentWebhookEvent.processed.is_(True),
-                    )
-                    .first()
-                )
-                if existing_event:
-                    return {
-                        "status": "ok",
-                        "message": "Subscription webhook already processed",
-                    }
-
-                if abs(amount - expected_amount) > 0.01:
-                    _record_webhook_event(
-                        db,
-                        payload=payload,
-                        signature_valid=signature_valid,
-                        processed=False,
-                        message="subscription amount mismatch",
-                    )
-                    logger.warning(
-                        "Subscription payment amount %s did not match %s for %s",
-                        amount,
-                        expected_amount,
-                        plan_key,
-                    )
-                    return {
-                        "status": "ok",
-                        "message": "Subscription amount mismatch",
-                    }
-
-                activate_subscription(coop, plan_key)
-                coop.subscription_band = band_key
-                db.add(
-                    PaymentWebhookEvent(
-                        event_type="subscription",
-                        provider_payment_ref=external_ref,
-                        signature_valid=signature_valid,
-                        payload=json.dumps(payload),
-                        processed=True,
-                        message=f"subscription activated: {plan_key}",
-                    )
-                )
-                db.commit()
-                logger.info(
-                    "Subscription upgraded for cooperative %s to %s",
-                    coop.id,
-                    plan_key,
-                )
-            except (TypeError, ValueError, IndexError) as exc:
-                db.rollback()
-                logger.warning("Rejected subscription webhook: %s", exc)
-                return {"status": "ok", "message": "Invalid subscription reference"}
-            except Exception as exc:
-                db.rollback()
-                logger.error("Failed to process subscription webhook: %s", exc)
-        return {"status": "ok", "message": "Subscription webhook processed"}
+        return process_subscription_upgrade(
+            db,
+            external_ref=external_ref,
+            amount=amount,
+            status_code=moolre_status,
+            signature_valid=signature_valid,
+            payload=payload,
+        )
 
     event = normalize_moolre_payload(payload)
     event.metadata["signature_valid"] = signature_valid
@@ -326,6 +208,21 @@ def _process_payment_payload(
             "Webhook received for unknown reference '%s' (txid: %s)", external_ref, transaction_id
         )
         return {"status": "ok", "message": "reference not found — acknowledged"}
+
+    if tx.amount and amount and abs(float(tx.amount) - amount) >= 0.01:
+        _record_webhook_event(
+            db,
+            payload=payload,
+            signature_valid=signature_valid,
+            transaction=tx,
+            processed=False,
+            message="amount mismatch",
+        )
+        logger.warning(
+            "Amount mismatch for tx %s: expected %.2f got %.2f",
+            tx.id, tx.amount, amount,
+        )
+        return {"status": "ok", "transaction_id": tx.id, "message": "amount mismatch"}
 
     from app.services.payment_service import process_payment_event
     result = process_payment_event(event, db)
