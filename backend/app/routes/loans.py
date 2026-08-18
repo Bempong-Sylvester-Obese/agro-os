@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
-from app.dependencies.cooperative_scope import resolve_cooperative_scope
+from app.dependencies.cooperative_scope import CooperativeScope, require_cooperative_scope, resolve_cooperative_scope
 from app.models.models import (
     AdminAuditLog,
     Cooperative,
@@ -315,6 +315,7 @@ def list_loans(
     limit: int = Query(default=100, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user),
+    cooperative_scope: CooperativeScope | None = Depends(require_cooperative_scope),
 ):
     """List loans with optional filters."""
     settings = get_settings()
@@ -341,6 +342,7 @@ def get_loan(
     loan_id: int,
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user),
+    cooperative_scope: CooperativeScope | None = Depends(require_cooperative_scope),
 ):
     """Get loan details."""
     return _get_loan_or_404(loan_id, db, current_user)
@@ -351,6 +353,7 @@ def list_loan_reminders(
     loan_id: int,
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user),
+    cooperative_scope: CooperativeScope | None = Depends(require_cooperative_scope),
 ):
     _get_loan_or_404(loan_id, db, current_user)
     return (

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database.db import get_db
-from app.dependencies.cooperative_scope import resolve_cooperative_scope
+from app.dependencies.cooperative_scope import CooperativeScope, require_cooperative_scope, resolve_cooperative_scope
 from app.models.models import (
     AdminAuditLog,
     Cooperative,
@@ -92,6 +92,7 @@ async def list_transactions(
     limit: int = 100,
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user),
+    cooperative_scope: CooperativeScope | None = Depends(require_cooperative_scope),
 ):
     """List transactions with optional filters."""
     settings = get_settings()
@@ -152,6 +153,7 @@ def get_farmer_transactions(
     farmer_id: int,
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user),
+    cooperative_scope: CooperativeScope | None = Depends(require_cooperative_scope),
 ):
     """Get all transactions for a specific farmer."""
     farmer = db.query(Farmer).filter(Farmer.id == farmer_id).first()
@@ -177,6 +179,7 @@ def get_transaction(
     transaction_id: int,
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user),
+    cooperative_scope: CooperativeScope | None = Depends(require_cooperative_scope),
 ):
     """Get a transaction by ID."""
     tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
@@ -194,6 +197,7 @@ def get_transaction_receipt(
     transaction_id: int,
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user),
+    cooperative_scope: CooperativeScope | None = Depends(require_cooperative_scope),
 ):
     tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
     if not tx or not tx.farmer:

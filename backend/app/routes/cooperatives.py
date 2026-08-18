@@ -12,6 +12,7 @@ from app.schemas.schemas import (
     CooperativeResponse,
     CooperativeUpdate,
 )
+from app.dependencies.cooperative_scope import CooperativeScope, require_cooperative_scope
 from app.services.auth_service import (
     enforce_cooperative_scope,
     get_current_user,
@@ -44,6 +45,7 @@ def list_cooperatives(
     limit: int = Query(default=100, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user),
+    cooperative_scope: CooperativeScope | None = Depends(require_cooperative_scope),
 ):
     """List all cooperatives."""
     query = db.query(Cooperative)
@@ -57,6 +59,7 @@ def get_cooperative(
     cooperative_id: int,
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user),
+    cooperative_scope: CooperativeScope | None = Depends(require_cooperative_scope),
 ):
     """Get a cooperative by ID."""
     enforce_cooperative_scope(current_user, cooperative_id)
