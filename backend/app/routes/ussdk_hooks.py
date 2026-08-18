@@ -1,119 +1,32 @@
 """
 USSDK Hook Adapter Routes
 
-# USSD Gateway (USSDK hooks format) — delegates to app.services.ussd_service
-
 USSDK (https://www.ussdk.me) builds the USSD menu/screens visually and calls
-these endpoints as "hooks" before rendering each step. This module translates
-USSDK's hook payload shape into calls against the existing dues-collection
-logic in app/routes/transactions.py, so Moolre auth, OTP handling, transaction
-records, and Trust Score recalculation all stay in one place.
-
-USSDK hook request shape:
-{
-  "input": {"key": "2"},
-  "props": {
-    "session": {"msisdn": "0240000001", "network": "mtn", "serviceCode": "*123*45#"},
-    "values": {"amount": "5", "otp_code": "123456"}
-  }
-}
+these endpoints as "hooks" before rendering each step.  This module handles
+authentication and delegates to app.adapters.ussdk_adapter which translates
+the hook payload into calls against the shared UssdApplicationService.
 """
 
-import hashlib
-import hmac
 import logging
-import uuid
-from datetime import datetime
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.orm import Session
 
-from app.config import get_settings
 from app.database.db import get_db
-from app.models.models import (
-    Announcement,
-    Cooperative,
-    Loan,
-    LoanStatus,
-    Transaction,
-    TransactionStatus,
-    TransactionType,
+from app.adapters.ussdk_adapter import (
+    parsed_and_verified,
+    handle_loan_balance,
+    handle_loan_request,
+    handle_pay_dues,
+    handle_loan_repayment,
+    handle_pending_payment,
+    handle_wallet_balance,
+    handle_announcements,
 )
-from app.services.loan_request_service import (
-    PendingLoanRequestError,
-    create_farmer_loan_request,
-)
-from app.services.membership_service import cooperative_selection_payload
-from app.services.ussd_service import resolve_farmer_by_phone
-from app.services.dues_service import run_dues_collect
-from app.services.customer_action_service import (
-    expire_customer_actions,
-    pending_customer_actions,
-    reconcile_stale_customer_actions,
-    resume_dues_customer_action,
-)
-from app.services.loan_repayment_service import start_farmer_loan_repayment, resume_loan_repayment_customer_action
-from app.services.providers.factory import get_payment_provider, get_sms_provider
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ussdk", tags=["ussdk"])
-
-
-def _resolve_membership(msisdn: str, membership_id: int | str | None, db: Session):
-    """Resolve a farmer and membership from phone using the shared ussd_service.
-
-    Returns (farmer, membership, memberships) where:
-      - farmer is the Farmer identity record (or None)
-      - membership is the single CooperativeMembership for this call (or None)
-      - memberships is the complete list
-    """
-    farmer, memberships = resolve_farmer_by_phone(msisdn, db)
-
-    if membership_id not in (None, ""):
-        try:
-            selected_id = int(membership_id)
-        except (TypeError, ValueError):
-            return farmer, None, memberships
-        membership = next((m for m in memberships if m.id == selected_id), None)
-    else:
-        membership = memberships[0] if len(memberships) == 1 else None
-
-    return farmer, membership, memberships
-
-
-def _verify_ussdk_signature(body: bytes, signature: str | None) -> bool:
-    """Verify USSDK's X-USSDK-Signature header (HMAC-SHA256 of the raw body).
-
-    Mirrors the pattern already used for Moolre's webhook signature in
-    app/routes/webhooks.py. If no secret is configured, verification is
-    skipped for local development — never leave it unset in production.
-    """
-    settings = get_settings()
-    if not settings.ussdk_hook_secret:
-        if settings.app_env.lower() in ("production", "prod"):
-            logger.error("USSDK_HOOK_SECRET is required in production")
-            return False
-        logger.warning("USSDK_HOOK_SECRET not set — skipping signature verification")
-        return True
-    if not signature:
-        return False
-    expected = hmac.new(
-        settings.ussdk_hook_secret.encode(), body, hashlib.sha256
-    ).hexdigest()
-    return hmac.compare_digest(expected, signature.strip())
-
-
-async def _parsed_and_verified(
-    request: Request, x_ussdk_signature: str | None
-) -> dict:
-    body = await request.body()
-    if not _verify_ussdk_signature(body, x_ussdk_signature):
-        raise HTTPException(status_code=401, detail="Invalid USSDK signature")
-    try:
-        return await request.json()
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
 
 @router.post("/loan-balance")
@@ -122,26 +35,8 @@ async def loan_balance(
     db: Session = Depends(get_db),
     x_ussdk_signature: str | None = Header(default=None),
 ):
-    """Hook for the 'Check Loan Balance' USSD step."""
-    payload = await _parsed_and_verified(request, x_ussdk_signature)
-    msisdn = payload.get("props", {}).get("session", {}).get("msisdn", "")
-    values = payload.get("props", {}).get("values", {})
-
-    farmer, membership, memberships = _resolve_membership(
-        msisdn, values.get("membership_id"), db
-    )
-    if not membership:
-        if len(memberships) > 1:
-            return cooperative_selection_payload(memberships)
-        return {"registered": False, "balance": None, "name": None}
-
-    active_loans = (
-        db.query(Loan)
-        .filter(Loan.farmer_id == membership.id, Loan.status == LoanStatus.disbursed)
-        .all()
-    )
-    total = sum(ln.amount for ln in active_loans)
-    return {"registered": True, "name": farmer.name, "balance": total}
+    payload = await parsed_and_verified(request, x_ussdk_signature)
+    return await handle_loan_balance(payload, db)
 
 
 @router.post("/loan-request")
@@ -150,51 +45,15 @@ async def loan_request(
     db: Session = Depends(get_db),
     x_ussdk_signature: str | None = Header(default=None),
 ):
-    """Create a farmer-originated loan request from a signed USSDK screen.
-
-    Phone resolution delegates to the shared app.services.ussd_service.
-    """
-    payload = await _parsed_and_verified(request, x_ussdk_signature)
+    payload = await parsed_and_verified(request, x_ussdk_signature)
     session = payload.get("props", {}).get("session", {})
     values = payload.get("props", {}).get("values", {})
-    farmer, membership, memberships = _resolve_membership(
-        session.get("msisdn", ""),
-        values.get("membership_id"),
-        db,
-    )
-    if not membership:
-        if len(memberships) > 1:
-            return cooperative_selection_payload(memberships)
-        return {
-            "action": "end",
-            "message": "Phone not registered with AgroOS. Contact your cooperative.",
-        }
-
     try:
         amount = float(values.get("amount", ""))
     except (TypeError, ValueError):
         return {"action": "retry", "message": "Enter a valid loan amount."}
-
     purpose = str(values.get("purpose", "")).strip()
-    try:
-        loan = create_farmer_loan_request(
-            membership=membership,
-            amount=amount,
-            purpose=purpose,
-            db=db,
-            request_channel="ussdk",
-        )
-    except PendingLoanRequestError as exc:
-        return {"action": "end", "message": str(exc)}
-    except ValueError as exc:
-        return {"action": "retry", "message": str(exc)}
-
-    return {
-        "action": "end",
-        "loan_id": loan.id,
-        "status": loan.status.value,
-        "message": f"Loan request #{loan.id} submitted for cooperative review.",
-    }
+    return await handle_loan_request(payload, db)
 
 
 @router.post("/pay-dues")
@@ -203,71 +62,11 @@ async def pay_dues(
     db: Session = Depends(get_db),
     x_ussdk_signature: str | None = Header(default=None),
 ):
-    """Hook for the 'Pay Cooperative Dues' USSD step.
-
-    Called twice in the OTP-required case: once to start the push, and once
-    more with otp_code + external_ref set (from the previous response) to
-    resume the same transaction rather than starting a new one.
-    """
-    payload = await _parsed_and_verified(request, x_ussdk_signature)
-    session = payload.get("props", {}).get("session", {})
+    payload = await parsed_and_verified(request, x_ussdk_signature)
     values = payload.get("props", {}).get("values", {})
-
-    msisdn = session.get("msisdn", "")
-    amount_raw = values.get("amount")
-    otp_code = values.get("otp_code") or None
-    external_ref = values.get("external_ref") or str(uuid.uuid4())
-
-    if not amount_raw:
-        return {
-            "action": "retry",
-            "message": "Enter a valid amount.",
-        }
-
-    try:
-        amount = float(amount_raw)
-    except (TypeError, ValueError):
+    if not values.get("amount"):
         return {"action": "retry", "message": "Enter a valid amount."}
-
-    farmer, membership, memberships = _resolve_membership(
-        msisdn, values.get("membership_id"), db
-    )
-    if not membership:
-        if len(memberships) > 1:
-            return cooperative_selection_payload(memberships)
-        return {
-            "action": "end",
-            "message": "Phone not registered with AgroOS. Contact your cooperative.",
-        }
-
-    result = await run_dues_collect(
-        farmer=membership,
-        amount=amount,
-        channel="13",
-        description="Cooperative dues (USSD)",
-        external_ref=external_ref,
-        otp_code=otp_code,
-        db=db,
-        initiation_channel="ussdk",
-    )
-
-    if result.outcome == "verification_required":
-        return {
-            "verification_required": True,
-            "external_ref": external_ref,
-            "message": result.message,
-        }
-
-    if result.status == "pending":
-        return {
-            "verification_required": False,
-            "message": "Approve the payment prompt on your phone to complete.",
-        }
-
-    return {
-        "action": "end",
-        "message": result.message or "Payment could not be started. Try again later.",
-    }
+    return await handle_pay_dues(payload, db)
 
 
 @router.post("/loan-repayment")
@@ -276,116 +75,8 @@ async def loan_repayment(
     db: Session = Depends(get_db),
     x_ussdk_signature: str | None = Header(default=None),
 ):
-    """Start or resume a full loan repayment from the farmer's USSD session.
-
-    Phone resolution delegates to the shared app.services.ussd_service.
-    """
-    payload = await _parsed_and_verified(request, x_ussdk_signature)
-    session = payload.get("props", {}).get("session", {})
-    values = payload.get("props", {}).get("values", {})
-    farmer, membership, memberships = _resolve_membership(
-        session.get("msisdn", ""),
-        values.get("membership_id"),
-        db,
-    )
-    if not membership:
-        if len(memberships) > 1:
-            return cooperative_selection_payload(memberships)
-        return {"action": "end", "message": "Phone not registered with AgroOS."}
-
-    transaction_id = values.get("transaction_id")
-    otp_code = str(values.get("otp_code", "")).strip()
-    if transaction_id and otp_code:
-        try:
-            selected_transaction_id = int(transaction_id)
-        except (TypeError, ValueError):
-            return {"action": "retry", "message": "Choose a valid repayment."}
-        tx = (
-            db.query(Transaction)
-            .filter(
-                Transaction.id == selected_transaction_id,
-                Transaction.farmer_id == membership.id,
-                Transaction.transaction_type == TransactionType.repayment,
-            )
-            .first()
-        )
-        if not tx:
-            return {"action": "end", "message": "Pending repayment not found."}
-        loan = await resume_loan_repayment_customer_action(
-            transaction=tx,
-            farmer=membership,
-            otp_code=otp_code,
-            db=db,
-        )
-        return {
-            "action": "end" if loan.status == LoanStatus.repaid else "pending",
-            "message": (
-                "Loan repayment completed."
-                if loan.status == LoanStatus.repaid
-                else "OTP accepted. Approve the repayment prompt on your phone."
-            ),
-        }
-
-    loan_id = values.get("loan_id")
-    if not loan_id:
-        loans = (
-            db.query(Loan)
-            .filter(
-                Loan.farmer_id == membership.id,
-                Loan.status == LoanStatus.disbursed,
-            )
-            .order_by(Loan.expected_repayment_date, Loan.id)
-            .all()
-        )
-        return {
-            "action": "select_loan" if loans else "end",
-            "message": "Choose a loan to repay." if loans else "You have no active loans.",
-            "loans": [
-                {
-                    "loan_id": loan.id,
-                    "amount": loan.amount,
-                    "due_date": (
-                        loan.expected_repayment_date.isoformat()
-                        if loan.expected_repayment_date
-                        else None
-                    ),
-                }
-                for loan in loans
-            ],
-        }
-
-    try:
-        selected_loan_id = int(loan_id)
-    except (TypeError, ValueError):
-        return {"action": "retry", "message": "Choose a valid loan."}
-
-    loan = await start_farmer_loan_repayment(
-        loan_id=selected_loan_id,
-        farmer=membership,
-        db=db,
-        initiation_channel="ussdk",
-    )
-    tx = (
-        db.query(Transaction)
-        .filter(
-            Transaction.loan_id == loan.id,
-            Transaction.transaction_type == TransactionType.repayment,
-        )
-        .order_by(Transaction.created_at.desc())
-        .first()
-    )
-    if loan.status == LoanStatus.repaid:
-        return {"action": "end", "message": "Loan repayment completed."}
-    if tx and tx.customer_action == "otp":
-        return {
-            "action": "request_otp",
-            "transaction_id": tx.id,
-            "message": "Enter the OTP Moolre sent to your phone.",
-        }
-    return {
-        "action": "end",
-        "message": "Approve the repayment prompt on your phone to complete.",
-    }
+    payload = await parsed_and_verified(request, x_ussdk_signature)
+    return await handle_loan_repayment(payload, db)
 
 
 @router.post("/pending-payment")
@@ -394,130 +85,8 @@ async def pending_payment(
     db: Session = Depends(get_db),
     x_ussdk_signature: str | None = Header(default=None),
 ):
-    """List or resume payment actions owned by the calling farmer phone.
-
-    Phone resolution delegates to the shared app.services.ussd_service.
-    """
-    payload = await _parsed_and_verified(request, x_ussdk_signature)
-    session = payload.get("props", {}).get("session", {})
-    values = payload.get("props", {}).get("values", {})
-    farmer, membership, memberships = _resolve_membership(
-        session.get("msisdn", ""),
-        values.get("membership_id"),
-        db,
-    )
-    if not membership:
-        if len(memberships) > 1:
-            return cooperative_selection_payload(memberships)
-        return {"action": "end", "message": "Phone not registered with AgroOS."}
-
-    await reconcile_stale_customer_actions(db, farmer_id=membership.id)
-    transaction_id = values.get("transaction_id")
-    if not transaction_id:
-        actions = pending_customer_actions(farmer=membership, db=db)
-        return {
-            "action": "select_payment" if actions else "end",
-            "message": (
-                "Choose a pending payment."
-                if actions
-                else "You have no pending payments."
-            ),
-            "payments": [
-                {
-                    "transaction_id": tx.id,
-                    "type": tx.transaction_type.value,
-                    "amount": tx.amount,
-                    "customer_action": tx.customer_action,
-                }
-                for tx in actions
-            ],
-        }
-
-    try:
-        selected_id = int(transaction_id)
-    except (TypeError, ValueError):
-        return {"action": "retry", "message": "Choose a valid pending payment."}
-    expire_customer_actions(db, farmer_id=membership.id)
-    tx = (
-        db.query(Transaction)
-        .filter(
-            Transaction.id == selected_id,
-            Transaction.farmer_id == membership.id,
-            Transaction.status == TransactionStatus.pending,
-            Transaction.customer_action.in_(
-                ("initiating", "otp", "processing_otp", "approval")
-            ),
-        )
-        .first()
-    )
-    if not tx:
-        return {"action": "end", "message": "Pending payment not found."}
-    if tx.customer_action == "approval":
-        return {
-            "action": "end",
-            "message": "Approve the payment prompt on your phone to complete.",
-        }
-    if tx.customer_action in ("initiating", "processing_otp"):
-        return {
-            "action": "end",
-            "message": (
-                "Your OTP is already being processed; the payment is still "
-                "processing. Check again shortly."
-                if tx.customer_action == "processing_otp"
-                else "Your payment is still processing. Check again shortly."
-            ),
-        }
-
-    otp_code = str(values.get("otp_code", "")).strip()
-    if not otp_code:
-        return {
-            "action": "request_otp",
-            "transaction_id": tx.id,
-            "message": "Enter the OTP sent to your phone.",
-        }
-    try:
-        if tx.transaction_type == TransactionType.dues:
-            result = await resume_dues_customer_action(
-                transaction=tx,
-                farmer=membership,
-                otp_code=otp_code,
-                db=db,
-            )
-            message = result.message
-            retry_otp = result.customer_action == "otp"
-        elif tx.transaction_type == TransactionType.repayment:
-            loan = await resume_loan_repayment_customer_action(
-                transaction=tx,
-                farmer=membership,
-                otp_code=otp_code,
-                db=db,
-            )
-            message = (
-                "Loan repayment completed."
-                if loan.status == LoanStatus.repaid
-                else "OTP accepted. Approve the repayment prompt on your phone."
-            )
-            retry_otp = tx.customer_action == "otp"
-        else:
-            return {"action": "end", "message": "Unsupported pending payment."}
-    except HTTPException as exc:
-        return {
-            "action": "end" if exc.status_code in (404, 410) else "retry",
-            "message": str(exc.detail),
-        }
-    except Exception:
-        logger.exception("Pending payment completion failed for transaction %s", tx.id)
-        return {
-            "action": "end",
-            "message": "Payment could not be completed. Check again shortly.",
-        }
-    if retry_otp:
-        return {
-            "action": "request_otp",
-            "transaction_id": tx.id,
-            "message": message or "OTP verification is still required. Try again.",
-        }
-    return {"action": "end", "message": message}
+    payload = await parsed_and_verified(request, x_ussdk_signature)
+    return await handle_pending_payment(payload, db)
 
 
 @router.post("/wallet-balance")
@@ -526,47 +95,8 @@ async def wallet_balance(
     db: Session = Depends(get_db),
     x_ussdk_signature: str | None = Header(default=None),
 ):
-    """Hook for a 'Check Cooperative Wallet Balance' USSD step.
-
-    Calls the configured payment provider's account-status endpoint, using the
-    farmer's cooperative wallet when one is configured.
-
-    Phone resolution delegates to the shared app.services.ussd_service.
-    """
-    payload = await _parsed_and_verified(request, x_ussdk_signature)
-    msisdn = payload.get("props", {}).get("session", {}).get("msisdn", "")
-    values = payload.get("props", {}).get("values", {})
-
-    farmer, membership, memberships = _resolve_membership(
-        msisdn, values.get("membership_id"), db
-    )
-    if not membership:
-        if len(memberships) > 1:
-            return cooperative_selection_payload(memberships)
-        return {
-            "action": "end",
-            "message": "Phone not registered with AgroOS. Contact your cooperative.",
-        }
-
-    cooperative = (
-        db.query(Cooperative).filter(Cooperative.id == membership.cooperative_id).first()
-    )
-    coop_account = cooperative.wallet_account_id if cooperative else None
-
-    provider = get_payment_provider()
-    result = await provider.account_status(account_number=coop_account)
-
-    if not result.get("success"):
-        return {
-            "action": "end",
-            "message": "Could not reach Moolre right now. Try again later.",
-        }
-
-    balance = result.get("balance")
-    account_name = result.get("account_name") or "your cooperative"
-    return {
-        "message": f"{account_name} wallet balance: GHS {balance}",
-    }
+    payload = await parsed_and_verified(request, x_ussdk_signature)
+    return await handle_wallet_balance(payload, db)
 
 
 @router.post("/announcements")
@@ -575,51 +105,6 @@ async def announcements(
     db: Session = Depends(get_db),
     x_ussdk_signature: str | None = Header(default=None),
 ):
-    """Hook for a 'View Announcements' USSD step.
-
-    Shows persisted announcements on the USSD screen and sends them through
-    the configured SMS provider when the selected membership has consented.
-    Placeholder text is never sent by SMS.
-
-    Phone resolution delegates to the shared app.services.ussd_service.
-    """
-    payload = await _parsed_and_verified(request, x_ussdk_signature)
-    msisdn = payload.get("props", {}).get("session", {}).get("msisdn", "")
-    values = payload.get("props", {}).get("values", {})
-
-    farmer, membership, memberships = _resolve_membership(
-        msisdn, values.get("membership_id"), db
-    )
-    if not membership and len(memberships) > 1:
-        return cooperative_selection_payload(memberships)
-
-    coop_id = membership.cooperative_id if membership else None
-    announcements = (
-        db.query(Announcement)
-        .filter(
-            Announcement.cooperative_id == coop_id,
-            Announcement.deleted_at.is_(None),
-        )
-        .order_by(Announcement.created_at.desc())
-        .limit(3)
-        .all()
-    ) if coop_id is not None else []
-    if announcements:
-        lines = []
-        for a in announcements:
-            lines.append(f"{a.title}: {a.body[:120]}")
-        announcement_text = "\n---\n".join(lines)
-    else:
-        announcement_text = "No announcements yet. Check with your cooperative leader."
-
-    if announcements and farmer and membership and membership.sms_consent:
-        sms = get_sms_provider()
-        sms_result = await sms.send_sms(
-            recipient=farmer.phone,
-            message=announcement_text,
-        )
-        if sms_result.get("success"):
-            return {"message": f"{announcement_text}\n(Also sent via SMS.)"}
-
-    return {"message": announcement_text}
+    payload = await parsed_and_verified(request, x_ussdk_signature)
+    return await handle_announcements(payload, db)
 
