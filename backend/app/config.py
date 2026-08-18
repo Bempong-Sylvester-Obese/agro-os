@@ -48,6 +48,7 @@ class Settings(BaseSettings):
 
     # AgroOS deployment
     agroos_base_url: str = ""
+    webhook_callback_path: str = "/webhooks/payment"
 
     # Moolre API
     moolre_env: str = "sandbox"

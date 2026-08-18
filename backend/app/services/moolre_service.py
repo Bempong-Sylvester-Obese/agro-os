@@ -669,7 +669,7 @@ class MoolreService:
         if api:
             callback_url = callback_url or (
                 f"{self.settings.agroos_base_url.rstrip('/')}"
-                "/webhooks/moolre/payment"
+                f"{self.settings.webhook_callback_path}"
             )
             parsed_callback = urlsplit(callback_url)
             if (
