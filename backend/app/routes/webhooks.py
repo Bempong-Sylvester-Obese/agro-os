@@ -36,6 +36,7 @@ from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
 from app.domain.payment_event import PaymentEvent
+from app.services.payment_normalization import normalize_moolre_payload
 from app.models.models import (
     Announcement,
     CooperativeMembership as Farmer,
@@ -82,16 +83,7 @@ router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 settings = get_settings()
 
 def _normalize_payload(raw: dict) -> PaymentEvent:
-    return PaymentEvent(
-        provider="moolre",
-        event_type=f"payment.{raw.get('status', 'unknown')}",
-        external_ref=str(raw.get("moolre_reference", raw.get("reference", ""))),
-        amount=float(raw.get("amount", 0)) if raw.get("amount") else None,
-        currency=raw.get("currency", "GHS"),
-        status=raw.get("status", "unknown"),
-        payer_phone=raw.get("payer_phone"),
-        metadata=raw,
-    )
+    return normalize_moolre_payload(raw)
 
 
 # ---------------------------------------------------------------------------
@@ -302,6 +294,9 @@ def _process_payment_payload(
                 logger.error("Failed to process subscription webhook: %s", exc)
         return {"status": "ok", "message": "Subscription webhook processed"}
 
+    event = normalize_moolre_payload(payload)
+    event.metadata["signature_valid"] = signature_valid
+
     tx: Transaction | None = None
     if external_ref:
         tx = (
@@ -332,7 +327,37 @@ def _process_payment_payload(
         )
         return {"status": "ok", "message": "reference not found — acknowledged"}
 
-    if tx.status in (TransactionStatus.completed, TransactionStatus.failed):
+    from app.services.payment_service import process_payment_event
+    result = process_payment_event(event, db)
+
+    if result["status"] == "processed":
+        _record_webhook_event(
+            db,
+            payload=payload,
+            signature_valid=signature_valid,
+            transaction=tx,
+            processed=True,
+            message="Payment confirmed",
+        )
+        background_tasks.add_task(
+            _post_payment_tasks,
+            farmer_id=tx.farmer_id,
+            amount=amount,
+            reference=external_ref or str(transaction_id),
+        )
+        logger.info(
+            "Payment confirmed: tx_id=%s farmer_id=%s amount=GHS%.2f",
+            tx.id,
+            tx.farmer_id,
+            amount,
+        )
+        return {
+            "status": "ok",
+            "transaction_id": tx.id,
+            "reference": external_ref,
+            "message": "Payment confirmed — Trust Score queued for update",
+        }
+    elif result["status"] == "duplicate":
         _record_webhook_event(
             db,
             payload=payload,
@@ -346,87 +371,22 @@ def _process_payment_payload(
             "transaction_id": tx.id,
             "message": f"transaction already {tx.status.value}",
         }
-
-    if moolre_status == 1:
-        if abs(float(tx.amount) - amount) >= 0.01:
-            _record_webhook_event(
-                db,
-                payload=payload,
-                signature_valid=signature_valid,
-                transaction=tx,
-                processed=False,
-                message="amount mismatch",
-            )
-            logger.warning(
-                "Payment amount mismatch for tx_id=%s: expected=%s received=%s",
-                tx.id,
-                tx.amount,
-                amount,
-            )
-            return {"status": "ok", "message": "amount mismatch — acknowledged"}
-
-        tx.status = TransactionStatus.completed
-        tx.customer_action = "none"
-        tx.action_expires_at = None
-        if tx.transaction_type == TransactionType.repayment and tx.loan_id:
-            loan = (
-                db.query(Loan)
-                .filter(Loan.id == tx.loan_id, Loan.farmer_id == tx.farmer_id)
-                .first()
-            )
-            if loan and loan.status == LoanStatus.disbursed:
-                loan.status = LoanStatus.repaid
-                loan.repaid_at = datetime.utcnow()
-        db.commit()
-
+    else:
         _record_webhook_event(
             db,
             payload=payload,
             signature_valid=signature_valid,
             transaction=tx,
             processed=True,
-            message="Payment confirmed",
+            message=result.get("reason", "Payment processed"),
         )
-
-        background_tasks.add_task(
-            _post_payment_tasks,
-            farmer_id=tx.farmer_id,
-            amount=amount,
-            reference=external_ref or str(transaction_id),
-        )
-
-        logger.info(
-            "Payment confirmed: tx_id=%s farmer_id=%s amount=GHS%.2f",
-            tx.id,
-            tx.farmer_id,
-            amount,
-        )
+        logger.info("Payment processed: tx_id=%s ref=%s result=%s", tx.id, external_ref, result)
         return {
             "status": "ok",
             "transaction_id": tx.id,
             "reference": external_ref,
-            "message": "Payment confirmed — Trust Score queued for update",
+            "message": result.get("reason", "Payment processed"),
         }
-
-    tx.status = TransactionStatus.failed
-    tx.customer_action = "none"
-    tx.action_expires_at = None
-    db.commit()
-    _record_webhook_event(
-        db,
-        payload=payload,
-        signature_valid=signature_valid,
-        transaction=tx,
-        processed=True,
-        message="Payment failure recorded",
-    )
-    logger.info("Payment failed: tx_id=%s ref=%s", tx.id, external_ref)
-    return {
-        "status": "ok",
-        "transaction_id": tx.id,
-        "reference": external_ref,
-        "message": "Payment failure recorded",
-    }
 
 
 # ---------------------------------------------------------------------------
