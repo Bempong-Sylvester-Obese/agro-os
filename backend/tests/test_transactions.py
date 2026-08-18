@@ -24,7 +24,7 @@ def _stale_payment(
         transaction_type=TransactionType.dues,
         amount=50,
         status=TransactionStatus.pending,
-        moolre_reference=reference,
+        provider_payment_ref=reference,
         customer_action=action,
         action_expires_at=datetime.utcnow() - timedelta(seconds=1),
         initiation_channel="moolre_ussd",
@@ -68,7 +68,7 @@ def test_get_transaction(client, transaction):
 
 def test_transaction_receipt_and_reconciliation(client, db, transaction):
     tx = db.query(Transaction).filter(Transaction.id == transaction["id"]).one()
-    tx.moolre_reference = "PAYMENT-REF-001"
+    tx.provider_payment_ref = "PAYMENT-REF-001"
     db.commit()
 
     receipt = client.get(f"/transactions/{tx.id}/receipt")
@@ -284,7 +284,7 @@ def test_wallet_endpoints_use_authenticated_cooperative_account(
     cooperative = db.query(Cooperative).filter(
         Cooperative.id == demo_admin.cooperative_id
     ).one()
-    cooperative.moolre_account_number = "TENANT-WALLET-1"
+    cooperative.wallet_account_id = "TENANT-WALLET-1"
     db.commit()
     get_settings.cache_clear()
     token = create_access_token({"sub": demo_admin.email})

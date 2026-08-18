@@ -468,7 +468,7 @@ class SettlementService:
                 amount=line.net_amount,
                 currency=settlement.currency,
                 status=TransactionStatus.pending,
-                moolre_reference=external_ref,
+                provider_payment_ref=external_ref,
                 payee_phone=line.membership.phone,
                 description=f"Settlement #{settlement.id} line #{line.id}",
             )
@@ -500,7 +500,7 @@ class SettlementService:
                         receiver_phone=original_tx.payee_phone,
                         amount=original_tx.amount,
                         currency=original_tx.currency,
-                        external_ref=original_tx.moolre_reference,
+                        external_ref=original_tx.provider_payment_ref,
                         reference=f"AgroOS settlement #{settlement.id}",
                         account_number=account_number,
                     )
@@ -523,8 +523,8 @@ class SettlementService:
                 .one()
             )
             if result.get("success"):
-                tx.moolre_transfer_ref = (
-                    result.get("moolre_transfer_ref") or tx.moolre_reference
+                tx.provider_transfer_ref = (
+                    result.get("moolre_transfer_ref") or tx.provider_payment_ref
                 )
                 line.status = SettlementLineStatus.processing
             else:
@@ -619,11 +619,11 @@ class SettlementService:
         for pending_tx in pending:
             result = await provider.transfer_status(
                 reference=(
-                    pending_tx.moolre_transfer_ref
-                    or pending_tx.moolre_reference
+                    pending_tx.provider_transfer_ref
+                    or pending_tx.provider_payment_ref
                 ),
                 account_number=account_number,
-                id_type="2" if pending_tx.moolre_transfer_ref else "1",
+                id_type="2" if pending_tx.provider_transfer_ref else "1",
             )
             db.expire_all()
             tx = (

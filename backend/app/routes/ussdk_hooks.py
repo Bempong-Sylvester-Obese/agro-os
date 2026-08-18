@@ -551,7 +551,7 @@ async def wallet_balance(
     cooperative = (
         db.query(Cooperative).filter(Cooperative.id == membership.cooperative_id).first()
     )
-    coop_account = cooperative.moolre_account_number if cooperative else None
+    coop_account = cooperative.wallet_account_id if cooperative else None
 
     provider = get_payment_provider()
     result = await provider.account_status(account_number=coop_account)

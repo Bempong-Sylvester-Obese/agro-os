@@ -132,7 +132,7 @@ def test_pending_payment_reconciles_stale_processing_action(
         transaction_type=TransactionType.dues,
         amount=25,
         status=TransactionStatus.pending,
-        moolre_reference="ussdk-stale-ref",
+        provider_payment_ref="ussdk-stale-ref",
         customer_action="processing_otp",
         action_expires_at=datetime.utcnow() - timedelta(seconds=1),
         initiation_channel="ussdk",

@@ -33,7 +33,7 @@ def process_payment_event(event: PaymentEvent, db) -> dict:
 
     tx = (
         db.query(Transaction)
-        .filter(Transaction.moolre_reference == event.external_ref)
+        .filter(Transaction.provider_payment_ref == event.external_ref)
         .first()
     )
     if not tx:

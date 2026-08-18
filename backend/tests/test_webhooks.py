@@ -131,7 +131,7 @@ def test_webhook_rejects_amount_mismatch_without_completing_transaction(db, farm
         transaction_type=TransactionType.dues,
         amount=50,
         status=TransactionStatus.pending,
-        moolre_reference="amount-mismatch-ref",
+        provider_payment_ref="amount-mismatch-ref",
     )
     db.add(tx)
     db.commit()
@@ -174,7 +174,7 @@ def test_repayment_webhook_finalizes_linked_loan(db, farmer):
         transaction_type=TransactionType.repayment,
         amount=75,
         status=TransactionStatus.pending,
-        moolre_reference="repayment-webhook-ref",
+        provider_payment_ref="repayment-webhook-ref",
         customer_action="approval",
     )
     db.add(tx)
@@ -205,7 +205,7 @@ def test_replayed_success_webhook_does_not_repeat_side_effects(db, farmer):
         transaction_type=TransactionType.dues,
         amount=50,
         status=TransactionStatus.pending,
-        moolre_reference="duplicate-success-ref",
+        provider_payment_ref="duplicate-success-ref",
     )
     db.add(tx)
     db.commit()
@@ -261,7 +261,7 @@ def test_replayed_subscription_webhook_extends_once(db, cooperative):
     assert (
         db.query(PaymentWebhookEvent)
         .filter(
-            PaymentWebhookEvent.moolre_reference == external_ref,
+            PaymentWebhookEvent.provider_payment_ref == external_ref,
             PaymentWebhookEvent.processed.is_(True),
         )
         .count()
@@ -337,7 +337,7 @@ def test_ussd_pending_payment_reconciles_stale_initiation(
         transaction_type=TransactionType.dues,
         amount=30,
         status=TransactionStatus.pending,
-        moolre_reference="moolre-ussd-stale-ref",
+        provider_payment_ref="moolre-ussd-stale-ref",
         customer_action="initiating",
         action_expires_at=datetime.utcnow() - timedelta(seconds=1),
         initiation_channel="moolre_ussd",

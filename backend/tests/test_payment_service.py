@@ -9,7 +9,7 @@ def test_payment_event_maps_success_before_duplicate_check(db, farmer) -> None:
         transaction_type=TransactionType.dues,
         amount=20,
         status=TransactionStatus.completed,
-        moolre_reference="domain-duplicate-ref",
+        provider_payment_ref="domain-duplicate-ref",
     )
     db.add(tx)
     db.commit()

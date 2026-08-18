@@ -48,7 +48,7 @@ class WagePayout(Base):
     approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     approved_at = Column(DateTime, nullable=True)
     paid_at = Column(DateTime, nullable=True)
-    moolre_reference = Column(String, nullable=True)
+    provider_payment_ref = Column(String, nullable=True)
     failure_reason = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 

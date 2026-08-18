@@ -126,7 +126,7 @@ async def provision_wallet(
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
         
-    if coop.moolre_account_number:
+    if coop.wallet_account_id:
         raise HTTPException(status_code=400, detail="Wallet already provisioned")
         
     provider = get_payment_provider()
@@ -141,7 +141,7 @@ async def provision_wallet(
             detail=f"Failed to provision wallet: {result.get('raw', {}).get('message', 'Unknown error')}"
         )
         
-    coop.moolre_account_number = result.get("account_number")
+    coop.wallet_account_id = result.get("account_number")
     
     if current_user:
         db.add(
@@ -151,7 +151,7 @@ async def provision_wallet(
                 action="wallet.provisioned",
                 resource_type="cooperative",
                 resource_id=str(coop.id),
-                details=f"account_number={coop.moolre_account_number}",
+                details=f"account_number={coop.wallet_account_id}",
             )
         )
     db.commit()

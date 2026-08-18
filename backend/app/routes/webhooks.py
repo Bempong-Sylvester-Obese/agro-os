@@ -139,7 +139,7 @@ def _record_webhook_event(
     external_ref = data.get("externalref") or payload.get("reference")
     event = PaymentWebhookEvent(
         event_type="payment",
-        moolre_reference=external_ref,
+        provider_payment_ref=external_ref,
         transaction_id=transaction.id if transaction else None,
         signature_valid=signature_valid,
         payload=json.dumps(payload),
@@ -245,7 +245,7 @@ def _process_payment_payload(
                 existing_event = (
                     db.query(PaymentWebhookEvent)
                     .filter(
-                        PaymentWebhookEvent.moolre_reference == external_ref,
+                        PaymentWebhookEvent.provider_payment_ref == external_ref,
                         PaymentWebhookEvent.processed.is_(True),
                     )
                     .first()
@@ -280,7 +280,7 @@ def _process_payment_payload(
                 db.add(
                     PaymentWebhookEvent(
                         event_type="subscription",
-                        moolre_reference=external_ref,
+                        provider_payment_ref=external_ref,
                         signature_valid=signature_valid,
                         payload=json.dumps(payload),
                         processed=True,
@@ -306,7 +306,7 @@ def _process_payment_payload(
     if external_ref:
         tx = (
             db.query(Transaction)
-            .filter(Transaction.moolre_reference == external_ref)
+            .filter(Transaction.provider_payment_ref == external_ref)
             .with_for_update()
             .first()
         )
@@ -314,7 +314,7 @@ def _process_payment_payload(
     if not tx and transaction_id:
         tx = (
             db.query(Transaction)
-            .filter(Transaction.moolre_reference == transaction_id)
+            .filter(Transaction.provider_payment_ref == transaction_id)
             .with_for_update()
             .first()
         )
@@ -454,7 +454,7 @@ async def _post_payment_tasks(farmer_id: int, amount: float, reference: str) -> 
                 # Sweep platform fee (e.g., 2% of transaction)
                 # Only if the cooperative has a dedicated Moolre account
                 coop = farmer.cooperative
-                if coop and coop.moolre_account_number:
+                if coop and coop.wallet_account_id:
                     fee_amount = round(amount * 0.02, 2)
                     if fee_amount > 0:
                         provider = get_payment_provider()
@@ -464,7 +464,7 @@ async def _post_payment_tasks(farmer_id: int, amount: float, reference: str) -> 
                             amount=fee_amount,
                             currency=coop.currency or "GHS",
                             reference=f"Platform Fee for tx {reference}",
-                            from_account_number=coop.moolre_account_number
+                            from_account_number=coop.wallet_account_id
                         )
                         logger.info(f"Swept GHS {fee_amount} fee from coop {coop.id} to master wallet")
         except Exception as exc:  # noqa: BLE001
@@ -1189,7 +1189,7 @@ async def handle_ussd_session(
             }
         if result.outcome == "verification_required":
             state["step"] = "pay_otp"
-            state["external_ref"] = result.moolre_reference or external_ref
+            state["external_ref"] = result.provider_payment_ref or external_ref
             state["amount"] = amount
             msg = "Enter the OTP sent to your phone:"
             _log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer, state=state)
@@ -1207,7 +1207,7 @@ async def handle_ussd_session(
         tx = (
             db.query(Transaction)
             .filter(
-                Transaction.moolre_reference == state["external_ref"],
+                Transaction.provider_payment_ref == state["external_ref"],
                 Transaction.farmer_id == farmer.id,
             )
             .first()

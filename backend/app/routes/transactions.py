@@ -231,28 +231,28 @@ async def reconcile_transaction(
     if not tx or not tx.farmer:
         raise HTTPException(status_code=404, detail="Transaction not found")
     enforce_cooperative_scope(current_user, tx.farmer.cooperative_id)
-    if not tx.moolre_reference and not tx.moolre_transfer_ref:
+    if not tx.provider_payment_ref and not tx.provider_transfer_ref:
         raise HTTPException(status_code=409, detail="Transaction has no provider reference")
 
     cooperative_id = tx.farmer.cooperative_id
     transaction_type = tx.transaction_type
-    moolre_reference = tx.moolre_reference
-    moolre_transfer_ref = tx.moolre_transfer_ref
+    provider_payment_ref = tx.provider_payment_ref
+    provider_transfer_ref = tx.provider_transfer_ref
     cooperative = db.query(Cooperative).filter(
         Cooperative.id == cooperative_id
     ).first()
     provider = get_payment_provider()
-    if transaction_type == TransactionType.payout and moolre_transfer_ref:
+    if transaction_type == TransactionType.payout and provider_transfer_ref:
         result = await provider.transfer_status(
-            reference=moolre_transfer_ref,
+            reference=provider_transfer_ref,
             account_number=provider.resolve_account_number(None),
             id_type="2",
         )
     else:
         result = await provider.payment_status(
-            external_ref=moolre_reference,
+            external_ref=provider_payment_ref,
             account_number=provider.resolve_account_number(
-                cooperative.moolre_account_number if cooperative else None
+                cooperative.wallet_account_id if cooperative else None
             ),
         )
     provider_status = result.get("status", "pending")
@@ -287,7 +287,7 @@ async def reconcile_transaction(
         elif loan and tx.transaction_type == TransactionType.payout:
             if loan.status == LoanStatus.approved:
                 loan.status = LoanStatus.disbursed
-                loan.moolre_transfer_ref = tx.moolre_transfer_ref
+                loan.provider_transfer_ref = tx.provider_transfer_ref
                 loan.disbursed_at = datetime.utcnow()
     if current_user:
         db.add(
@@ -309,7 +309,7 @@ async def reconcile_transaction(
     return {
         "transaction": TransactionResponse.model_validate(tx),
         "provider_status": provider_status,
-        "reference": tx.moolre_transfer_ref or tx.moolre_reference,
+        "reference": tx.provider_transfer_ref or tx.provider_payment_ref,
     }
 
 
@@ -413,10 +413,10 @@ async def collect_dues(
                     payment_provider = get_payment_provider()
                     coop = db.query(Cooperative).filter(Cooperative.id == farmer.cooperative_id).first()
                     coop_account = payment_provider.resolve_account_number(
-                        coop.moolre_account_number if coop else None
+                        coop.wallet_account_id if coop else None
                     )
                     status_result = await payment_provider.payment_status(
-                        external_ref=existing.moolre_reference,
+                        external_ref=existing.provider_payment_ref,
                         account_number=coop_account,
                     )
                 except Exception as exc:
@@ -500,7 +500,7 @@ async def collect_dues(
             await CommunicationsService().send_payment_action_required(
                 farmer=farmer,
                 amount=request.amount,
-                reference=result.moolre_reference or ext_ref,
+                reference=result.provider_payment_ref or ext_ref,
                 db=db,
                 sent_by=str(current_user.id) if current_user else None,
             )
@@ -542,7 +542,7 @@ async def create_payment_link(
         amount=request.amount,
         currency=request.currency,
         status=TransactionStatus.pending,
-        moolre_reference=ext_ref,
+        provider_payment_ref=ext_ref,
         payer_phone=farmer.phone,
         description=request.description,
     )
@@ -600,7 +600,7 @@ async def list_moolre_transactions(
             Cooperative.id == current_user.cooperative_id
         ).first()
         cooperative_account = (
-            cooperative.moolre_account_number if cooperative else None
+            cooperative.wallet_account_id if cooperative else None
         )
         if not cooperative_account:
             raise HTTPException(
@@ -628,7 +628,7 @@ async def get_wallet_balance(
             Cooperative.id == current_user.cooperative_id
         ).first()
         cooperative_account = (
-            cooperative.moolre_account_number if cooperative else None
+            cooperative.wallet_account_id if cooperative else None
         )
         if not cooperative_account:
             raise HTTPException(

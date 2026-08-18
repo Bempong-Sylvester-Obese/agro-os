@@ -112,7 +112,7 @@ async def signup(data: SignupRequest, db: Session = Depends(get_db)):
             account_name=resolved_name
         )
         if moolre_result.get("success"):
-            new_coop.moolre_account_number = moolre_result.get("account_number")
+            new_coop.wallet_account_id = moolre_result.get("account_number")
     except Exception as e:
         print(f"Warning: Failed to automatically create Moolre sub-wallet: {e}")
 
