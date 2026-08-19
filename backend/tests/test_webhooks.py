@@ -131,7 +131,7 @@ def test_webhook_rejects_amount_mismatch_without_completing_transaction(db, farm
         transaction_type=TransactionType.dues,
         amount=50,
         status=TransactionStatus.pending,
-        moolre_reference="amount-mismatch-ref",
+        provider_payment_ref="amount-mismatch-ref",
     )
     db.add(tx)
     db.commit()
@@ -174,7 +174,7 @@ def test_repayment_webhook_finalizes_linked_loan(db, farmer):
         transaction_type=TransactionType.repayment,
         amount=75,
         status=TransactionStatus.pending,
-        moolre_reference="repayment-webhook-ref",
+        provider_payment_ref="repayment-webhook-ref",
         customer_action="approval",
     )
     db.add(tx)
@@ -205,7 +205,7 @@ def test_replayed_success_webhook_does_not_repeat_side_effects(db, farmer):
         transaction_type=TransactionType.dues,
         amount=50,
         status=TransactionStatus.pending,
-        moolre_reference="duplicate-success-ref",
+        provider_payment_ref="duplicate-success-ref",
     )
     db.add(tx)
     db.commit()
@@ -261,7 +261,7 @@ def test_replayed_subscription_webhook_extends_once(db, cooperative):
     assert (
         db.query(PaymentWebhookEvent)
         .filter(
-            PaymentWebhookEvent.moolre_reference == external_ref,
+            PaymentWebhookEvent.provider_payment_ref == external_ref,
             PaymentWebhookEvent.processed.is_(True),
         )
         .count()
@@ -337,7 +337,7 @@ def test_ussd_pending_payment_reconciles_stale_initiation(
         transaction_type=TransactionType.dues,
         amount=30,
         status=TransactionStatus.pending,
-        moolre_reference="moolre-ussd-stale-ref",
+        provider_payment_ref="moolre-ussd-stale-ref",
         customer_action="initiating",
         action_expires_at=datetime.utcnow() - timedelta(seconds=1),
         initiation_channel="moolre_ussd",
@@ -407,10 +407,10 @@ def test_ussd_callback_fails_closed_without_production_secret(client, monkeypatc
 
 
 def test_native_ussd_callback_requires_configured_secret(client, monkeypatch):
-    from app.routes import ussd as ussd_module
+    from app.adapters import at_adapter as at_adapter_module
 
     monkeypatch.setattr(
-        ussd_module,
+        at_adapter_module,
         "get_settings",
         lambda: SimpleNamespace(
             app_env="test",
@@ -435,10 +435,10 @@ def test_native_ussd_callback_fails_closed_without_production_secret(
     client,
     monkeypatch,
 ):
-    from app.routes import ussd as ussd_module
+    from app.adapters import at_adapter as at_adapter_module
 
     monkeypatch.setattr(
-        ussd_module,
+        at_adapter_module,
         "get_settings",
         lambda: SimpleNamespace(app_env="production", ussd_callback_secret=""),
     )
@@ -478,7 +478,7 @@ def test_ussd_announcements_are_returned_and_session_is_closed(
     client, farmer, db, monkeypatch
 ):
     from app.models.models import Announcement
-    from app.routes import webhooks as webhooks_module
+    from app.services.providers import factory as factory_module
 
     announcement = Announcement(
         cooperative_id=farmer["cooperative_id"],
@@ -489,7 +489,7 @@ def test_ussd_announcements_are_returned_and_session_is_closed(
     db.commit()
     sms = AsyncMock()
     sms.send_sms.return_value = {"success": True}
-    monkeypatch.setattr(webhooks_module, "get_sms_provider", lambda: sms)
+    monkeypatch.setattr(factory_module, "get_sms_provider", lambda: sms)
 
     client.post("/webhooks/moolre/ussd", json=_ussd_new("announcements", farmer["phone"]))
     response = client.post(
@@ -501,7 +501,9 @@ def test_ussd_announcements_are_returned_and_session_is_closed(
     assert response.json()["reply"] is False
     assert "Meeting" in response.json()["message"]
     sms.send_sms.assert_awaited_once()
-    assert webhooks_module._get_ussd_state(
+    assert sms.send_sms.await_count >= 1
+    from app.services import ussd_application as ussd_app_module
+    assert ussd_app_module.get_ussd_state(
         db, "announcements", farmer["phone"]
     ) is None
 

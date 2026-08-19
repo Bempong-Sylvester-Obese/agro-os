@@ -119,7 +119,7 @@ def test_disburse_payroll_uses_stable_external_ref(auth_client, test_cooperative
     payouts = res.json()
     assert payouts[0]["status"] == "paid"
     assert seen_refs == [f"wage-payout-{payout_id}"]
-    assert payouts[0]["moolre_reference"] == f"wage-payout-{payout_id}"
+    assert payouts[0]["provider_payment_ref"] == f"wage-payout-{payout_id}"
 
 
 def test_payroll_excludes_cross_tenant_attendance(

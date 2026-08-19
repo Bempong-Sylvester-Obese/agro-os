@@ -69,7 +69,7 @@ class CommunicationsService:
             cooperative_id=farmer.cooperative_id,
             recipients_count=1,
             body=message,
-            moolre_ref=result.get("raw", {}).get("data"),
+            provider_ref=result.get("raw", {}).get("data"),
             sent_by=sent_by,
             status="sent" if result["success"] else "failed",
         )
@@ -102,7 +102,7 @@ class CommunicationsService:
             cooperative_id=farmer.cooperative_id,
             recipients_count=1,
             body=message,
-            moolre_ref=reference,
+            provider_ref=reference,
             status="sent" if result["success"] else "failed",
         )
         return {"success": result["success"], "log_id": log.id}
@@ -131,7 +131,7 @@ class CommunicationsService:
             cooperative_id=farmer.cooperative_id,
             recipients_count=1,
             body=message[:160],
-            moolre_ref=result.get("raw", {}).get("data"),
+            provider_ref=result.get("raw", {}).get("data"),
             sent_by=sent_by,
             status="sent" if result["success"] else "failed",
         )
@@ -204,7 +204,7 @@ class CommunicationsService:
             cooperative_id=farmer.cooperative_id,
             recipients_count=1,
             body=message,
-            moolre_ref=reminder.provider_reference,
+            provider_ref=reminder.provider_reference,
             sent_by=sent_by,
             status=reminder.status,
         )
@@ -239,7 +239,7 @@ class CommunicationsService:
             cooperative_id=farmer.cooperative_id,
             recipients_count=1,
             body=message,
-            moolre_ref=reference,
+            provider_ref=reference,
             sent_by=sent_by,
             status="sent" if result["success"] else "failed",
         )
@@ -271,7 +271,7 @@ class CommunicationsService:
             cooperative_id=settlement.cooperative_id,
             recipients_count=1,
             body=message,
-            moolre_ref=result.get("moolre_ref"),
+            provider_ref=result.get("provider_ref"),
             sent_by=sent_by,
             status="sent" if result["success"] else "failed",
         )
@@ -317,7 +317,7 @@ class CommunicationsService:
             recipients_count=len(farmers),
             body=message,
             sent_by=sent_by,
-            moolre_ref=result.get("moolre_ref"),
+            provider_ref=result.get("provider_ref"),
             status="sent" if result["success"] else "partial_fail",
         )
 
@@ -375,7 +375,7 @@ class CommunicationsService:
             recipients_count=len(farmers),
             body=f"Dues reminder: GHS {amount:.2f} due by {due_date}",
             sent_by=sent_by,
-            moolre_ref=result.get("moolre_ref"),
+            provider_ref=result.get("provider_ref"),
             status="sent" if result["success"] else "partial_fail",
         )
 
@@ -405,7 +405,7 @@ class CommunicationsService:
                 cooperative_id=cooperative_id,
                 recipients_count=1,
                 body=message,
-                moolre_ref=result.get("raw", {}).get("data"),
+                provider_ref=result.get("raw", {}).get("data"),
                 status="sent" if result["success"] else "failed",
             )
         return result
@@ -421,7 +421,7 @@ class CommunicationsService:
         cooperative_id: int | None,
         recipients_count: int,
         body: str,
-        moolre_ref: str | None = None,
+        provider_ref: str | None = None,
         sent_by: str | None = None,
         status: str = "sent",
     ) -> CommunicationLog:
@@ -431,7 +431,7 @@ class CommunicationsService:
             cooperative_id=cooperative_id,
             recipients_count=recipients_count,
             body=body,
-            moolre_ref=moolre_ref,
+            provider_ref=provider_ref,
             sent_by=sent_by,
             status=status,
             sent_at=datetime.utcnow(),

@@ -256,7 +256,7 @@ def test_reject_loan_records_reason_and_sends_sms(client, farmer, db):
     )
     log = db.query(CommunicationLog).order_by(CommunicationLog.id.desc()).first()
     assert log.status == "sent"
-    assert log.moolre_ref == "sms-ref-123"
+    assert log.provider_ref == "sms-ref-123"
 
 
 def test_reject_loan_requires_reason(client, farmer):
@@ -356,7 +356,7 @@ def test_disbursement_status_preserves_completed_payout(client, db, farmer):
             transaction_type=TransactionType.payout,
             amount=250.0,
             status=TransactionStatus.completed,
-            moolre_transfer_ref="COMPLETED-PAYOUT",
+            provider_transfer_ref="COMPLETED-PAYOUT",
             description=f"Loan disbursement #{loan_id}",
         )
     )
@@ -384,7 +384,7 @@ def test_disburse_loan(client, farmer):
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "disbursed"
-    assert data["moolre_transfer_ref"] == "TEST-TRANSFER-001"
+    assert data["provider_transfer_ref"] == "TEST-TRANSFER-001"
     mock_transfer.assert_called_once()
     mock_status.assert_called_once()
     assert mock_status.call_args.kwargs["id_type"] == "2"
@@ -394,7 +394,7 @@ def test_disburse_loan_uses_platform_wallet(client, farmer, cooperative):
     service = MoolreService()
     client.put(
         f"/cooperatives/{cooperative['id']}",
-        json={"moolre_account_number": "COOP-WALLET-999"},
+        json={"wallet_account_id": "COOP-WALLET-999"},
     )
     create_resp = client.post(
         "/loans/", json={"farmer_id": farmer["id"], "amount": 250.0}
@@ -509,7 +509,7 @@ def test_disburse_retry_updates_pending_transaction_without_duplicate(client, fa
                 {
                     "success": False,
                     "status": "failed",
-                    "transaction_id": pending_tx.moolre_transfer_ref,
+                    "transaction_id": pending_tx.provider_transfer_ref,
                     "raw": {"message": "Transaction Failed"},
                 },
                 _transfer_status_completed(250.0),
@@ -673,7 +673,7 @@ def test_admin_repayment_otp_endpoint_is_removed(client, farmer):
 def test_repay_loan_uses_cooperative_account(client, farmer, cooperative):
     client.put(
         f"/cooperatives/{cooperative['id']}",
-        json={"moolre_account_number": "COOP-REPAY-888"},
+        json={"wallet_account_id": "COOP-REPAY-888"},
     )
     loan_id = _approve_and_disburse(client, farmer, 120.0)
 

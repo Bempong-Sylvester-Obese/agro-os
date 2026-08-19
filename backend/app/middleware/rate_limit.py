@@ -61,9 +61,8 @@ def _rule_for(request: Request) -> tuple[str, int, int] | None:
         return "login", settings.rate_limit_login_per_minute, 60
     if path == "/marketing/demo-bookings":
         return "demo_booking", settings.rate_limit_login_per_minute, 60
-    if path in {"/webhooks/moolre/payment", "/webhooks/moolre/ussd"} or path.startswith(
-        "/ussdk/"
-    ):
+    webhook_paths = {settings.webhook_callback_path, "/webhooks/moolre/payment", "/webhooks/moolre/ussd"}
+    if path in webhook_paths or path.startswith("/ussdk/"):
         return "webhook", settings.rate_limit_webhook_per_minute, 60
     if path in {"/communications/sms/broadcast", "/communications/sms/dues-reminder"}:
         return "sms", settings.rate_limit_sms_per_minute, 60

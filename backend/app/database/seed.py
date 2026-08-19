@@ -54,7 +54,7 @@ def seed_golden_path(db: Session) -> dict:
         description="Hackathon demo cooperative for the Golden Path pitch",
         location="Kumasi, Ashanti Region",
         currency="GHS",
-        moolre_account_number="DEMO-WALLET-001",
+        wallet_account_id="DEMO-WALLET-001",
     )
     db.add(coop)
     db.flush()
@@ -149,7 +149,7 @@ def seed_golden_path(db: Session) -> dict:
             transaction_type=TransactionType.dues,
             amount=120.0,
             status=TransactionStatus.pending,
-            moolre_reference=pending_ref,
+            provider_payment_ref=pending_ref,
             payer_phone=abena.phone,
             channel="13",
             description="June 2026 cooperative dues",
@@ -167,7 +167,7 @@ def seed_golden_path(db: Session) -> dict:
                 transaction_type=TransactionType.dues,
                 amount=amount,
                 status=TransactionStatus.completed,
-                moolre_reference=str(uuid.uuid4()),
+                provider_payment_ref=str(uuid.uuid4()),
                 payer_phone=farmer.phone,
                 channel="13",
                 description="Monthly cooperative dues",

@@ -28,7 +28,7 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
     location: '',
     description: '',
     default_currency: 'GHS',
-    moolre_account_number: ''
+    integration_account_number: ''
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -49,7 +49,7 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
         location: cooperative.location || '',
         description: cooperative.description || '',
         default_currency: cooperative.currency || cooperative.default_currency || 'GHS',
-        moolre_account_number: cooperative.moolre_account_number || ''
+        integration_account_number: cooperative.moolre_account_number || ''
       })
     }
   }, [cooperative])
@@ -111,10 +111,11 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
     setSuccessMsg(null)
 
     try {
-      const { default_currency, ...rest } = form
+      const { default_currency, integration_account_number, ...rest } = form
       await updateCooperative(cooperative.id, {
         ...rest,
         currency: default_currency,
+        moolre_account_number: integration_account_number,
       })
       setSuccessMsg('Settings updated successfully.')
       if (onRefresh) onRefresh()
@@ -261,8 +262,8 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
                   </select>
                 </div>
                 <div style={{ flex: 2 }}>
-                  <label htmlFor="settings-moolre-account" style={labelStyle}>Moolre Account Number</label>
-                  <input id="settings-moolre-account" style={inputStyle} type="text" value={form.moolre_account_number} onChange={e => setForm({...form, moolre_account_number: e.target.value})} placeholder="e.g. 1089700..." required disabled={saving}/>
+                  <label htmlFor="settings-integration-account" style={labelStyle}>Moolre Account Number</label>
+                  <input id="settings-integration-account" style={inputStyle} type="text" value={form.integration_account_number} onChange={e => setForm({...form, integration_account_number: e.target.value})} placeholder="e.g. 1089700..." required disabled={saving}/>
                 </div>
               </div>
             </div>
@@ -434,117 +435,122 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
         </form>
       </div>
       <GovernanceSettings cooperativeId={cooperativeId} />
-      <section
-        className="admin-card"
-        aria-labelledby="demo-reset-title"
-        style={{ marginTop: 24, border: '1px solid #FCA5A5' }}
-      >
-        <div style={{ padding: '24px 28px' }}>
-          <div id="demo-reset-title" className="serif" style={{ fontWeight: 700, fontSize: 18, color: '#991B1B' }}>
-            Demo data danger zone
-          </div>
-          <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, margin: '8px 0 16px' }}>
-            Permanently remove operational demo records while preserving the demo cooperative and admin users.
-            This action cannot be undone.
-          </p>
 
-          {resetStatus === 'unavailable' ? (
-            <div style={{ padding: 14, background: '#F8FAFC', borderRadius: 8, fontSize: 13, lineHeight: 1.6 }}>
-              Demo reset is not available for this workspace. In production, retain records according to your
-              organization&apos;s data policy and use an approved archive or retention process instead of deleting
-              operational history.
+      {!import.meta.env.PROD && (
+        <>
+          <section
+            className="admin-card"
+            aria-labelledby="demo-reset-title"
+            style={{ marginTop: 24, border: '1px solid #FCA5A5' }}
+          >
+            <div style={{ padding: '24px 28px' }}>
+              <div id="demo-reset-title" className="serif" style={{ fontWeight: 700, fontSize: 18, color: '#991B1B' }}>
+                Demo data danger zone
+              </div>
+              <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, margin: '8px 0 16px' }}>
+                Permanently remove operational demo records while preserving the demo cooperative and admin users.
+                This action cannot be undone.
+              </p>
+
+              {resetStatus === 'unavailable' ? (
+                <div style={{ padding: 14, background: '#F8FAFC', borderRadius: 8, fontSize: 13, lineHeight: 1.6 }}>
+                  Demo reset is not available for this workspace. In production, retain records according to your
+                  organization&apos;s data policy and use an approved archive or retention process instead of deleting
+                  operational history.
+                </div>
+              ) : (
+                <>
+                  {resetStatus === 'success' && (
+                    <div role="status" style={{ padding: 12, background: '#ECFDF5', color: '#047857', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
+                      Demo data was reset successfully.
+                    </div>
+                  )}
+                  {resetStatus === 'error' && resetError && (
+                    <div role="alert" style={{ padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
+                      {resetError}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleOpenReset}
+                    disabled={resetStatus === 'loading'}
+                    style={{
+                      border: '1px solid #DC2626', background: '#fff', color: '#B91C1C', borderRadius: 8,
+                      padding: '10px 16px', fontWeight: 700, cursor: resetStatus === 'loading' ? 'wait' : 'pointer',
+                      display: 'inline-flex', alignItems: 'center', gap: 8,
+                    }}
+                  >
+                    {resetStatus === 'loading' ? <><Loader2 size={16} className="spin" /> Checking eligibility...</> : 'Review demo reset'}
+                  </button>
+                </>
+              )}
             </div>
-          ) : (
-            <>
-              {resetStatus === 'success' && (
-                <div role="status" style={{ padding: 12, background: '#ECFDF5', color: '#047857', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
-                  Demo data was reset successfully.
-                </div>
-              )}
-              {resetStatus === 'error' && resetError && (
-                <div role="alert" style={{ padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
-                  {resetError}
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={handleOpenReset}
-                disabled={resetStatus === 'loading'}
-                style={{
-                  border: '1px solid #DC2626', background: '#fff', color: '#B91C1C', borderRadius: 8,
-                  padding: '10px 16px', fontWeight: 700, cursor: resetStatus === 'loading' ? 'wait' : 'pointer',
-                  display: 'inline-flex', alignItems: 'center', gap: 8,
-                }}
-              >
-                {resetStatus === 'loading' ? <><Loader2 size={16} className="spin" /> Checking eligibility...</> : 'Review demo reset'}
-              </button>
-            </>
-          )}
-        </div>
-      </section>
+          </section>
 
-      {resetDialogOpen && resetPreview && (
-        <DashboardModal
-          title="Confirm demo data reset"
-          subtitle={`These records will be permanently removed. This preview expires in ${resetPreview.expires_in_seconds} seconds.`}
-          onClose={() => setResetDialogOpen(false)}
-          label="Confirm demo data reset"
-          wide
-          closeOnBackdrop={!resetting}
-          closeDisabled={resetting}
-          as="form"
-          bodyProps={{ onSubmit: handleConfirmReset }}
-        >
-          <div className="dashboard-modal-body">
-            <dl className="dashboard-modal-count-list">
-              {Object.entries(RESET_COUNT_LABELS).map(([key, label]) => (
-                <React.Fragment key={key}>
-                  <dt>{label}</dt>
-                  <dd>{resetPreview[key] ?? 0}</dd>
-                </React.Fragment>
-              ))}
-            </dl>
-
-            <ModalField
-              htmlFor="demo-reset-confirmation"
-              label={<>Type <strong>{resetPreview.confirmation_phrase}</strong> to confirm</>}
+          {resetDialogOpen && resetPreview && (
+            <DashboardModal
+              title="Confirm demo data reset"
+              subtitle={`These records will be permanently removed. This preview expires in ${resetPreview.expires_in_seconds} seconds.`}
+              onClose={() => setResetDialogOpen(false)}
+              label="Confirm demo data reset"
+              wide
+              closeOnBackdrop={!resetting}
+              closeDisabled={resetting}
+              as="form"
+              bodyProps={{ onSubmit: handleConfirmReset }}
             >
-              <input
-                ref={resetInputRef}
-                id="demo-reset-confirmation"
-                className="dashboard-modal-input"
-                type="text"
-                value={resetPhrase}
-                onChange={(event) => setResetPhrase(event.target.value)}
-                autoComplete="off"
-                disabled={resetting}
-              />
-            </ModalField>
+              <div className="dashboard-modal-body">
+                <dl className="dashboard-modal-count-list">
+                  {Object.entries(RESET_COUNT_LABELS).map(([key, label]) => (
+                    <React.Fragment key={key}>
+                      <dt>{label}</dt>
+                      <dd>{resetPreview[key] ?? 0}</dd>
+                    </React.Fragment>
+                  ))}
+                </dl>
 
-            {resetError && (
-              <div role="alert" className="dashboard-form-error">{resetError}</div>
-            )}
+                <ModalField
+                  htmlFor="demo-reset-confirmation"
+                  label={<>Type <strong>{resetPreview.confirmation_phrase}</strong> to confirm</>}
+                >
+                  <input
+                    ref={resetInputRef}
+                    id="demo-reset-confirmation"
+                    className="dashboard-modal-input"
+                    type="text"
+                    value={resetPhrase}
+                    onChange={(event) => setResetPhrase(event.target.value)}
+                    autoComplete="off"
+                    disabled={resetting}
+                  />
+                </ModalField>
 
-            <div className="dashboard-modal-actions">
-              <button
-                type="button"
-                className="dashboard-modal-btn-secondary"
-                onClick={() => setResetDialogOpen(false)}
-                disabled={resetting}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="btn-lg"
-                disabled={resetting || resetPhrase !== resetPreview.confirmation_phrase}
-                style={{ background: '#B91C1C' }}
-              >
-                {resetting ? <><Loader2 size={16} className="spin" /> Resetting…</> : 'Reset demo data'}
-              </button>
-            </div>
-          </div>
-        </DashboardModal>
+                {resetError && (
+                  <div role="alert" className="dashboard-form-error">{resetError}</div>
+                )}
+
+                <div className="dashboard-modal-actions">
+                  <button
+                    type="button"
+                    className="dashboard-modal-btn-secondary"
+                    onClick={() => setResetDialogOpen(false)}
+                    disabled={resetting}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-lg"
+                    disabled={resetting || resetPhrase !== resetPreview.confirmation_phrase}
+                    style={{ background: '#B91C1C' }}
+                  >
+                    {resetting ? <><Loader2 size={16} className="spin" /> Resetting…</> : 'Reset demo data'}
+                  </button>
+                </div>
+              </div>
+            </DashboardModal>
+          )}
+        </>
       )}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } } .spin { animation: spin 1s linear infinite; }`}</style>
     </div>

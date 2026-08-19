@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.config import get_settings
 from app.constants import MAX_PAGE_SIZE
 from app.database.db import get_db
-from app.dependencies.cooperative_scope import resolve_cooperative_scope
+from app.dependencies.cooperative_scope import CooperativeScope, require_cooperative_scope, resolve_cooperative_scope
 from app.models.models import (
     AdminAuditLog,
     Cooperative,
@@ -101,7 +101,7 @@ def _get_loan_or_404(
 def _cooperative_account(farmer: Farmer, db: Session) -> str | None:
     """Return the cooperative Moolre wallet when configured."""
     cooperative = db.query(Cooperative).filter(Cooperative.id == farmer.cooperative_id).first()
-    return cooperative.moolre_account_number if cooperative else None
+    return cooperative.wallet_account_id if cooperative else None
 
 
 def _latest_loan_transaction(
@@ -134,7 +134,7 @@ def _disbursement_status_response(
         loan_id=loan.id,
         loan_status=loan.status,
         payout_status=payout_status,
-        transfer_reference=(payout.moolre_transfer_ref if payout else None) or loan.moolre_transfer_ref,
+        transfer_reference=(payout.provider_transfer_ref if payout else None) or loan.provider_transfer_ref,
         can_cancel=loan.status in (LoanStatus.requested, LoanStatus.approved)
         and (payout is None or payout.status == TransactionStatus.failed),
         can_retry=loan.status == LoanStatus.approved
@@ -185,14 +185,14 @@ def _apply_disbursement_status(
     if loan.status == LoanStatus.disbursed or tx.status == TransactionStatus.completed:
         if tx.status == TransactionStatus.completed and loan.status == LoanStatus.approved:
             loan.status = LoanStatus.disbursed
-            loan.moolre_transfer_ref = tx.moolre_transfer_ref
+            loan.provider_transfer_ref = tx.provider_transfer_ref
             loan.disbursed_at = loan.disbursed_at or datetime.utcnow()
             db.commit()
         return loan
     if tx.status != TransactionStatus.pending or loan.status != LoanStatus.approved:
         return loan
-    if transfer_ref and not tx.moolre_transfer_ref:
-        tx.moolre_transfer_ref = transfer_ref
+    if transfer_ref and not tx.provider_transfer_ref:
+        tx.provider_transfer_ref = transfer_ref
 
     if status_result["status"] == "failed":
         tx.status = TransactionStatus.failed
@@ -221,7 +221,7 @@ def _apply_disbursement_status(
     tx.customer_action = "none"
     tx.action_expires_at = None
     loan.status = LoanStatus.disbursed
-    loan.moolre_transfer_ref = transfer_ref or tx.moolre_transfer_ref
+    loan.provider_transfer_ref = transfer_ref or tx.provider_transfer_ref
     loan.disbursed_at = datetime.utcnow()
     db.commit()
     db.refresh(loan)
@@ -315,6 +315,7 @@ def list_loans(
     limit: int = Query(default=100, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user),
+    cooperative_scope: CooperativeScope | None = Depends(require_cooperative_scope),
 ):
     """List loans with optional filters."""
     settings = get_settings()
@@ -341,6 +342,7 @@ def get_loan(
     loan_id: int,
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user),
+    cooperative_scope: CooperativeScope | None = Depends(require_cooperative_scope),
 ):
     """Get loan details."""
     return _get_loan_or_404(loan_id, db, current_user)
@@ -351,6 +353,7 @@ def list_loan_reminders(
     loan_id: int,
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user),
+    cooperative_scope: CooperativeScope | None = Depends(require_cooperative_scope),
 ):
     _get_loan_or_404(loan_id, db, current_user)
     return (
@@ -512,7 +515,7 @@ def cancel_loan(
         )
     if payout and payout.status == TransactionStatus.completed:
         loan.status = LoanStatus.disbursed
-        loan.moolre_transfer_ref = payout.moolre_transfer_ref
+        loan.provider_transfer_ref = payout.provider_transfer_ref
         loan.disbursed_at = loan.disbursed_at or datetime.utcnow()
         db.commit()
         raise HTTPException(
@@ -563,17 +566,17 @@ async def get_disbursement_status(
         )
         if loan.status == LoanStatus.approved and payout.status == TransactionStatus.completed:
             loan.status = LoanStatus.disbursed
-            loan.moolre_transfer_ref = payout.moolre_transfer_ref
+            loan.provider_transfer_ref = payout.provider_transfer_ref
             loan.disbursed_at = loan.disbursed_at or datetime.utcnow()
             db.commit()
     if (
         loan.status == LoanStatus.approved
         and payout
         and payout.status == TransactionStatus.pending
-        and payout.moolre_transfer_ref
+        and payout.provider_transfer_ref
     ):
         payout_id = payout.id
-        transfer_ref = payout.moolre_transfer_ref
+        transfer_ref = payout.provider_transfer_ref
         provider = get_payment_provider()
         account_number, wallet_error = await provider.resolve_verified_account(None)
         if wallet_error:
@@ -656,7 +659,7 @@ async def disburse_loan(
 
     if existing_tx and existing_tx.status == TransactionStatus.pending:
         existing_id = existing_tx.id
-        existing_ref = existing_tx.moolre_transfer_ref
+        existing_ref = existing_tx.provider_transfer_ref
         db.commit()
         status_result = await provider.transfer_status(
             reference=existing_ref,
@@ -704,7 +707,7 @@ async def disburse_loan(
         )
     if latest_tx and latest_tx.status == TransactionStatus.completed:
         loan.status = LoanStatus.disbursed
-        loan.moolre_transfer_ref = latest_tx.moolre_transfer_ref
+        loan.provider_transfer_ref = latest_tx.provider_transfer_ref
         loan.disbursed_at = loan.disbursed_at or datetime.utcnow()
         db.commit()
         return loan
@@ -716,7 +719,7 @@ async def disburse_loan(
         amount=loan.amount,
         currency=loan.currency,
         status=TransactionStatus.pending,
-        moolre_transfer_ref=ext_ref,
+        provider_transfer_ref=ext_ref,
         payee_phone=farmer.phone,
         description=f"Loan disbursement #{loan.id}",
     )
@@ -744,9 +747,9 @@ async def disburse_loan(
         )
         if locked_attempt.status == TransactionStatus.pending:
             locked_attempt.status = TransactionStatus.failed
-            locked_attempt.moolre_transfer_ref = (
+            locked_attempt.provider_transfer_ref = (
                 transfer_result.get("moolre_transfer_ref")
-                or locked_attempt.moolre_transfer_ref
+                or locked_attempt.provider_transfer_ref
             )
             db.commit()
         raise HTTPException(
@@ -754,7 +757,7 @@ async def disburse_loan(
             detail=f"Moolre transfer failed: {transfer_result['message']}",
         )
 
-    transfer_ref = transfer_result.get("moolre_transfer_ref") or attempt_tx.moolre_transfer_ref
+    transfer_ref = transfer_result.get("moolre_transfer_ref") or attempt_tx.provider_transfer_ref
     status_result = await provider.transfer_status(
         reference=transfer_ref,
         account_number=account_number,
@@ -819,7 +822,7 @@ async def start_farmer_loan_repayment(
                 return loan
         if existing_tx is not None:
             status_result = await provider.payment_status(
-                external_ref=existing_tx.moolre_reference,
+                external_ref=existing_tx.provider_payment_ref,
                 account_number=account_number,
             )
             return await _finalize_repayment(
@@ -837,7 +840,7 @@ async def start_farmer_loan_repayment(
         amount=loan.amount,
         currency=loan.currency,
         status=TransactionStatus.pending,
-        moolre_reference=ext_ref,
+        provider_payment_ref=ext_ref,
         payer_phone=farmer.phone,
         description=f"Loan repayment #{loan.id}",
         initiation_channel=initiation_channel,
@@ -894,7 +897,7 @@ async def start_farmer_loan_repayment(
             await CommunicationsService().send_payment_action_required(
                 farmer=farmer,
                 amount=loan.amount,
-                reference=tx.moolre_reference,
+                reference=tx.provider_payment_ref,
                 db=db,
                 sent_by=None,
             )
@@ -987,7 +990,7 @@ async def resume_loan_repayment_customer_action(
     db.commit()
 
     transaction_id = locked_transaction.id
-    ext_ref = locked_transaction.moolre_reference or _repay_external_ref(loan.id)
+    ext_ref = locked_transaction.provider_payment_ref or _repay_external_ref(loan.id)
     provider = get_payment_provider()
     account_number = _cooperative_account(farmer, db)
     payment_result = await provider.initiate_payment(
