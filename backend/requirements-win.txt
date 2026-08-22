@@ -128,7 +128,7 @@ scipy==1.18.0
     # via scikit-learn
 sentry-sdk==2.66.1
     # via wandb
-sqlalchemy==2.0.51
+sqlalchemy==2.0.52
     # via
     #   -r requirements.in
     #   alembic
