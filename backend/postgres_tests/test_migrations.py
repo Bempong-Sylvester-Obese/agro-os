@@ -162,7 +162,7 @@ def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
         _run_stamp(config, engine, schema, "004_user_active")
         _run_upgrade(config, engine, schema)
         assert ScriptDirectory.from_config(config).get_heads() == [
-            "015_worker_integrity"
+            "016_rename_moolre"
         ]
 
         columns = {

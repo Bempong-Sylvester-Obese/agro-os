@@ -138,7 +138,7 @@ def test_direct_ussd_menu_starts_farmer_loan_repayment(client, farmer, db):
         )
 
     assert started.json()["reply"] is True
-    assert "OTP Moolre sent" in started.json()["message"]
+    assert "OTP" in started.json()["message"]
 
 
 def test_loan_reminder_is_idempotent_and_never_creates_payment(db, farmer):

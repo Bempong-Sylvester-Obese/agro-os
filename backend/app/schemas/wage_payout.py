@@ -41,7 +41,7 @@ class WagePayoutResponse(BaseModel):
     approved_by: Optional[int] = None
     approved_at: Optional[datetime] = None
     paid_at: Optional[datetime] = None
-    moolre_reference: Optional[str] = None
+    provider_payment_ref: Optional[str] = None
     failure_reason: Optional[str] = None
     created_at: datetime
 

@@ -14,8 +14,6 @@ export const FETCH_TIMEOUT_MS = 45000
 export const AUTH_FETCH_TIMEOUT_MS = 90000
 /** Moolre disburse/collect can take 60s+ (validate + transfer + status). */
 export const MUTATION_TIMEOUT_MS = 120000
-/** Production builds never silently substitute demo data. */
-export const LIVE_API_ONLY = import.meta.env.PROD && import.meta.env.VITE_ALLOW_DEMO_FALLBACK !== 'true'
 export const DEFAULT_COOP_ID = import.meta.env.VITE_COOPERATIVE_ID
 
 export function authHeaders(json = false) {
@@ -127,14 +125,3 @@ export async function fetchJson(url, options = {}) {
   return response.json()
 }
 
-/**
- * Run a live fetch; return demo payload only on transport-level failure.
- */
-export async function withDemoFallback(fetchLive, getDemo, { fallback = !LIVE_API_ONLY } = {}) {
-  try {
-    return await fetchLive()
-  } catch (err) {
-    if (!fallback || !isTransportFailure(err)) throw err
-    return getDemo()
-  }
-}

@@ -231,8 +231,8 @@ async def disburse_payroll(
             results.append(payout)
             continue
 
-        external_ref = payout.moolre_reference or f"wage-payout-{payout.id}"
-        payout.moolre_reference = external_ref
+        external_ref = payout.provider_payment_ref or f"wage-payout-{payout.id}"
+        payout.provider_payment_ref = external_ref
         amount = payout.gross_amount
         period_start = payout.period_start
         period_end = payout.period_end
@@ -255,7 +255,7 @@ async def disburse_payroll(
             if transfer.get("success"):
                 payout.status = PayoutStatus.paid
                 payout.paid_at = datetime.utcnow()
-                payout.moolre_reference = (
+                payout.provider_payment_ref = (
                     transfer.get("moolre_transfer_ref")
                     or transfer.get("external_ref")
                     or external_ref

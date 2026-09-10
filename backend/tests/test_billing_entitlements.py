@@ -87,7 +87,7 @@ def test_subscription_webhook_rejects_amount_mismatch(db, cooperative):
     assert coop.subscription_plan == "starter"
     event = (
         db.query(PaymentWebhookEvent)
-        .filter(PaymentWebhookEvent.moolre_reference == reference)
+        .filter(PaymentWebhookEvent.provider_payment_ref == reference)
         .one()
     )
     assert event.processed is False
@@ -122,7 +122,7 @@ def test_subscription_webhook_replay_does_not_extend_twice(db, cooperative):
     assert (
         db.query(PaymentWebhookEvent)
         .filter(
-            PaymentWebhookEvent.moolre_reference == reference,
+            PaymentWebhookEvent.provider_payment_ref == reference,
             PaymentWebhookEvent.processed.is_(True),
         )
         .count()

@@ -12,6 +12,7 @@ from app.schemas.schemas import (
     CooperativeResponse,
     CooperativeUpdate,
 )
+from app.dependencies.cooperative_scope import CooperativeScope, require_cooperative_scope
 from app.services.auth_service import (
     enforce_cooperative_scope,
     get_current_user,
@@ -44,6 +45,7 @@ def list_cooperatives(
     limit: int = Query(default=100, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user),
+    cooperative_scope: CooperativeScope | None = Depends(require_cooperative_scope),
 ):
     """List all cooperatives."""
     query = db.query(Cooperative)
@@ -57,6 +59,7 @@ def get_cooperative(
     cooperative_id: int,
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user),
+    cooperative_scope: CooperativeScope | None = Depends(require_cooperative_scope),
 ):
     """Get a cooperative by ID."""
     enforce_cooperative_scope(current_user, cooperative_id)
@@ -126,7 +129,7 @@ async def provision_wallet(
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
         
-    if coop.moolre_account_number:
+    if coop.wallet_account_id:
         raise HTTPException(status_code=400, detail="Wallet already provisioned")
         
     provider = get_payment_provider()
@@ -141,7 +144,7 @@ async def provision_wallet(
             detail=f"Failed to provision wallet: {result.get('raw', {}).get('message', 'Unknown error')}"
         )
         
-    coop.moolre_account_number = result.get("account_number")
+    coop.wallet_account_id = result.get("account_number")
     
     if current_user:
         db.add(
@@ -151,7 +154,7 @@ async def provision_wallet(
                 action="wallet.provisioned",
                 resource_type="cooperative",
                 resource_id=str(coop.id),
-                details=f"account_number={coop.moolre_account_number}",
+                details=f"account_number={coop.wallet_account_id}",
             )
         )
     db.commit()

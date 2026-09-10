@@ -391,7 +391,7 @@ def test_payout_is_durable_idempotent_and_retries_failed_only(
         .all()
     )
     assert len(transactions) == 3
-    assert len({tx.moolre_transfer_ref for tx in transactions}) == 3
+    assert len({tx.provider_transfer_ref for tx in transactions}) == 3
     reconciled = client.post(
         f"/settlements/{settlement['id']}/reconcile",
         params={"cooperative_id": cooperative["id"]},

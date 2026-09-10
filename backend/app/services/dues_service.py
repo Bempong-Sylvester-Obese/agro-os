@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 def _cooperative_account(farmer: Farmer, db: Session) -> str | None:
     cooperative = db.query(Cooperative).filter(Cooperative.id == farmer.cooperative_id).first()
-    return cooperative.moolre_account_number if cooperative else None
+    return cooperative.wallet_account_id if cooperative else None
 
 
 def _dues_collect_response(tx: Transaction, result: dict) -> DuesCollectResponse:
@@ -53,13 +53,13 @@ def _dues_collect_response(tx: Transaction, result: dict) -> DuesCollectResponse
 
     return DuesCollectResponse(
         transaction_id=tx.id,
-        moolre_reference=tx.moolre_reference,
+        provider_payment_ref=tx.provider_payment_ref,
         status=status,
         message=result.get("message")
         or ("Payment request sent" if result.get("success") else "Moolre request failed"),
         verification_required=verification_required,
         outcome=outcome,
-        moolre_code=result.get("moolre_code"),
+        provider_code=result.get("moolre_code"),
         customer_action=tx.customer_action,
         action_expires_at=tx.action_expires_at,
     )
@@ -79,7 +79,7 @@ async def run_dues_collect(
     tx = (
         db.query(Transaction)
         .filter(
-            Transaction.moolre_reference == external_ref,
+            Transaction.provider_payment_ref == external_ref,
             Transaction.farmer_id == farmer.id,
         )
         .first()
@@ -91,7 +91,7 @@ async def run_dues_collect(
             amount=amount,
             currency="GHS",
             status=TransactionStatus.pending,
-            moolre_reference=external_ref,
+            provider_payment_ref=external_ref,
             payer_phone=farmer.phone,
             channel=channel,
             description=description,
@@ -130,7 +130,7 @@ async def run_dues_collect(
     tx = (
         db.query(Transaction)
         .filter(
-            Transaction.moolre_reference == external_ref,
+            Transaction.provider_payment_ref == external_ref,
             Transaction.farmer_id == farmer.id,
         )
         .with_for_update()
@@ -148,7 +148,7 @@ async def run_dues_collect(
     if result.get("moolre_reference") and result["moolre_reference"] != external_ref:
         ref_val = str(result["moolre_reference"]).lower()
         if ref_val not in ("all", "phoneno", "externalref", "senderid"):
-            tx.moolre_reference = result["moolre_reference"]
+            tx.provider_payment_ref = result["moolre_reference"]
 
     verification_required = result.get("verification_required", False) or result.get("outcome") == "verification_required"
     if verification_required:

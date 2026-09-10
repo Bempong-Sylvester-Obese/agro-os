@@ -45,7 +45,7 @@ def _hook_payload(msisdn: str, values: dict | None = None) -> dict:
 @pytest.mark.parametrize("app_env", ["production", "Production", "prod"])
 def test_ussdk_hooks_fail_closed_without_production_secret(client, app_env):
     with patch(
-        "app.routes.ussdk_hooks.get_settings",
+        "app.adapters.ussdk_adapter.get_settings",
         return_value=SimpleNamespace(
             ussdk_hook_secret="",
             app_env=app_env,
@@ -132,7 +132,7 @@ def test_pending_payment_reconciles_stale_processing_action(
         transaction_type=TransactionType.dues,
         amount=25,
         status=TransactionStatus.pending,
-        moolre_reference="ussdk-stale-ref",
+        provider_payment_ref="ussdk-stale-ref",
         customer_action="processing_otp",
         action_expires_at=datetime.utcnow() - timedelta(seconds=1),
         initiation_channel="ussdk",

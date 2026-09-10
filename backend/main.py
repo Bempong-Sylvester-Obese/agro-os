@@ -140,8 +140,7 @@ _redoc_url = None if _is_production else "/redoc"
 app = FastAPI(
     title="AgroOS API",
     description=(
-        "Backend API for AgroOS — Digital Infrastructure for African Farmer Cooperatives.\n\n"
-        "Powered by Moolre for payments, SMS, and USSD access."
+        "Backend API for AgroOS — Digital Infrastructure for African Farmer Cooperatives."
     ),
     version="1.0.0",
     docs_url=_docs_url,

@@ -3,20 +3,19 @@
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability in AgroOS, please do not open a
-public GitHub issue. Contact the maintainers directly via the Moolre
-Startup Cup hackathon communication channels.
+public GitHub issue. Contact the maintainers directly via the project
+repository or private communication channels.
 
 We will acknowledge receipt within 48 hours and aim to resolve confirmed
-issues before any public demo or production deployment.
+issues before any production deployment.
 
 ## Scope
 
-During the hackathon phase (Moolre Startup Cup, July 2026), the following
-areas are in scope for security review:
+The following areas are in scope for security review:
 
 - FastAPI backend endpoints (authentication, input validation)
 - Supabase row-level security configuration
-- Moolre webhook signature verification
+- Payment webhook signature verification
 - Environment variable and secret handling (.env.example hygiene)
 
 ## Authentication Model
@@ -38,8 +37,8 @@ Production deployments must set `AUTH_ENABLED=true`.
 | `AUTH_ENABLED=false` | Local tests/development only | Routes retain local-development compatibility |
 | `AUTH_ENABLED=true` | Staging / production | Every non-public route requires `Authorization: Bearer <token>` |
 
-Public routes are limited to signup/login, root and health probes, and the exact
-Moolre/USSDK callback paths configured in `backend/main.py`.
+Public routes are limited to signup/login, root and health probes, and the
+configured webhook callback paths (see `WEBHOOK_CALLBACK_PATH` in config).
 
 ## Token Configuration
 
@@ -57,18 +56,19 @@ gated behind feature flags and must not be active in production:
 |---|---|---|
 | USSD sandbox mode | `USSD_SANDBOX=true` | Must be disabled in production |
 | Unauthenticated routes | `AUTH_ENABLED=false` | Must be enabled in production |
-| Mock payment webhooks | `MOOLRE_WEBHOOK_SECRET` unset | Must be set in production |
+| Mock payment webhooks | Webhook secret unset | Must be set in production |
+| Demo seed/reset | Hidden via frontend build flag | Must not be accessible in production |
 
 ## Webhook Security
 
 | Endpoint | Verification |
 |---|---|
-| `POST /webhooks/moolre/payment` | HMAC-SHA256 via `X-Moolre-Signature` when `MOOLRE_WEBHOOK_SECRET` is set |
+| `POST /webhooks/payment` | HMAC-SHA256 via provider-specific header when webhook secret is set |
 | `POST /webhooks/moolre/ussd` | Query-string shared secret via `MOOLRE_USSD_SECRET` |
 | `POST /ussd/callback` | Query-string shared secret via `USSD_CALLBACK_SECRET` |
 | `POST /ussdk/*` | HMAC-SHA256 via `X-USSDK-Signature` and `USSDK_HOOK_SECRET` |
 
-When `MOOLRE_WEBHOOK_SECRET` is unset, payment webhook signature checks are
+When the webhook secret is unset, payment webhook signature checks are
 skipped (development/sandbox only). Production deployments must set the secret.
 
 USSD callbacks fail closed in production when their endpoint-specific secret is
@@ -79,9 +79,10 @@ unset. Development and test environments may omit these secrets.
 Cross-cooperative data isolation follows a defense-in-depth model:
 
 1. **API-layer enforcement (primary):** Protected route handlers call
-   `enforce_cooperative_scope` to compare the requested cooperative with the
-   authenticated user's cooperative. Query-string and request-body cooperative
-   IDs cannot override that scope on those routes.
+   `enforce_cooperative_scope` or `require_cooperative_scope` to compare
+   the requested cooperative with the authenticated user's cooperative.
+   Query-string and request-body cooperative IDs cannot override that scope
+   on protected routes.
 
 2. **Supabase RLS reference policies:** The reference SQL scopes SELECT access
    on `farmers`, `transactions`, `loans`, `productions`, and `trust_scores` to
@@ -106,7 +107,7 @@ and the cooperative-consistency constraints in Alembic.
 ## Rate Limits
 
 Abuse-sensitive POST routes use per-client, one-minute limits: login 10,
-Moolre/USSDK callbacks 120, SMS sends 5, and dues collection 10. A rejected
+webhook callbacks 120, SMS sends 5, and dues collection 10. A rejected
 request returns HTTP 429 with `Retry-After`. Limits can be adjusted with the
 `RATE_LIMIT_*` environment variables; health probes are always exempt.
 

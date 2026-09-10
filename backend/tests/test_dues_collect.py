@@ -47,7 +47,7 @@ def _failed_result(ext_ref: str) -> dict:
 def test_collect_dues_uses_cooperative_account(client, farmer, cooperative):
     client.put(
         f"/cooperatives/{cooperative['id']}",
-        json={"moolre_account_number": "COOP-DUES-777"},
+        json={"wallet_account_id": "COOP-DUES-777"},
     )
 
     with patch(
@@ -98,9 +98,9 @@ def test_collect_dues_tp14_verification_required(client, farmer):
     data = resp.json()
     assert data["status"] == "verification_required"
     assert data["outcome"] == "verification_required"
-    assert data["moolre_code"] == "TP14"
+    assert data["provider_code"] == "TP14"
     assert data["transaction_id"]
-    assert data["moolre_reference"]
+    assert data["provider_payment_ref"]
     assert data["customer_action"] == "otp"
     assert data["action_expires_at"]
 
@@ -125,7 +125,7 @@ def test_collect_dues_tr099_pending(client, farmer):
     data = resp.json()
     assert data["status"] == "pending"
     assert data["outcome"] == "push_sent"
-    assert data["moolre_code"] == "TR099"
+    assert data["provider_code"] == "TR099"
     assert data["customer_action"] == "approval"
 
 
@@ -193,7 +193,7 @@ def test_expired_customer_action_becomes_terminal_on_dashboard_read(
         transaction_type=TransactionType.dues,
         amount=20,
         status=TransactionStatus.pending,
-        moolre_reference="expired-action-ref",
+        provider_payment_ref="expired-action-ref",
         customer_action="otp",
         action_expires_at=datetime.utcnow() - timedelta(seconds=1),
     )
@@ -240,7 +240,7 @@ def test_farmer_resumes_dashboard_dues_otp_from_ussdk(client, farmer, db):
             json={"farmer_id": farmer["id"], "amount": 15.0},
         )
         tx_id = collect_resp.json()["transaction_id"]
-        ext_ref = collect_resp.json()["moolre_reference"]
+        ext_ref = collect_resp.json()["provider_payment_ref"]
 
         mock_pay.return_value = _tr099_result(ext_ref)
         mock_pay.reset_mock()

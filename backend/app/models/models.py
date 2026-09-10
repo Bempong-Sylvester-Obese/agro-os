@@ -3,11 +3,8 @@
 # ---------------------------------------------------------------------------
 # Column Naming Convention
 # ---------------------------------------------------------------------------
-# Provider-specific columns are prefixed with the provider name (e.g., moolre_*).
-# Provider-neutral columns use generic names (e.g., provider_reference, external_ref).
-#
-# Current provider-specific: moolre_reference, moolre_transfer_ref, moolre_account_number
-# Provider-neutral: provider_reference (use for new providers)
+# All provider-facing columns use provider-neutral names so that adding new
+# payment providers does not require schema changes.
 # ---------------------------------------------------------------------------
 
 import enum
@@ -196,8 +193,8 @@ class Cooperative(Base):
     subscription_expires_at = Column(DateTime, nullable=True)
     sms_sent_this_month = Column(Integer, default=0, server_default="0", nullable=False)
     sms_month_reset = Column(DateTime, nullable=True)
-    # Moolre wallet that holds cooperative funds
-    moolre_account_number = Column(String, nullable=True)
+    # Provider wallet that holds cooperative funds
+    wallet_account_id = Column(String, nullable=True)
     # 4-digit code for USSD onboarding
     ussd_code = Column(String(4), unique=True, index=True, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -309,9 +306,9 @@ class Transaction(Base):
     amount = Column(Float, nullable=False)
     currency = Column(String, default="GHS")
     status = Column(Enum(TransactionStatus), default=TransactionStatus.pending)
-    # Moolre refs
-    moolre_reference = Column(String, unique=True, nullable=True)  # payment ref
-    moolre_transfer_ref = Column(String, unique=True, nullable=True)  # transfer ref
+    # Provider refs
+    provider_payment_ref = Column(String, unique=True, nullable=True)  # payment ref
+    provider_transfer_ref = Column(String, unique=True, nullable=True)  # transfer ref
     loan_id = Column(Integer, ForeignKey("loans.id"), nullable=True, index=True)
     settlement_line_id = Column(
         Integer, ForeignKey("settlement_lines.id"), nullable=True, index=True
@@ -366,7 +363,7 @@ class Loan(Base):
     rejected_by = Column(String, nullable=True)
     rejected_at = Column(DateTime, nullable=True)
     # Disbursement
-    moolre_transfer_ref = Column(String, nullable=True)
+    provider_transfer_ref = Column(String, nullable=True)
     disbursed_at = Column(DateTime, nullable=True)
     # Repayment
     repaid_at = Column(DateTime, nullable=True)
@@ -576,7 +573,7 @@ class CommunicationLog(Base):
     cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=True)
     recipients_count = Column(Integer, default=0)
     body = Column(Text, nullable=False)
-    moolre_ref = Column(String, nullable=True)
+    provider_ref = Column(String, nullable=True)
     sent_by = Column(String, nullable=True)  # admin identifier
     status = Column(String, default="sent")
     sent_at = Column(DateTime, default=datetime.utcnow)
@@ -588,13 +585,13 @@ class CommunicationLog(Base):
 
 
 class PaymentWebhookEvent(Base):
-    """Audit log for incoming Moolre payment webhooks."""
+    """Audit log for incoming payment webhooks."""
 
     __tablename__ = "payment_webhook_events"
 
     id = Column(Integer, primary_key=True, index=True)
     event_type = Column(String, default="payment")
-    moolre_reference = Column(String, nullable=True, index=True)
+    provider_payment_ref = Column(String, nullable=True, index=True)
     transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
     signature_valid = Column(Boolean, default=True)
     payload = Column(Text, nullable=False)
