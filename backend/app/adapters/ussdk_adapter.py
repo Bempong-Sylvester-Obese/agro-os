@@ -25,7 +25,7 @@ _ussd_app = UssdApplicationService()
 def verify_ussdk_signature(body: bytes, signature: str | None) -> bool:
     settings = get_settings()
     if not settings.ussdk_hook_secret:
-        if settings.app_env.lower() in ("production", "prod"):
+        if settings.is_production:
             logger.error("USSDK_HOOK_SECRET is required in production")
             return False
         logger.warning("USSDK_HOOK_SECRET not set — skipping signature verification")

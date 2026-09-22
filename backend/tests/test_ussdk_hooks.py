@@ -1,10 +1,11 @@
 """Tests for /ussdk/loan-balance and /ussdk/pay-dues"""
 
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
+from app.config import Settings
 
 
 def _tp14_result(ext_ref: str) -> dict:
@@ -46,7 +47,7 @@ def _hook_payload(msisdn: str, values: dict | None = None) -> dict:
 def test_ussdk_hooks_fail_closed_without_production_secret(client, app_env):
     with patch(
         "app.adapters.ussdk_adapter.get_settings",
-        return_value=SimpleNamespace(
+        return_value=Settings.model_construct(
             ussdk_hook_secret="",
             app_env=app_env,
         ),

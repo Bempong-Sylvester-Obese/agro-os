@@ -2,8 +2,9 @@
 
 import json
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+
+from app.config import Settings
 
 
 def _make_payment_payload(external_ref: str, status: int = 1, amount: str = "50.00") -> dict:
@@ -412,7 +413,7 @@ def test_native_ussd_callback_requires_configured_secret(client, monkeypatch):
     monkeypatch.setattr(
         at_adapter_module,
         "get_settings",
-        lambda: SimpleNamespace(
+        lambda: Settings.model_construct(
             app_env="test",
             ussd_callback_secret="native-ussd-secret",
         ),
@@ -440,7 +441,7 @@ def test_native_ussd_callback_fails_closed_without_production_secret(
     monkeypatch.setattr(
         at_adapter_module,
         "get_settings",
-        lambda: SimpleNamespace(app_env="production", ussd_callback_secret=""),
+        lambda: Settings.model_construct(app_env="production", ussd_callback_secret=""),
     )
 
     response = client.post(

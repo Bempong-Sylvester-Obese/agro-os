@@ -76,7 +76,7 @@ def _verify_signature(body: bytes, signature_header: str | None) -> bool:
     If no secret is configured (dev/sandbox), skip verification.
     """
     if not settings.moolre_webhook_secret:
-        if settings.app_env.lower() in ("production", "prod"):
+        if settings.is_production:
             logger.error(
                 "Rejecting Moolre payment webhook because no signature secret is configured"
             )
@@ -396,7 +396,7 @@ async def handle_ussd_session(
     """
     configured_secret = settings.moolre_ussd_secret
     if not configured_secret:
-        if settings.app_env.lower() in ("production", "prod"):
+        if settings.is_production:
             logger.error("MOOLRE_USSD_SECRET is required in production")
             raise HTTPException(status_code=401, detail="Invalid USSD callback secret")
     else:

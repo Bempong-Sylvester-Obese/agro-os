@@ -101,9 +101,19 @@ class Settings(BaseSettings):
             self.seed_demo_data = False
         return self
 
+    @property
+    def is_production(self) -> bool:
+        """True for ``APP_ENV`` of ``production``/``prod`` in any casing.
+
+        Every production gate (demo seed/reset, webhook secrets, insecure
+        defaults) must use this rather than comparing ``app_env`` inline so a
+        value like ``Production`` cannot slip past one check and not another.
+        """
+        return self.app_env.strip().lower() in ("production", "prod")
+
     @model_validator(mode="after")
     def reject_insecure_production_settings(self) -> "Settings":
-        if self.app_env.lower() not in ("production", "prod"):
+        if not self.is_production:
             return self
         if self.secret_key == _DEFAULT_SECRET_KEY or not self.secret_key.strip():
             raise ValueError("APP_ENV=production requires a non-default SECRET_KEY")

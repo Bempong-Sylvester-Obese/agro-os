@@ -36,7 +36,7 @@ def _verify_secret(request: Request) -> None:
     settings = get_settings()
     configured_secret = settings.ussd_callback_secret
     if not configured_secret:
-        if settings.app_env.lower() in ("production", "prod"):
+        if settings.is_production:
             logger.error("USSD_CALLBACK_SECRET is required in production")
             raise HTTPException(status_code=401, detail="Invalid USSD callback secret")
         return

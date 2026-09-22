@@ -1,8 +1,8 @@
 import asyncio
 from datetime import date, timedelta
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from app.config import Settings
 from app.models.models import (
     CooperativeMembership as Farmer,
 )
@@ -85,7 +85,7 @@ def test_farmer_starts_loan_repayment_from_ussdk(client, farmer, db):
 def test_staff_debit_routes_are_disabled_outside_tests(client, farmer, monkeypatch):
     from app.routes import loans, transactions
 
-    production = SimpleNamespace(app_env="production")
+    production = Settings.model_construct(app_env="production")
     monkeypatch.setattr(transactions, "get_settings", lambda: production)
     monkeypatch.setattr(loans, "get_settings", lambda: production)
 

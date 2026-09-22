@@ -184,30 +184,51 @@ always replaced by the token's cooperative.
 and communications. `finance_officer` can manage finance, loans, and
 communications but receives `403` for admin-only resources.
 
-Default demo credentials: `admin@agroos.demo` / `demo1234`.
+Demo credentials (`admin@agroos.demo` / `demo1234`) exist only when the Golden
+Path seed has run (see below). The backend refuses to start with
+`AUTH_ENABLED=true` and the default `ADMIN_PASSWORD`, so they can never be live
+in production.
 
 ## Error conventions
 
 FastAPI returns `{ "detail": "message" }` for 4xx/5xx responses.
 
-## Demo fallback policy
+## Client data policy (no demo fallback)
 
-The frontend **always prefers live API data** when the backend is reachable, but **never fails closed** on transport outages — including in production.
+The frontend has **no client-side demo data**. Every dashboard read helper in
+`frontend/src/api/*.js` goes through `apiFetch` / `fetchJson` in
+`frontend/src/api/config.js` and either returns live API data or throws:
 
-Dashboard read helpers (`frontend/src/api/*.js`, shared config in `frontend/src/api/config.js`) use a 10s timeout via `withDemoFallback`. **Only transport-level failures** (network errors, timeouts) return static demo data from `frontend/src/data/payments.js` and set `source: 'demo'`. HTTP responses from a reachable backend — including `401`, `403`, validation `422`, and other 4xx/5xx — are surfaced to callers as `ApiError` and are **not** replaced with demo data.
+- Transport failures (network errors, `FETCH_TIMEOUT_MS` timeouts) propagate as
+  the original error; `formatTransportError` renders them as a retryable message.
+- Non-OK responses from a reachable backend (`401`, `403`, `422`, 5xx) propagate
+  as `ApiError` with the server's `detail`. A `401` also clears the stored token.
 
-The dashboard topbar and per-tab badges show **Live API** vs **Demo data** so operators know which source is active.
+Nothing is substituted for a failed request, in any environment, so a screen
+showing data is always showing what the API returned. Login likewise only
+succeeds against `POST /auth/login`; there are no local demo accounts.
 
-Login is separate: the login page tries `POST /auth/login` first, then falls back to local demo accounts in `frontend/src/data/users.js` when auth is unavailable at the transport layer.
+## Demo data in production
 
-There is no `VITE_REQUIRE_API` or production-only strict mode — transport outages should degrade gracefully to demo data, not blank screens or blocking errors.
+Demo machinery is gated server-side on `Settings.is_production`
+(`APP_ENV` of `production`/`prod`, any casing):
+
+| Surface | Behaviour outside production | Behaviour in production |
+|---|---|---|
+| Golden Path seed (`seed_golden_path`) | Runs on startup when `SEED_DEMO_DATA=true` | Never runs; `SEED_DEMO_DATA=true` fails startup validation |
+| `GET /admin/demo-reset/preview`, `POST /admin/demo-reset/confirm` | Admin of the demo cooperative only, two-step confirmation | `404` |
+| Settings "Reset demo data" panel | Shown to the demo cooperative admin | Hidden (backend returns `404`) |
+| `backend/scripts/purge_demo_data.py` | Runs; `--dry-run` previews | Refuses (exit 2) unless `--allow-production`; `--dry-run` still allowed |
+| Staff transaction status edits (`PATCH /transactions/{id}/status`) | Allowed outside production | `404` |
+| Legacy staff-initiated loan create/repay fixtures | `APP_ENV=test` only | `403` (farmers act via USSD) |
 
 ## Golden Path seed data
 
-On backend startup in development, `seed_golden_path()` inserts:
+When `SEED_DEMO_DATA=true` (development/staging only), `seed_golden_path()`
+inserts on startup:
 
 - Cooperative: **Kuapa Kokoo Demo Cooperative**
 - Farmer: **Abena Mensah** (pending dues transaction for webhook demo)
 - Supporting crop, animal, and mixed members plus production and attendance records
 
-Set `SEED_DEMO_DATA=true` to force seeding in other environments.
+Seeding is also disabled automatically when running on Render.

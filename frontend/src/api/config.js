@@ -71,10 +71,6 @@ export function formatTransportError(err) {
   return err?.message || 'Network request failed'
 }
 
-export function apiResult(source, data) {
-  return { ...data, source: source === 'api' ? 'api' : 'demo' }
-}
-
 export function createFetchSignal(timeoutMs = FETCH_TIMEOUT_MS) {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
