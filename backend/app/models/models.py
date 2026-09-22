@@ -711,23 +711,58 @@ class DemoBooking(Base):
 
 
 class PendingCheckout(Base):
-    """Subscription checkout created before account creation; reconciled by webhook."""
+    """Single-use subscription payment intent, reconciled by the payment webhook.
+
+    Two kinds share the table:
+
+    * ``pre_checkout`` — created on the public pricing page before an account
+      exists (``sub_pre_*`` references). The webhook marks it ``paid``; signup
+      consumes it and copies plan/band onto the new cooperative.
+    * ``upgrade`` — created by an authenticated admin for an existing
+      cooperative (``sub_upg_*`` references). The webhook verifies the paid
+      amount against the intent, activates the plan **once**, and marks the
+      intent ``consumed``.
+
+    The intent, not the provider reference string, is the source of truth for
+    which plan/band/amount a payment is for.
+    """
 
     __tablename__ = "pending_checkouts"
 
+    KIND_PRE_CHECKOUT = "pre_checkout"
+    KIND_UPGRADE = "upgrade"
+
+    STATUS_PENDING = "pending"
+    STATUS_PAID = "paid"
+    STATUS_CONSUMED = "consumed"
+
     id = Column(Integer, primary_key=True, index=True)
     reference = Column(String, unique=True, nullable=False, index=True)
+    kind = Column(
+        String, default=KIND_PRE_CHECKOUT, server_default=KIND_PRE_CHECKOUT, nullable=False
+    )
+    cooperative_id = Column(
+        Integer, ForeignKey("cooperatives.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_by_user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     plan_key = Column(String, nullable=False)
     band = Column(String, nullable=True)
     amount = Column(Float, nullable=False)
     currency = Column(String, default="GHS")
-    organisation = Column(String, nullable=False)
+    organisation = Column(String, nullable=True)
     location = Column(String, nullable=True)
     member_count = Column(Integer, nullable=True)
     role = Column(String, nullable=True)
     organization_type = Column(String, default="cooperative", nullable=False)
-    status = Column(String, default="pending", nullable=False)
+    status = Column(String, default=STATUS_PENDING, nullable=False)
+    provider_transaction_id = Column(String, nullable=True)
+    paid_at = Column(DateTime, nullable=True)
+    consumed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, server_default=func.now(), nullable=False)
+
+    cooperative = relationship("Cooperative", foreign_keys=[cooperative_id])
 
 
 # ---------------------------------------------------------------------------

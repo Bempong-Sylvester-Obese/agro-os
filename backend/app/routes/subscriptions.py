@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Any
 import uuid
 
@@ -12,6 +11,10 @@ from app.models.models import Cooperative, PendingCheckout, User
 from app.services.auth_service import enforce_cooperative_scope, get_current_user
 from app.services.plans import get_band, get_plan, resolve_amount
 from app.services.providers.factory import get_payment_provider
+from app.services.subscription_service import (
+    SubscriptionIntentError,
+    create_upgrade_intent,
+)
 
 router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
 
@@ -59,6 +62,7 @@ async def create_pre_checkout(
     reference = f"sub_pre_{uuid.uuid4().hex}"
     checkout = PendingCheckout(
         reference=reference,
+        kind=PendingCheckout.KIND_PRE_CHECKOUT,
         plan_key=plan_key,
         band=band["key"],
         amount=amount,
@@ -105,25 +109,28 @@ async def create_checkout(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Generate a Moolre payment link for subscription upgrade."""
+    """Record a single-use upgrade intent and return the provider payment link.
+
+    The intent (plan, band, amount, cooperative) is what the payment webhook
+    verifies against and activates from; the reference string carries no plan
+    information. Links are non-reusable so one payment maps to one intent.
+    """
     enforce_cooperative_scope(current_user, req.cooperative_id)
 
     coop = db.query(Cooperative).filter(Cooperative.id == req.cooperative_id).first()
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
 
-    plan = get_plan(req.plan_key)
-    band = get_band(req.plan_key, req.band)
-    amount = resolve_amount(req.plan_key, req.band)
-    if not plan or not band or amount is None:
-        raise HTTPException(status_code=400, detail="Invalid paid plan selected")
-    plan_key = plan["key"]
-
-    provider = get_payment_provider()
-    ext_ref = (
-        f"sub_upg_{coop.id}_{plan['key']}_{int(datetime.utcnow().timestamp())}"
-        f"_{band['key']}"
-    )
+    try:
+        intent = create_upgrade_intent(
+            db,
+            cooperative=coop,
+            plan_key=req.plan_key,
+            band_key=req.band,
+            created_by_user_id=current_user.id if current_user else None,
+        )
+    except SubscriptionIntentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     user_email = (
         current_user.email
@@ -131,18 +138,26 @@ async def create_checkout(
         else f"admin@{coop.name.replace(' ', '').lower()}.com"
     )
 
+    provider = get_payment_provider()
     result = await provider.generate_payment_link(
-        amount=amount,
+        amount=intent.amount,
         email=user_email,
-        currency=coop.currency or "GHS",
-        external_ref=ext_ref,
-        reusable=True,
+        currency=intent.currency or "GHS",
+        external_ref=intent.reference,
+        reusable=False,
     )
 
-    if not result.get("success"):
+    payment_url = result.get("payment_url")
+    if not result.get("success") or not payment_url:
+        db.rollback()
         raise HTTPException(status_code=400, detail="Failed to generate payment link")
+    db.commit()
 
     return {
-        "authorization_url": result.get("payment_url"),
-        "reference": result.get("reference"),
+        "intent_id": intent.id,
+        "authorization_url": payment_url,
+        "reference": intent.reference,
+        "plan_key": intent.plan_key,
+        "band": intent.band,
+        "amount": intent.amount,
     }

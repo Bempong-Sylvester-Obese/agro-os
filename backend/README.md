@@ -258,6 +258,13 @@ settlement still accept crop produce only.
 | POST | `/communications/sms/dues-reminder` | Send dues reminder SMS to all active members |
 | GET | `/communications/logs` | List sent communication logs |
 
+### Subscriptions
+| Method | Path | Description |
+|---|---|---|
+| GET | `/plans` | Plan catalogue (public) |
+| POST | `/subscriptions/pre-checkout` | Public: create a `pre_checkout` payment intent before signup; returns a non-reusable payment link |
+| POST | `/subscriptions/checkout` | Auth: create a single-use `upgrade` intent for the caller's cooperative; returns a non-reusable payment link. The webhook verifies the paid amount against the intent and activates once |
+
 ### Webhooks
 | Method | Path | Description |
 |---|---|---|

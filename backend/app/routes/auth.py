@@ -63,7 +63,7 @@ async def signup(data: SignupRequest, db: Session = Depends(get_db)):
         )
         if not checkout:
             raise HTTPException(status_code=404, detail="Checkout not found")
-        if checkout.status != "paid":
+        if checkout.status != PendingCheckout.STATUS_PAID:
             raise HTTPException(status_code=402, detail="Payment not confirmed for this checkout")
         resolved_plan = checkout.plan_key
         resolved_band = checkout.band
@@ -140,7 +140,9 @@ async def signup(data: SignupRequest, db: Session = Depends(get_db)):
         )
     )
     if data.checkout_ref:
-        checkout.status = "consumed"
+        checkout.status = PendingCheckout.STATUS_CONSUMED
+        checkout.consumed_at = datetime.utcnow()
+        checkout.cooperative_id = new_coop.id
     db.commit()
     db.refresh(new_user)
     db.refresh(new_coop)

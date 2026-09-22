@@ -127,6 +127,30 @@ an interrupted farmer session, not a staff-started collection flow.
 
 Optional env: `VITE_COOPERATIVE_ID`.
 
+### Subscriptions and billing
+
+| UI | Method | Path | Notes |
+|----|--------|------|-------|
+| Pricing page | GET | `/plans` | Plan catalogue (public) |
+| Pricing page checkout | POST | `/subscriptions/pre-checkout` | Public. Creates a `pre_checkout` intent (`sub_pre_*`) and returns `{checkout_id, reference, authorization_url, amount}` |
+| Settings → upgrade | POST | `/subscriptions/checkout` | Auth. Creates a single-use `upgrade` intent for the caller's cooperative and returns `{intent_id, reference, authorization_url, plan_key, band, amount}` |
+
+**Payment intents.** Every paid flow records a `PendingCheckout` intent
+(plan, band, amount, cooperative) *before* a payment link is issued, and the
+link is non-reusable. The payment webhook resolves the provider's
+`externalref` to that intent and:
+
+- refuses activation when the paid amount differs from the intent amount
+  (recorded as an unprocessed `PaymentWebhookEvent`, "subscription amount mismatch");
+- activates the plan/band exactly once (`pending → consumed`); duplicate
+  deliveries return "already processed" and do not extend the expiry again;
+- never infers the plan from the amount or from the reference string for
+  intent-backed payments. References issued before intents existed
+  (`sub_upg_<coop>_<plan>_<ts>_<band>`) are still accepted via a legacy path.
+
+`pre_checkout` intents move `pending → paid` on webhook and `paid → consumed`
+when signup redeems them with `checkout_ref`.
+
 ### Cooperative commerce
 
 Commerce records are cooperative-scoped and follow explicit state transitions.
