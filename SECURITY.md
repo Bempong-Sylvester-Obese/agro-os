@@ -14,7 +14,7 @@ issues before any production deployment.
 The following areas are in scope for security review:
 
 - FastAPI backend endpoints (authentication, input validation)
-- Supabase row-level security configuration
+- Tenant isolation (API-only tenancy; see [Tenant Isolation](#tenant-isolation))
 - Payment webhook signature verification
 - Environment variable and secret handling (.env.example hygiene)
 
@@ -76,33 +76,40 @@ unset. Development and test environments may omit these secrets.
 
 ## Tenant Isolation
 
-Cross-cooperative data isolation follows a defense-in-depth model:
+**Decision: API-only tenancy.** Cross-cooperative isolation is enforced solely
+by the FastAPI layer; database row-level security (RLS) is *not* deployed and
+is not relied on. The full decision record, requirements table, and threat
+model live in
+[docs/architecture/tenancy-decision.md](docs/architecture/tenancy-decision.md).
 
-1. **API-layer enforcement (primary):** Protected route handlers call
-   `enforce_cooperative_scope` or `require_cooperative_scope` to compare
-   the requested cooperative with the authenticated user's cooperative.
-   Query-string and request-body cooperative IDs cannot override that scope
-   on protected routes.
+What that means in practice:
 
-2. **Supabase RLS reference policies:** The reference SQL scopes SELECT access
-   on `farmers`, `transactions`, `loans`, `productions`, and `trust_scores` to
-   `app.current_cooperative_id`. See
-   `supabase/migrations/009_tenant_rls_policies.sql`. These files are not
-   applied by backend Alembic, so the deployed API currently relies on the
-   API-layer guard rather than RLS for tenant isolation.
+1. **Scope comes from the JWT.** Protected route handlers call
+   `enforce_cooperative_scope` or `require_cooperative_scope`, which replace
+   any cooperative ID in the path, query string, or body with the
+   authenticated user's cooperative. Mismatches return 403; unknown IDs 404.
+   Covered by `backend/tests/test_auth_rbac.py`.
 
-Browser clients must access application data through FastAPI. Direct
-`authenticated` Supabase access is unsupported because AgroOS issues custom
-FastAPI JWTs, not Supabase Auth JWTs. The M5 reference policies therefore grant
-worker-table access only to `service_role` and fail closed for browser roles.
+2. **Production requires authentication.** `APP_ENV=production` with
+   `AUTH_ENABLED=false` fails startup validation.
 
-The backend database connection may use an owner or superuser role, which
-bypasses PostgreSQL RLS. Do not treat the reference policies as protection for
-that connection. Enforced database RLS is future work and requires a restricted
-non-superuser runtime role plus a transaction-scoped cooperative context (for
-example, `SET LOCAL app.current_cooperative_id`). Until then, production tenant
-isolation depends on `AUTH_ENABLED=true`, authenticated FastAPI scope checks,
-and the cooperative-consistency constraints in Alembic.
+3. **Clients never hold database access.** The frontend ships no Supabase or
+   Postgres SDK, no connection string, and no `VITE_SUPABASE_*` /
+   `VITE_DATABASE_*` variables; `frontend/src/security/noDirectDatabaseAccess.test.js`
+   fails the build's test run if any appear. `DATABASE_URL`, `SECRET_KEY`, and
+   provider secrets are configured only on the backend host.
+
+4. **Referential integrity cannot cross tenants.** Alembic
+   cooperative-consistency constraints keep memberships, loans, and
+   transactions within one cooperative.
+
+The SQL under `supabase/migrations/*_rls_policies.sql` is reference material
+only: it is not applied by Alembic, it targets Supabase Auth roles AgroOS does
+not use, and the backend's owner-level connection would bypass it regardless.
+Compromise of the backend host or `DATABASE_URL` therefore yields cross-tenant
+access; this is the accepted residual risk of the decision (threat T5 in the
+decision record). The prerequisites for adding database RLS as a later
+defense-in-depth layer are listed there under *Future work*.
 
 ## Rate Limits
 

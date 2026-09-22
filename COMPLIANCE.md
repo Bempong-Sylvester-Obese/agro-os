@@ -102,9 +102,14 @@ cooperative society under Act 1148:
   existing governance — it does not itself constitute the cooperative's
   legal registration, bylaws, or audit obligations to the Department of
   Co-operatives.
-- Cross-cooperative data isolation (enforced at the API layer per
-  `SECURITY.md`) reflects that each cooperative is a distinct legal
-  entity, even where multiple cooperatives use the same AgroOS instance.
+- Cross-cooperative data isolation reflects that each cooperative is a
+  distinct legal entity, even where multiple cooperatives use the same
+  AgroOS instance. AgroOS has formally adopted **API-only tenancy**: the
+  FastAPI layer derives the cooperative from the authenticated user's token
+  on every request and the browser never holds database credentials.
+  Database row-level security is not deployed; the accepted residual risk
+  (compromise of the backend host exposes all tenants) and its controls are
+  set out in `docs/architecture/tenancy-decision.md` and `SECURITY.md`.
 
 ---
 
@@ -127,7 +132,8 @@ cooperative society under Act 1148:
 | Security policy & webhook verification (payments) | Done for payment webhook |
 | USSD webhook signature verification | Done — shared-secret validation |
 | Role-based access control (production) | Enforced — JWT scoped per cooperative |
-| Supabase row-level security | Deployed — tenant-scoped RLS as defense-in-depth |
+| Tenant isolation model | Decided — API-only tenancy; database RLS not deployed or relied on. Decision record and threat model: `docs/architecture/tenancy-decision.md` |
+| Client database access | None — browser bundle holds no DB SDK/credentials (enforced by frontend test) |
 | Provider-neutral architecture | Done — payment/SMS behind port interfaces |
 | AML/transaction monitoring | Not started — deferred to provider KYC + future issue |
 | Data Protection Commission registration | Not applicable pre-launch; required before real farmer data |

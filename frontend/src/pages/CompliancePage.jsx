@@ -13,9 +13,9 @@ const REG_TABLE = [
 const STATUS_TABLE = [
   { item: 'Data privacy policy documented', status: 'done', label: 'Done' },
   { item: 'Payment webhook signature verification', status: 'done', label: 'Done' },
-  { item: 'USSD webhook signature verification', status: 'open', label: 'Open — P0' },
-  { item: 'Role-based access control (production)', status: 'partial', label: 'Designed, not enforced' },
-  { item: 'Supabase row-level security', status: 'open', label: 'Not yet deployed' },
+  { item: 'USSD webhook signature verification', status: 'done', label: 'Done — shared-secret validation' },
+  { item: 'Role-based access control (production)', status: 'done', label: 'Enforced — JWT scoped per cooperative' },
+  { item: 'Tenant isolation model', status: 'done', label: 'Decided — API-only tenancy (no DB RLS)' },
   { item: 'AML / transaction monitoring', status: 'open', label: 'Not started' },
   { item: 'Legal review of policy', status: 'open', label: 'Outstanding' },
 ]

@@ -274,14 +274,19 @@ After the column rename migration (#242), all provider-specific database columns
 
 ## Tenant Isolation Model
 
-AgroOS enforces tenant isolation at the API layer:
+AgroOS has adopted **API-only tenancy** (decision record:
+[architecture/tenancy-decision.md](architecture/tenancy-decision.md)):
 
 1. JWT contains `cooperative_id` — validated on every request
 2. Route handlers filter all queries by cooperative scope
 3. `require_cooperative_scope()` fails closed (403) if scope cannot be resolved
-4. DB connection uses service-role (bypasses RLS) — defense-in-depth only
+4. The browser never holds database credentials or a DB SDK (guarded by
+   `frontend/src/security/noDirectDatabaseAccess.test.js`)
+5. Database RLS is **not** deployed or relied on; the backend connects with an
+   owner-level role that would bypass it anyway
 
-Reference RLS policies exist in `supabase/migrations/009_tenant_rls_policies.sql` for future enforcement.
+The SQL under `supabase/migrations/*_rls_policies.sql` is reference material for a
+possible future defense-in-depth layer; prerequisites are listed in the decision record.
 
 ---
 
