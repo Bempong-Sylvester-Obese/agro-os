@@ -212,11 +212,33 @@ AT (AT USSD) ──► at_adapter.py ──┘          │
 |---|---|---|
 | `UssdRequest` / `UssdResponse` | `backend/app/services/ussd_application.py` | Provider-neutral request/response dataclasses |
 | `UssdApplicationService` | `backend/app/services/ussd_application.py` | Menu state machine — shared across all gateways |
-| `moolre_ussd.py` | `backend/app/adapters/moolre_ussd.py` | Translates Moolre JSON → UssdRequest |
-| `ussdk_adapter.py` | `backend/app/adapters/ussdk_adapter.py` | Translates USSDK format → UssdRequest |
-| `at_adapter.py` | `backend/app/adapters/at_adapter.py` | Translates AT form-encoded → UssdRequest |
+| `moolre_ussd.py` | `backend/app/adapters/moolre_ussd.py` | Moolre JSON (one keystroke per request, `sessionId`) → `UssdRequest`; `{"message","reply"}` back |
+| `at_adapter.py` | `backend/app/adapters/at_adapter.py` | Africa's Talking form data (cumulative `text` like `1*500`) → forwards only the last `*`-segment as `UssdRequest`; `CON`/`END` text back |
+| `ussdk_adapter.py` | `backend/app/adapters/ussdk_adapter.py` | USSDK signed action hooks (`/ussdk/loan-balance`, `/pay-dues`, ...) → the service's action methods (`check_loan_balance`, `pay_dues`, ...) |
 
-Each adapter is a thin translation layer (~30 lines). The `UssdApplicationService` holds the entire menu state machine (pay dues, request loan, repay loan, check balance, announcements, OTP handling). Adding a new gateway requires only a new adapter — the application service is unchanged.
+Each adapter is a pure transport translation layer and contains no menu text or
+finance logic. The `UssdApplicationService` holds the entire menu state machine
+(loan balance, pay dues, request loan, announcements, pending-payment OTP, repay
+loan, link phone) and persists per-session state keyed by the gateway's session id.
+Adding a new gateway requires only a new adapter — the application service is
+unchanged.
+
+**Behaviour parity.** Moolre and Africa's Talking drive the same stateful menu and
+are asserted equal, option by option, in
+`backend/tests/test_ussd_gateway_parity.py` (parametrised over both gateways).
+USSDK is action-oriented rather than menu-oriented: each hook maps to one service
+method, so parity there means "same service method, same result dict", which
+`backend/tests/test_ussdk_hooks.py` covers.
+
+| Menu option | Moolre | Africa's Talking | USSDK hook |
+|---|---|---|---|
+| 1. Check Loan Balance | yes | yes | `/ussdk/loan-balance` |
+| 2. Pay Dues | yes | yes | `/ussdk/pay-dues` |
+| 3. Request Loan | yes | yes | `/ussdk/loan-request` |
+| 4. Announcements | yes | yes | `/ussdk/announcements` |
+| 5. Complete Pending Payment (OTP) | yes | yes | `/ussdk/pending-payment` |
+| 6. Repay Loan | yes | yes | `/ussdk/loan-repayment` |
+| 7. Link Phone (coop code + farmer ID) | yes | yes | n/a |
 
 ---
 
