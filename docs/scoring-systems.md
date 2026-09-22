@@ -112,7 +112,7 @@ This is the most important thing to get right during the demo narration
 ```
 Farmer selects USSD Option 2 (Pay Cooperative Dues)
   → Moolre processes payment
-    → Moolre fires webhook to /webhooks/moolre
+    → Moolre fires webhook to /webhooks/payment
       → FastAPI records Transaction in DB
         → trust_score_service.py recalculates Trust Score
           → Updated Trust Score is available from the REST API

@@ -66,7 +66,8 @@ When the database is seeded, Agro-AI assessments are built from DB farmer record
 | UI | Method | Path | Response |
 |----|--------|------|----------|
 | Payment history | GET | `/transactions/` | `TransactionResponse[]` |
-| Wallet balance | GET | `/transactions/moolre/wallet-balance` | Moolre wallet object |
+| Wallet balance | GET | `/transactions/provider/wallet-balance` | Provider wallet object (`/transactions/moolre/wallet-balance` is a legacy alias) |
+| Wallet transactions | GET | `/transactions/provider/account-transactions` | Provider transaction list (`/transactions/moolre/account-transactions` is a legacy alias) |
 | Webhook audit | GET | `/transactions/webhook-events` | `PaymentWebhookEventResponse[]` |
 | Reconcile payment | POST | `/transactions/{transaction_id}/reconcile` | Reconciliation result |
 
@@ -102,8 +103,9 @@ within the record's own unit; quantities with different units are not summed.
 | UI | Method | Path |
 |----|--------|------|
 | USSD log | GET | `/webhooks/ussd/logs` |
-| USSD handler (Moolre) | POST | `/webhooks/moolre/ussd` |
-| Payment webhook (Moolre) | POST | `/webhooks/moolre/payment` |
+| USSD handler (Moolre JSON contract) | POST | `/webhooks/ussd` (legacy alias: `/webhooks/moolre/ussd`) |
+| Payment webhook | POST | `/webhooks/payment` (legacy alias: `/webhooks/moolre/payment`) |
+| USSD handler (Africa's Talking) | POST | `/ussd/callback` |
 | USSDK loan request | POST | `/ussdk/loan-request` |
 | USSDK pending payment | POST | `/ussdk/pending-payment` |
 | USSDK dues payment | POST | `/ussdk/pay-dues` |

@@ -31,14 +31,18 @@ If wallet/account endpoints return auth failures, double-check that your header 
 Set your Moolre callback URL exactly as:
 
 ```text
-{PUBLIC_URL}/webhooks/moolre/payment
+{PUBLIC_URL}/webhooks/payment
 ```
 
 Examples:
-- Local tunnel: `https://abc123.ngrok-free.app/webhooks/moolre/payment`
-- Deployed API: `https://api.yourdomain.com/webhooks/moolre/payment`
+- Local tunnel: `https://abc123.ngrok-free.app/webhooks/payment`
+- Deployed API: `https://api.yourdomain.com/webhooks/payment`
 
-AgroOS payment webhook route is implemented at `POST /webhooks/moolre/payment`.
+AgroOS payment webhook route is implemented at `POST /webhooks/payment` (the
+path is configurable via `WEBHOOK_CALLBACK_PATH`; `AGROOS_BASE_URL` +
+`WEBHOOK_CALLBACK_PATH` is the URL AgroOS registers automatically when it
+provisions a wallet). The older `POST /webhooks/moolre/payment` still works as an
+alias for callbacks registered before the rename.
 
 ## 4) Local development with ngrok
 
@@ -50,7 +54,7 @@ AgroOS payment webhook route is implemented at `POST /webhooks/moolre/payment`.
 3. Copy the generated HTTPS URL (example: `https://abc123.ngrok-free.app`).
 4. In Moolre portal, set callback URL to:
    ```text
-   https://abc123.ngrok-free.app/webhooks/moolre/payment
+   https://abc123.ngrok-free.app/webhooks/payment
    ```
 5. Update `backend/.env`:
    - `MOOLRE_ENV=sandbox`
@@ -146,7 +150,7 @@ Calling it without `transaction_id` lists phone-scoped actions; calling it with
 the selected `transaction_id` first requests and then submits `otp_code`.
 The old admin endpoint `/transactions/dues/collect/verify` no longer exists.
 
-**Step 3 — Farmer approves on phone** → Moolre sends webhook to `{PUBLIC_URL}/webhooks/moolre/payment` → transaction moves to `completed`, Trust Score recalculates, and a payment confirmation SMS is sent.
+**Step 3 — Farmer approves on phone** → Moolre sends webhook to `{PUBLIC_URL}/webhooks/payment` → transaction moves to `completed`, Trust Score recalculates, and a payment confirmation SMS is sent.
 
 Pending OTP or approval actions expire after 15 minutes. OTP values are passed
 directly to Moolre and are never persisted or written to USSD logs.

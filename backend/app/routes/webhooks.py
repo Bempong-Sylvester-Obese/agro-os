@@ -1,9 +1,17 @@
 """
-Moolre Webhook Routes
+Payment-provider webhook routes.
 
-Handles:
-  - POST /webhooks/moolre/payment  — real-time payment confirmation
-  - POST /webhooks/moolre/ussd     — USSD session menu handler (delegates to adapter)
+Canonical, provider-neutral paths (use these when registering callbacks):
+  - POST /webhooks/payment  — real-time payment confirmation
+  - POST /webhooks/ussd     — USSD session menu handler (delegates to adapter)
+
+Legacy aliases kept for integrations that were registered before the rename:
+  - POST /webhooks/moolre/payment
+  - POST /webhooks/moolre/ussd
+
+Both aliases share the handler with their canonical path. The neutral paths are
+what ``settings.webhook_callback_path`` (default ``/webhooks/payment``) points
+at, so the URL we hand to the provider when provisioning a wallet resolves.
 """
 
 import hashlib
@@ -283,17 +291,25 @@ async def _post_payment_tasks(farmer_id: int, amount: float, reference: str) -> 
 # ---------------------------------------------------------------------------
 
 
-@router.post("/moolre/payment")
-async def handle_moolre_payment_webhook(
+@router.post("/payment", name="payment_webhook")
+@router.post(
+    "/moolre/payment",
+    name="payment_webhook_legacy",
+    include_in_schema=False,
+)
+async def handle_payment_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     x_moolre_signature: str | None = Header(default=None),
 ):
     """
-    Receive Moolre payment confirmation events.
+    Receive payment confirmation events from the configured payment provider.
 
-    Expected payload (Moolre Payment Webhook):
+    Served at the provider-neutral ``/webhooks/payment`` and, for callbacks
+    registered before the rename, the legacy ``/webhooks/moolre/payment``.
+
+    Expected payload (current provider: Moolre Payment Webhook):
     {
       "status": 1,
       "code": "P01",
@@ -367,12 +383,17 @@ def list_ussd_logs(
     )
 
 
-@router.post("/moolre/ussd")
+@router.post("/ussd", name="ussd_webhook")
+@router.post("/moolre/ussd", name="ussd_webhook_legacy", include_in_schema=False)
 async def handle_ussd_session(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    """Handle USSD session callbacks from Moolre — delegates to the unified adapter."""
+    """
+    Handle USSD session callbacks (Moolre JSON contract) — delegates to the adapter.
+
+    Served at ``/webhooks/ussd`` and the legacy ``/webhooks/moolre/ussd``.
+    """
     configured_secret = settings.moolre_ussd_secret
     if not configured_secret:
         if settings.app_env.lower() in ("production", "prod"):
