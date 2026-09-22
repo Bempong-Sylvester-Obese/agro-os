@@ -4,22 +4,34 @@ import logging
 
 from sqlalchemy.orm import Session
 
+from app.domain.payment_event import PaymentEvent
 from app.models.models import Cooperative, PaymentWebhookEvent, PendingCheckout
 from app.services.plans import PLANS, activate_subscription, get_plan, resolve_amount
 
 logger = logging.getLogger(__name__)
 
+PRE_CHECKOUT_PREFIX = "sub_pre_"
+UPGRADE_PREFIX = "sub_upg_"
 
-def process_pre_checkout(
-    db: Session,
-    *,
-    external_ref: str,
-    amount: float,
-    status_code: int,
-) -> dict:
+
+def is_subscription_reference(reference: str | None) -> bool:
+    return bool(reference) and reference.startswith((PRE_CHECKOUT_PREFIX, UPGRADE_PREFIX))
+
+
+def process_subscription_event(db: Session, event: PaymentEvent) -> dict:
+    """Dispatch a normalized payment event to the matching subscription flow."""
+    if event.external_ref.startswith(PRE_CHECKOUT_PREFIX):
+        return process_pre_checkout(db, event)
+    return process_subscription_upgrade(db, event)
+
+
+def process_pre_checkout(db: Session, event: PaymentEvent) -> dict:
     """Handle a pre-checkout payment confirmation (sub_pre_* references)."""
-    if status_code != 1:
+    if not event.is_success:
         return {"status": "ok", "message": "Pre-checkout webhook processed"}
+
+    external_ref = event.external_ref
+    amount = float(event.amount or 0.0)
 
     checkout = (
         db.query(PendingCheckout)
@@ -42,18 +54,15 @@ def process_pre_checkout(
     return {"status": "ok", "message": "Pre-checkout webhook processed"}
 
 
-def process_subscription_upgrade(
-    db: Session,
-    *,
-    external_ref: str,
-    amount: float,
-    status_code: int,
-    signature_valid: bool,
-    payload: dict,
-) -> dict:
+def process_subscription_upgrade(db: Session, event: PaymentEvent) -> dict:
     """Handle a subscription upgrade payment confirmation (sub_upg_* references)."""
-    if status_code != 1:
+    if not event.is_success:
         return {"status": "ok", "message": "Subscription webhook processed"}
+
+    external_ref = event.external_ref
+    amount = float(event.amount or 0.0)
+    signature_valid = event.signature_valid
+    payload = event.metadata.get("raw", {})
 
     try:
         parts = external_ref.split("_")

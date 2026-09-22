@@ -137,23 +137,33 @@ Provider HTTP POST
 webhooks.py (route handler)
        │
        ├─ Validate signature (provider-specific header)
-       ├─ Parse provider-specific payload
        │
+       ▼
+payment_normalization.normalize_moolre_payload()   ◄── the ONLY code that
+       │                                                 knows Moolre's JSON shape
        ▼
 PaymentEvent (domain object)
   .provider = "moolre"
   .event_type = "payment.success" | "payment.failed"
-  .external_ref = provider transaction reference
-  .amount, .currency, .status
+  .external_ref = our reference echoed back by the provider
+  .provider_transaction_id = provider-side id (fallback lookup)
+  .amount, .currency, .status, .signature_valid
+       │
+       ├─ external_ref starts with sub_pre_/sub_upg_ ──► subscription_service.process_subscription_event(event)
        │
        ▼
-payment_service.process_payment_event()
+payment_service.process_payment_event(event)
        │
        ├─ Look up Transaction by provider_payment_ref
        ├─ Update transaction status
        ├─ Trigger Trust Score recalculation
        └─ Run background tasks (SMS, notifications)
 ```
+
+Every downstream consumer (ledger, subscriptions, dues, loans) receives the
+`PaymentEvent` only. Route handlers and domain services must not read
+`payload["data"]["externalref"]` or any other provider field directly; if a
+provider changes its payload, only the normalizer changes.
 
 ### PaymentEvent Domain Object
 
@@ -162,14 +172,20 @@ Defined in `backend/app/domain/payment_event.py`:
 ```python
 @dataclass
 class PaymentEvent:
-    provider: str        # "moolre"
-    event_type: str      # "payment.success", "payment.failed"
-    external_ref: str    # provider's transaction reference
+    provider: str                      # "moolre"
+    event_type: str                    # "payment.success", "payment.failed"
+    external_ref: str                  # our reference echoed back by the provider
     amount: float | None
-    currency: str        # "GHS"
-    status: str          # "success", "failed", "pending"
+    currency: str                      # "GHS"
+    status: str                        # "success", "failed", "pending"
     payer_phone: str | None
-    metadata: dict[str, Any]
+    provider_transaction_id: str | None
+    signature_valid: bool
+    metadata: dict[str, Any]           # {"raw": <original payload>, ...}
+
+    is_success: bool                   # status == "success"
+    reference: str                     # external_ref, else provider_transaction_id
+    idempotency_key: str               # f"{provider}:{reference}"
 ```
 
 ---
