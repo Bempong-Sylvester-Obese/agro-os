@@ -39,7 +39,11 @@ from app.models.models import (
 from app.schemas.schemas import UssdSessionResponse
 from app.services.auth_service import get_current_user
 from app.services.communications_service import CommunicationsService
-from app.services.subscription_service import process_pre_checkout, process_subscription_upgrade
+from app.services.payment_service import process_payment_event
+from app.services.subscription_service import (
+    is_subscription_reference,
+    process_subscription_event,
+)
 from app.services.providers.factory import get_payment_provider, get_sms_provider
 from app.services.trust_score_service import TrustScoreService
 from app.adapters.moolre_ussd import handle_moolre_ussd as _handle_moolre_ussd
@@ -49,9 +53,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
 settings = get_settings()
-
-def _normalize_payload(raw: dict) -> PaymentEvent:
-    return normalize_moolre_payload(raw)
 
 
 # ---------------------------------------------------------------------------
@@ -89,107 +90,70 @@ def _verify_signature(body: bytes, signature_header: str | None) -> bool:
 def _record_webhook_event(
     db: Session,
     *,
-    payload: dict,
-    signature_valid: bool,
+    event: PaymentEvent,
     transaction: Transaction | None = None,
     processed: bool = False,
     message: str | None = None,
 ) -> PaymentWebhookEvent:
-    data = payload.get("data") or {}
-    external_ref = data.get("externalref") or payload.get("reference")
-    event = PaymentWebhookEvent(
+    record = PaymentWebhookEvent(
         event_type="payment",
-        provider_payment_ref=external_ref,
+        provider_payment_ref=event.reference or None,
         transaction_id=transaction.id if transaction else None,
-        signature_valid=signature_valid,
-        payload=json.dumps(payload),
+        signature_valid=event.signature_valid,
+        payload=json.dumps(event.metadata.get("raw", {})),
         processed=processed,
         message=message,
     )
-    db.add(event)
+    db.add(record)
     db.commit()
-    db.refresh(event)
-    return event
+    db.refresh(record)
+    return record
 
 
-def _process_payment_payload(
-    payload: dict,
+def _find_transaction(db: Session, event: PaymentEvent) -> Transaction | None:
+    """Locate the ledger transaction for an event by our ref, then by the provider's id."""
+    for candidate in (event.external_ref, event.provider_transaction_id):
+        if not candidate:
+            continue
+        tx = (
+            db.query(Transaction)
+            .filter(Transaction.provider_payment_ref == candidate)
+            .with_for_update()
+            .first()
+        )
+        if tx:
+            return tx
+    return None
+
+
+def _process_payment_event(
+    event: PaymentEvent,
     db: Session,
     background_tasks: BackgroundTasks,
-    *,
-    signature_valid: bool,
 ) -> dict:
-    moolre_status: int = payload.get("status", 0)
-    data: dict = payload.get("data") or {}
+    """Apply a normalized PaymentEvent to subscriptions or the ledger.
 
-    external_ref: str | None = data.get("externalref") or payload.get("reference")
-    transaction_id: str | None = data.get("transactionid")
-    amount_raw = data.get("amount") or data.get("value", "0")
+    Provider-specific parsing has already happened in the normalizer; nothing
+    below this line may inspect the raw payload.
+    """
+    if is_subscription_reference(event.external_ref):
+        return process_subscription_event(db, event)
 
-    try:
-        amount = float(amount_raw)
-    except (TypeError, ValueError):
-        amount = 0.0
-
-    if external_ref and external_ref.startswith("sub_pre_"):
-        return process_pre_checkout(
-            db,
-            external_ref=external_ref,
-            amount=amount,
-            status_code=moolre_status,
-        )
-
-    if external_ref and external_ref.startswith("sub_upg_"):
-        return process_subscription_upgrade(
-            db,
-            external_ref=external_ref,
-            amount=amount,
-            status_code=moolre_status,
-            signature_valid=signature_valid,
-            payload=payload,
-        )
-
-    event = normalize_moolre_payload(payload)
-    event.metadata["signature_valid"] = signature_valid
-
-    tx: Transaction | None = None
-    if external_ref:
-        tx = (
-            db.query(Transaction)
-            .filter(Transaction.provider_payment_ref == external_ref)
-            .with_for_update()
-            .first()
-        )
-
-    if not tx and transaction_id:
-        tx = (
-            db.query(Transaction)
-            .filter(Transaction.provider_payment_ref == transaction_id)
-            .with_for_update()
-            .first()
-        )
+    amount = float(event.amount or 0.0)
+    tx = _find_transaction(db, event)
 
     if not tx:
-        _record_webhook_event(
-            db,
-            payload=payload,
-            signature_valid=signature_valid,
-            processed=False,
-            message="reference not found",
-        )
+        _record_webhook_event(db, event=event, processed=False, message="reference not found")
         logger.warning(
-            "Webhook received for unknown reference '%s' (txid: %s)", external_ref, transaction_id
+            "Webhook received for unknown reference '%s' (provider txid: %s)",
+            event.external_ref,
+            event.provider_transaction_id,
         )
         return {"status": "ok", "message": "reference not found — acknowledged"}
 
     if tx.amount and amount and abs(float(tx.amount) - amount) >= 0.01:
         _record_webhook_event(
-            db,
-            payload=payload,
-            signature_valid=signature_valid,
-            transaction=tx,
-            processed=False,
-            message="amount mismatch",
+            db, event=event, transaction=tx, processed=False, message="amount mismatch"
         )
         logger.warning(
             "Amount mismatch for tx %s: expected %.2f got %.2f",
@@ -197,23 +161,22 @@ def _process_payment_payload(
         )
         return {"status": "ok", "transaction_id": tx.id, "message": "amount mismatch"}
 
-    from app.services.payment_service import process_payment_event
+    # The ledger service looks transactions up by external_ref; if we matched on the
+    # provider's transaction id instead, align the event to the stored reference.
+    if event.external_ref != tx.provider_payment_ref:
+        event.external_ref = tx.provider_payment_ref
+
     result = process_payment_event(event, db)
 
     if result["status"] == "processed":
         _record_webhook_event(
-            db,
-            payload=payload,
-            signature_valid=signature_valid,
-            transaction=tx,
-            processed=True,
-            message="Payment confirmed",
+            db, event=event, transaction=tx, processed=True, message="Payment confirmed"
         )
         background_tasks.add_task(
             _post_payment_tasks,
             farmer_id=tx.farmer_id,
             amount=amount,
-            reference=external_ref or str(transaction_id),
+            reference=event.reference,
         )
         logger.info(
             "Payment confirmed: tx_id=%s farmer_id=%s amount=GHS%.2f",
@@ -224,14 +187,13 @@ def _process_payment_payload(
         return {
             "status": "ok",
             "transaction_id": tx.id,
-            "reference": external_ref,
+            "reference": event.reference,
             "message": "Payment confirmed — Trust Score queued for update",
         }
-    elif result["status"] == "duplicate":
+    if result["status"] == "duplicate":
         _record_webhook_event(
             db,
-            payload=payload,
-            signature_valid=signature_valid,
+            event=event,
             transaction=tx,
             processed=True,
             message=f"transaction already {tx.status.value}",
@@ -241,22 +203,35 @@ def _process_payment_payload(
             "transaction_id": tx.id,
             "message": f"transaction already {tx.status.value}",
         }
-    else:
-        _record_webhook_event(
-            db,
-            payload=payload,
-            signature_valid=signature_valid,
-            transaction=tx,
-            processed=True,
-            message=result.get("reason", "Payment processed"),
-        )
-        logger.info("Payment processed: tx_id=%s ref=%s result=%s", tx.id, external_ref, result)
-        return {
-            "status": "ok",
-            "transaction_id": tx.id,
-            "reference": external_ref,
-            "message": result.get("reason", "Payment processed"),
-        }
+
+    _record_webhook_event(
+        db,
+        event=event,
+        transaction=tx,
+        processed=True,
+        message=result.get("reason", "Payment processed"),
+    )
+    logger.info("Payment processed: tx_id=%s ref=%s result=%s", tx.id, event.reference, result)
+    return {
+        "status": "ok",
+        "transaction_id": tx.id,
+        "reference": event.reference,
+        "message": result.get("reason", "Payment processed"),
+    }
+
+
+def _process_payment_payload(
+    payload: dict,
+    db: Session,
+    background_tasks: BackgroundTasks,
+    *,
+    signature_valid: bool,
+) -> dict:
+    """Normalize a raw Moolre payload and hand it to the domain flow."""
+    event = normalize_moolre_payload(payload)
+    event.signature_valid = signature_valid
+    event.metadata["signature_valid"] = signature_valid
+    return _process_payment_event(event, db, background_tasks)
 
 
 # ---------------------------------------------------------------------------
