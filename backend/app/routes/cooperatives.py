@@ -169,7 +169,7 @@ def delete_cooperative(
     current_user: User | None = Depends(require_roles("admin")),
 ):
     """Delete a cooperative (only if it has no farmers)."""
-    if get_settings().app_env.lower() in ("production", "prod"):
+    if get_settings().is_production:
         raise HTTPException(status_code=404, detail="Not found")
     enforce_cooperative_scope(current_user, cooperative_id)
     coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()

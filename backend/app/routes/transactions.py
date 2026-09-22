@@ -328,7 +328,7 @@ def update_transaction_status(
     settings = get_settings()
     if settings.auth_enabled and current_user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
-    if settings.app_env.lower() in ("production", "prod"):
+    if settings.is_production:
         raise HTTPException(status_code=404, detail="Not found")
 
     if update.status == TransactionStatus.completed:

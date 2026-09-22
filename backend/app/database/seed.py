@@ -38,7 +38,7 @@ def seed_golden_path(db: Session) -> dict:
     from app.config import get_settings
 
     settings = get_settings()
-    if settings.app_env.lower() in ("production", "prod"):
+    if settings.is_production:
         logger.warning("Refusing to seed demo data in production")
         return {"seeded": False, "reason": "production environment"}
     if not settings.seed_demo_data:

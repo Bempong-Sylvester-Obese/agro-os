@@ -97,7 +97,7 @@ def integration_health(
 
 def _demo_cooperative(current_user: User, db: Session) -> Cooperative:
     settings = get_settings()
-    if settings.app_env.lower() in ("production", "prod"):
+    if settings.is_production:
         raise HTTPException(status_code=404, detail="Not found")
     cooperative = (
         db.query(Cooperative)
@@ -118,7 +118,7 @@ def preview_demo_reset(
     current_user: User | None = Depends(require_roles("admin")),
 ):
     settings = get_settings()
-    if settings.app_env in ("production", "prod"):
+    if settings.is_production:
         raise HTTPException(status_code=404, detail="Not available in production")
     if current_user is None:
         raise HTTPException(status_code=401, detail="Authentication required")
@@ -173,7 +173,7 @@ def confirm_demo_reset(
     current_user: User | None = Depends(require_roles("admin")),
 ):
     settings = get_settings()
-    if settings.app_env in ("production", "prod"):
+    if settings.is_production:
         raise HTTPException(status_code=404, detail="Not available in production")
     if current_user is None:
         raise HTTPException(status_code=401, detail="Authentication required")

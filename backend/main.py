@@ -133,7 +133,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-_is_production = settings.app_env == "production"
+_is_production = settings.is_production
 _docs_url = None if _is_production else "/docs"
 _redoc_url = None if _is_production else "/redoc"
 
@@ -252,7 +252,7 @@ def root():
 def health_check():
     """Health check endpoint for deployment monitors."""
     model_meta = agro_ai_runtime.metadata
-    require_artifact = settings.agro_ai_require_artifact or settings.app_env == "production"
+    require_artifact = settings.agro_ai_require_artifact or settings.is_production
     model_ready = not (require_artifact and model_meta["is_synthetic_fallback"])
     status = "healthy" if model_ready else "degraded"
 
@@ -270,7 +270,7 @@ def _readiness_payload() -> tuple[dict, bool]:
     model_source = "synthetic" if model_meta["is_synthetic_fallback"] else "artifact"
     require_artifact = (
         current_settings.agro_ai_require_artifact
-        or current_settings.app_env.lower() in {"production", "prod"}
+        or current_settings.is_production
     )
     model_ready = not (require_artifact and model_source == "synthetic")
 
