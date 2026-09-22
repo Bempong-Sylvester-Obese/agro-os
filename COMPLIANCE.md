@@ -135,9 +135,13 @@ cooperative society under Act 1148:
 | Tenant isolation model | Decided — API-only tenancy; database RLS not deployed or relied on. Decision record and threat model: `docs/architecture/tenancy-decision.md` |
 | Client database access | None — browser bundle holds no DB SDK/credentials (enforced by frontend test) |
 | Provider-neutral architecture | Done — payment/SMS behind port interfaces |
-| AML/transaction monitoring | Not started — deferred to provider KYC + future issue |
+| AML/transaction monitoring | Not started — relies on the payment provider's KYC; no in-app monitoring issue opened yet |
 | Data Protection Commission registration | Not applicable pre-launch; required before real farmer data |
 | Legal review of this policy and data-privacy.md | Outstanding — required before production |
+| Per-member SMS consent recorded and enforced | Open — [#247](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/247) |
+| Short production token TTL, refresh, email delivery of reset/invite tokens | Open — [#248](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/248) |
+| Formal role model beyond `admin`/`finance_officer` | Open — [#244](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/244) |
+| Subscription entitlements enforced server-side | Open — [#233](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/233) |
 
 ---
 

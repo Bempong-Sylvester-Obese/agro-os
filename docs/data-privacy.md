@@ -4,15 +4,15 @@
 > regulatory picture (payments, AML, telecom, cooperative law), see
 > [`COMPLIANCE.md`](../COMPLIANCE.md) at the repo root.
 
-> **Status:** Draft — Hackathon Scope (Moolre Startup Cup, July 2026)
-> **Last updated:** 2026-06
-> **Maintainer:** AgroOS Core Team (Ramzy, Julien, Elvis, Sylvester)
+> **Status:** Pre-production policy for the B2B product — pending legal review
+> **Last updated:** 2026-09
+> **Maintainer:** AgroOS Core Team
 >
-> ⚠️ This document is a non-legal summary for cooperative administrators and
-> hackathon demo evaluators. It does not constitute legal advice. Before any
-> production deployment or onboarding of real farmer data, this policy must be
-> reviewed by a qualified legal professional with knowledge of Ghanaian data
-> protection law.
+> ⚠️ This document is a non-legal summary for cooperative administrators,
+> customers, and contributors. It does not constitute legal advice. Before
+> onboarding real farmer data it must be reviewed by a qualified legal
+> professional with knowledge of Ghanaian data protection law
+> (tracked in `COMPLIANCE.md` §7).
 
 ---
 
@@ -20,10 +20,11 @@
 
 AgroOS collects and processes personal data as part of its cooperative
 management platform. This policy describes what data is collected, why it is
-collected, who may access it, and how it is handled — both in the current
-hackathon/demo environment and in a projected production context.
+collected, who may access it, and how it is handled in development/staging
+environments (which hold only synthetic data) and in production (which holds
+real cooperative and farmer data).
 
-All team members, demo users, and cooperative administrators interacting with
+All contributors, operators, and cooperative administrators interacting with
 AgroOS data are expected to understand and respect these guidelines.
 
 ---
@@ -82,14 +83,16 @@ purposes outside of cooperative management without explicit consent.
 
 ## 4. Data Access and Administrative Scope
 
-### 4.1 Current Scope (Hackathon / Demo)
-During the Moolre Startup Cup demo phase, the system has no enforced
-authentication or role-based access control. Any user with access to the
-running demo can view all data. **Only synthetic or anonymised demo data
-should be used in this environment.** See Section 6.
+### 4.1 Enforcement
+Production deployments require `AUTH_ENABLED=true` (the backend refuses to
+start otherwise). Every request is scoped to the authenticated user's
+cooperative by the API layer; see `SECURITY.md` → *Tenant Isolation* and
+`docs/architecture/tenancy-decision.md`. Development and staging environments
+may run with authentication disabled and **must therefore hold only synthetic
+data** (Section 6).
 
-### 4.2 Projected Production Scope
-In a production deployment, data access will be governed by roles:
+### 4.2 Roles
+Data access is governed by roles:
 
 | Role                    | Permitted Access                                               |
 |-------------------------|----------------------------------------------------------------|
@@ -101,8 +104,11 @@ In a production deployment, data access will be governed by roles:
 Cross-cooperative access is not permitted. Admins may not access farmer records
 outside their assigned cooperative.
 
-> 🔧 Auth implementation is tracked as a future GitHub issue. Until RBAC is
-> implemented and tested, the system must not be used with real farmer data.
+> Staff roles currently enforced by the API are `admin` and `finance_officer`
+> (plus read-only USSD self-service for farmers). Formalising the full role
+> set is tracked in [#244](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/244).
+> Farmer self-service and auditor access run through the same
+> cooperative-scoped API; there is no direct database access for any role.
 
 ---
 
@@ -118,12 +124,10 @@ Implied consent from cooperative membership is not sufficient for financial
 alerts or credit-related messages.
 
 ### 5.2 Sender ID
-All outbound SMS must use the **Moolre-approved sender ID** configured for
-the hackathon. Use of unapproved or spoofed sender IDs is prohibited and may
-violate Ghana's National Communications Authority (NCA) regulations.
-
-In production, the registered sender ID must correspond to the platform
-operator's legally registered entity name.
+All outbound SMS must use the sender ID approved by the SMS provider and
+registered with Ghana's National Communications Authority (NCA) for the
+platform operator's legal entity. Use of unapproved or spoofed sender IDs is
+prohibited.
 
 ### 5.3 Message Content
 SMS content logged in `CommunicationLog` may include sensitive financial
@@ -135,9 +139,10 @@ treated as financial PII and must not be displayed to unauthorised parties.
 ## 6. Demo and Sandbox Data
 
 ### 6.1 What is Demo Data
-Demo data refers to synthetic farmer profiles, fabricated transactions, and
-generated communication logs used solely for evaluation and demonstration
-purposes during the hackathon.
+Demo data refers to the synthetic farmer profiles, fabricated transactions,
+and generated communication logs inserted by the Golden Path seed
+(`SEED_DEMO_DATA=true`) for development, staging, automated tests, and sales
+demonstrations.
 
 ### 6.2 Rules for Demo Data
 - All demo farmer names, phone numbers, and financial records **must be
@@ -147,21 +152,23 @@ purposes during the hackathon.
 - SMS messages should not be sent to real phone numbers during demo or testing
 
 ### 6.3 Separation from Production Data
-The demo/sandbox environment must be clearly labelled (e.g., `NODE_ENV=demo`
-or equivalent). Any production or pilot environment with real farmer data must
-run in a separate, access-controlled instance.
+Production is identified by `APP_ENV=production`. In that mode the seed
+never runs, the demo-reset API returns 404, and the purge CLI refuses without
+an explicit flag (see `docs/api-contract.md` → *Demo data in production*).
+Any environment holding real farmer data must run as a separate,
+access-controlled instance from development and staging.
 
 ---
 
 ## 7. Data Retention and Deletion
 
-### 7.1 Hackathon Scope
-All demo data generated during the Moolre Startup Cup will be deleted within
-**30 days of the final judging date** (estimated: August 2026), unless retained
-for academic or retrospective documentation with all PII removed.
+### 7.1 Synthetic Data
+Synthetic seed data carries no PII and may be reset or purged at any time
+using the demo-reset workflow or `backend/scripts/purge_demo_data.py`.
 
-### 7.2 Production Scope (Projected)
-In production, the following retention periods are proposed:
+### 7.2 Production Data
+In production, the following retention periods apply (subject to legal
+review):
 
 | Data Type           | Proposed Retention                                         |
 |---------------------|------------------------------------------------------------|
@@ -223,15 +230,13 @@ Particular areas of intersection:
 
 ## 10. Contact and Policy Updates
 
-This policy will be updated as the platform matures beyond the hackathon phase.
+This policy is reviewed whenever data handling changes; substantive changes
+are tracked through GitHub issues on the project repository.
 
-For questions during the Moolre Startup Cup period, contact the AgroOS team
-via the project repository or Moolre hackathon communication channels.
-
-For future production inquiries regarding data access or deletion requests,
-a designated Data Protection Officer (DPO) contact will be added here.
+For questions, contact the AgroOS team via the project repository. A
+designated Data Protection Officer (DPO) contact for data access and deletion
+requests will be published here before any production launch.
 
 ---
 
 *AgroOS — Agricultural Cooperative Management Platform*
-*Moolre Startup Cup 2026 | Team: Ramzy · Julien · Elvis · Sylvester*

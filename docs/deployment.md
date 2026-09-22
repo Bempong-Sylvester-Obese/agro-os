@@ -1,8 +1,8 @@
 # AgroOS Deployment Runbook
 
-> **Status:** Hackathon Reference Doc — Moolre Startup Cup (July 2026)
+> **Status:** Operations runbook for the B2B product
 > **Maintainer:** AgroOS Core Team
-> **Last updated:** 2026-06
+> **Last updated:** 2026-09
 >
 > This runbook covers frontend and backend deployment, environment
 > variables, Moolre webhook registration, local webhook testing with
@@ -311,7 +311,7 @@ secret from the portal.
 | Database | Local / Supabase dev branch | Supabase dev branch | Supabase production |
 | Moolre keys | Sandbox keys | Sandbox keys | Live keys |
 | Webhook URL | ngrok | ngrok / Render preview | Render production |
-| Demo data | Synthetic `DEMO_FARMERS` | Synthetic `DEMO_FARMERS` | Real farmer data (future) |
+| Data | Synthetic Golden Path seed (`SEED_DEMO_DATA=true`) | Synthetic seed | Real cooperative data; seed and demo-reset are disabled (`APP_ENV=production`) |
 
 > Never use live Moolre keys or production Supabase credentials in local
 > or preview environments.

@@ -2,9 +2,9 @@
 
 **The Digital Infrastructure and Operating System for African Farmer Cooperatives.**
 
-AgroOS is a B2B cooperative management platform for Ghanaian agricultural cooperatives. It empowers farmer organizations to manage members, process bulk disbursements, and generate AI-driven credit scores using offline-first USSD integration.
+AgroOS is a B2B management platform for Ghanaian agricultural organisations. Cooperatives use it to run members, dues, input loans, produce settlement, communications, and AgroCredit scoring; independent **solo farms** use the same platform for workers, tasks, attendance, and payroll (see [`docs/solo-farm-product-spec.md`](docs/solo-farm-product-spec.md)). Farmers reach it from any feature phone over USSD and SMS.
 
-By bridging the gap between unconnected rural farmers and formal financial ecosystems, AgroOS provides enterprise-grade infrastructure tailored for the agricultural value chain.
+Payments, SMS, and USSD are integrated through provider-neutral ports; the current adapters target Moolre and Africa's Talking. Product framing lives in [`docs/product-strategy.md`](docs/product-strategy.md).
 
 ---
 
@@ -34,7 +34,7 @@ By bridging the gap between unconnected rural farmers and formal financial ecosy
 
 ## Architecture
 
-AgroOS follows a **ports-and-adapters** architecture. Payment and SMS providers are abstract behind port interfaces, with concrete adapters that translate provider-specific APIs into domain-normalized operations. See [`docs/architecture.md`](docs/architecture.md) for the full architecture document.
+AgroOS follows a **ports-and-adapters** architecture. Payment and SMS providers are abstract behind port interfaces, with concrete adapters that translate provider-specific APIs into domain-normalized operations. See [`docs/architecture.md`](docs/architecture.md) for the full architecture document, [`docs/architecture/adding-a-provider.md`](docs/architecture/adding-a-provider.md) to integrate a new payment/SMS/USSD provider, and [`docs/architecture/tenancy-decision.md`](docs/architecture/tenancy-decision.md) for the tenant-isolation model.
 
 ```
 ┌─────────────────────────────────────────────────┐
@@ -69,8 +69,10 @@ AgroOS follows a **ports-and-adapters** architecture. Payment and SMS providers 
 ```text
 agro-os/
 ├── backend/                   # FastAPI application and API contracts
-├── docs/                      # Product strategy, architecture, and planning
-│   └── architecture.md        # System architecture document
+├── docs/                      # Product strategy, architecture, runbooks
+│   ├── architecture.md        # System architecture document
+│   ├── architecture/          # Provider guide, tenancy decision record
+│   └── archive/               # Historical hackathon material (not maintained)
 ├── frontend/                  # Vite + React web dashboard
 ├── supabase/                  # Database schema, migrations, and seed data
 ├── .env.example               # Root environment reference
@@ -122,22 +124,31 @@ npm run build          # Build Vite frontend
 
 Reference docs:
 
-- `docs/` for strategy, architecture, and planning documents
-- `docs/architecture.md` for system architecture and provider integration
-- `backend/README.md` for backend endpoints, environment variables, linting, and test commands
+| Topic | Document |
+|---|---|
+| Product framing, customers, roadmap | [`docs/product-strategy.md`](docs/product-strategy.md) |
+| System architecture | [`docs/architecture.md`](docs/architecture.md) |
+| Adding a payment / SMS / USSD provider | [`docs/architecture/adding-a-provider.md`](docs/architecture/adding-a-provider.md) |
+| Frontend ↔ backend API contract | [`docs/api-contract.md`](docs/api-contract.md) |
+| Backend endpoints, env vars, tests | [`backend/README.md`](backend/README.md) |
+| Deployment runbook (Render, Vercel, webhooks) | [`docs/deployment.md`](docs/deployment.md) |
+| Payment provider setup | [`docs/moolre-setup.md`](docs/moolre-setup.md) |
+| Security, tenancy, compliance, privacy | [`SECURITY.md`](SECURITY.md), [`docs/architecture/tenancy-decision.md`](docs/architecture/tenancy-decision.md), [`COMPLIANCE.md`](COMPLIANCE.md), [`docs/data-privacy.md`](docs/data-privacy.md) |
+| Solo-farm tier | [`docs/solo-farm-product-spec.md`](docs/solo-farm-product-spec.md) |
+| AgroCredit / Agro-AI | [`docs/scoring-systems.md`](docs/scoring-systems.md), [`docs/agro-ai-governance.md`](docs/agro-ai-governance.md) |
 
-### 3. Team Work Areas
+### 3. Repository Areas
 
-* `frontend/` owns the cooperative admin dashboard.
-* `backend/` owns FastAPI routes, webhook handling, and Trust Score logic.
-* `supabase/` owns schema, migrations, and demo seed data.
-* `docs/` owns product strategy and shared planning notes.
+* `frontend/` — cooperative and solo-farm dashboards plus public marketing pages.
+* `backend/` — FastAPI routes, services, provider adapters, webhooks, USSD, scoring, Alembic migrations.
+* `supabase/` — reference SQL mirroring the ORM; Alembic is authoritative.
+* `docs/` — product, architecture, and operations documentation.
 
 ---
 
 ## AgroCredit AI Engine
 
-AgroCredit includes `agro-ai`: a Scikit-learn Random Forest model trained on deterministic synthetic cooperative data. It uses dues consistency, payment timeliness, production completion and output, cooperative attendance, loan history, outstanding balances, and savings behavior to generate an administrator-friendly credit-worthiness recommendation.
+AgroCredit includes `agro-ai`: a Scikit-learn Random Forest model that uses dues consistency, payment timeliness, production completion and output, cooperative attendance, loan history, outstanding balances, and savings behavior to generate an administrator-friendly credit-worthiness recommendation. The current model is trained on deterministic synthetic data and is advisory only until it is retrained on real repayment outcomes; see [`docs/agro-ai-governance.md`](docs/agro-ai-governance.md).
 
 Production tracking and scoring support crop, animal, and mixed producers.
 

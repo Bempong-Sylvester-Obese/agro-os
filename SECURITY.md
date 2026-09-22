@@ -27,8 +27,11 @@ profiles, members, production, finance, loans, and communications.
 Authenticated reads and writes are constrained to the user's cooperative;
 request body and query-string cooperative IDs cannot override that scope.
 
-Password reset uses time-limited, single-use tokens sent to the user's
-registered email.
+Password reset and staff invitations use 15-minute, single-use tokens. There
+is no email provider yet: tokens are written to the backend log for an
+operator to relay. Delivery through an `EmailProvider` port and a short
+production token TTL are tracked in
+[#248](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/248).
 
 Production deployments must set `AUTH_ENABLED=true`.
 
@@ -44,20 +47,27 @@ configured webhook callback paths (see `WEBHOOK_CALLBACK_PATH` in config).
 
 | Setting | Default | Description |
 |---|---|---|
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | 30 | JWT access token TTL in minutes |
-| `JWT_SECRET_KEY` | (required) | HMAC signing secret for JWTs |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | 10080 (7 days) | JWT access token TTL in minutes. **Open gap:** production should default to a short TTL with refresh — [#248](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/248) |
+| `SECRET_KEY` | (required in production; default refused) | HMAC-SHA256 signing secret for JWTs |
+| `ADMIN_PASSWORD` | (required when `AUTH_ENABLED=true`; default refused) | Bootstrap admin credential |
 
 ## Demo Feature Gating
 
 Features intended only for demonstration or which carry elevated risk are
 gated behind feature flags and must not be active in production:
 
-| Feature | Flag | Production Status |
+| Feature | Gate | Production behaviour |
 |---|---|---|
-| USSD sandbox mode | `USSD_SANDBOX=true` | Must be disabled in production |
-| Unauthenticated routes | `AUTH_ENABLED=false` | Must be enabled in production |
-| Mock payment webhooks | Webhook secret unset | Must be set in production |
-| Demo seed/reset | Hidden via frontend build flag | Must not be accessible in production |
+| Golden Path seed | `SEED_DEMO_DATA=true` | Refused at startup validation; also disabled on Render |
+| Demo reset API / Settings panel | `Settings.is_production` | `404` |
+| Demo purge CLI | `--allow-production` flag | Refuses without the flag (exit 2); `--dry-run` allowed |
+| Unauthenticated routes | `AUTH_ENABLED=false` | Refused at startup validation |
+| Unsigned payment webhooks | `MOOLRE_WEBHOOK_SECRET` unset | Refused at startup validation |
+| Staff transaction status edits | `Settings.is_production` | `404` |
+
+All production checks go through `Settings.is_production`, which accepts
+`production`/`prod` in any casing; see `docs/api-contract.md` → *Demo data in
+production*.
 
 ## Webhook Security
 

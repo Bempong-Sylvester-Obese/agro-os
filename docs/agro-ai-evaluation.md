@@ -1,6 +1,6 @@
 # Agro-AI Evaluation And Readiness
 
-This document tracks the AI-side work needed to move AgroCredit from a hackathon demo toward enterprise-grade operation.
+This document tracks the AI-side work needed to move AgroCredit from a synthetic-trained advisory model to a production credit model validated on real repayment outcomes.
 
 ## Current State
 

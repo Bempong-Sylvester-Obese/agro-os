@@ -1,11 +1,12 @@
 # AgroOS Scoring Systems
 
-> **Status:** Hackathon Reference Doc — Moolre Startup Cup (July 2026)
+> **Status:** Reference for the B2B product
 > **Maintainer:** AgroOS Core Team
-> **Last updated:** 2026-06
+> **Last updated:** 2026-09
 
 This document explains the two scoring systems that exist in AgroOS, when
-each one applies, and what the demo team should say during narration.
+each one applies, and how to describe each accurately to customers and
+cooperative staff.
 
 ---
 
@@ -53,8 +54,8 @@ fires — i.e. when a farmer pays cooperative dues through the USSD menu.
 The current feature-phone menu does not expose a score lookup. Option 5 is
 reserved for completing a pending payment privately on the farmer's phone.
 
-### Demo narration (Trust Score path)
-> *"When the farmer pays dues through the USSD menu, Moolre fires a webhook
+### How to describe it (Trust Score path)
+> *"When the farmer pays dues through the USSD menu, the payment provider fires a webhook
 > to our FastAPI backend. The backend records the transaction, then
 > recalculates the farmer's Trust Score using our rules engine — weighing
 > payment history, loan repayment, production records, and attendance. The
@@ -93,36 +94,36 @@ Agro-AI scores are not updated by webhooks. Paying dues does not change the
 Agro-AI score. This means the dashboard score will not reflect demo
 transactions in real time.
 
-### Demo narration (Agro-AI path)
+### How to describe it (Agro-AI path)
 > *"The dashboard shows an Agro-AI score — this is our Random Forest model's
-> creditworthiness prediction. In this demo build it runs on a representative
-> synthetic training set so judges can see the ML layer in action. Live
-> assessments normalize verified cooperative records into that model's stable
-> v1 feature contract. Production use still requires training and validation
-> against real repayment outcomes."*
+> creditworthiness recommendation. The current model is trained on a
+> representative synthetic dataset; live assessments normalise verified
+> cooperative records into its stable v1 feature contract. It is advisory
+> only until it has been retrained and validated against real repayment
+> outcomes (see `agro-ai-governance.md`)."*
 
 ---
 
 ## Golden Path — What Updates After Dues Payment
 
-This is the most important thing to get right during the demo narration
+This is the most important thing to describe accurately to customers
 
 **The Golden Path is:**
 
 ```
 Farmer selects USSD Option 2 (Pay Cooperative Dues)
   → Moolre processes payment
-    → Moolre fires webhook to /webhooks/payment
+    → Provider fires webhook to /webhooks/payment
       → FastAPI records Transaction in DB
         → trust_score_service.py recalculates Trust Score
           → Updated Trust Score is available from the REST API
 ```
 
-**What does NOT update:** the dashboard Agro-AI score. Do not tell a judge
-"the score on the dashboard updates after payment" — it does not.
+**What does NOT update:** the dashboard Agro-AI score. Do not tell a
+customer "the score on the dashboard updates after payment" — it does not.
 
-**Safe demo narration sequence:**
-1. Show the dashboard — narrate it as the Agro-AI ML layer
+**Accurate walkthrough sequence:**
+1. Show the dashboard — describe it as the Agro-AI ML layer
 2. Demonstrate dues payment via USSD
 3. Explain that the recalculated Trust Score is available through the REST API
 4. Explain how this rules layer complements Agro-AI (see Roadmap)
@@ -143,12 +144,12 @@ the OTP.
 The long-term architecture is a **single unified score** backed by DB facts
 and optionally enhanced by the ML model. The path is:
 
-### Phase 1 (Current — Hackathon)
+### Phase 1 (Current)
 - Trust Score: rules-based, DB-backed, webhook-triggered ✅
 - Agro-AI: ML-based, synthetic-trained, DB-backed inference with demo fallback ✅
 - Independent formulas and update lifecycles
 
-### Phase 2 (Post-Hackathon MVP)
+### Phase 2 (Next)
 - Feed real repayment outcomes into the Agro-AI training pipeline
 - Retain synthetic records only as an explicit demo fallback
 - Expose unified score on dashboard (currently shows Agro-AI only)
@@ -165,6 +166,6 @@ and optionally enhanced by the ML model. The path is:
 
 - `backend/app/services/trust_score_service.py` — Trust Score engine
 - `backend/app/agro_ai/` — Random Forest ML model and inference routes
-- `docs/product-strategy.md` — rules-first MVP principle
+- `docs/product-strategy.md` — AgroCredit roadmap and explainable-credit principle
 - `docs/agro-ai-evaluation.md` — Agro-AI model evaluation and rationale
 - `docs/data-privacy.md` — handling of farmer scores as PII
