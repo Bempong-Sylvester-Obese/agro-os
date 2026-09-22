@@ -23,6 +23,7 @@ async def ussd_callback(
 ):
     """
     Native USSD Gateway Router using Africa's Talking format.
-    State is managed by the `text` string which contains inputs separated by '*'.
+    AT sends cumulative input in `text` ('1*500'); the adapter forwards the latest
+    segment to the shared UssdApplicationService keyed by `sessionId`.
     """
-    return await handle_at_callback(request, phoneNumber, text, db)
+    return await handle_at_callback(request, sessionId, phoneNumber, text, db)

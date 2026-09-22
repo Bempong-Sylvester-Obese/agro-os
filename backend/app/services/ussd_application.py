@@ -17,6 +17,7 @@ from app.models.models import (
     Announcement,
     Cooperative,
     CooperativeMembership,
+    Farmer,
     Loan,
     LoanStatus,
     Transaction,
@@ -27,20 +28,6 @@ from app.models.models import (
 from app.services.ussd_service import resolve_farmer_by_phone
 
 logger = logging.getLogger(__name__)
-
-USSD_MENU_MAIN = (
-    "Welcome to AgroOS\n"
-    "1. Check Loan Balance\n"
-    "2. Pay Dues\n"
-    "3. Request Loan\n"
-    "4. Announcements\n"
-    "5. Complete Pending Payment\n"
-    "6. Repay Loan"
-)
-
-NOT_REGISTERED_MSG = "Phone not registered with AgroOS. Contact your cooperative."
-
-_USSD_SESSION_TTL_SECONDS = 3600
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -53,10 +40,17 @@ USSD_MAIN_MENU = (
     "3. Request Loan\n"
     "4. Announcements\n"
     "5. Complete Pending Payment\n"
-    "6. Repay Loan"
+    "6. Repay Loan\n"
+    "7. Link Phone"
 )
+USSD_MENU_MAIN = USSD_MAIN_MENU
 
 NOT_REGISTERED_MSG = "Phone not registered with AgroOS. Contact your cooperative."
+LINK_COOP_CODE_PROMPT = "Enter your 4-digit Cooperative Code:"
+LINK_FARMER_CODE_PROMPT = "Enter your 6-digit Farmer ID:"
+LINK_SUCCESS_MSG = (
+    "Phone linked successfully!\nPlease dial the code again to access your account."
+)
 
 _USSD_SESSION_TTL_SECONDS = 3600
 
@@ -409,9 +403,57 @@ class UssdApplicationService:
                     continue_session=True,
                 )
 
+            if message == "7":
+                if farmer:
+                    clear_ussd_state(db, session_id)
+                    msg = f"This phone is already linked to {farmer.name}."
+                    log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
+                    return UssdResponse(text=msg, continue_session=False)
+                state["step"] = "link_coop_code"
+                log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=LINK_COOP_CODE_PROMPT, farmer=None, state=state)
+                return UssdResponse(text=LINK_COOP_CODE_PROMPT, continue_session=True)
+
             msg = "Invalid option.\n" + USSD_MENU_MAIN
             log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
             return UssdResponse(text=msg, continue_session=True)
+
+        # ---- Link phone: cooperative code
+        if state["step"] == "link_coop_code":
+            coop = db.query(Cooperative).filter(Cooperative.ussd_code == message).first()
+            if not coop:
+                clear_ussd_state(db, session_id)
+                msg = "Invalid Cooperative Code. Please try again."
+                log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=None)
+                return UssdResponse(text=msg, continue_session=False)
+            state["step"] = "link_farmer_code"
+            state["link_cooperative_id"] = coop.id
+            log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=LINK_FARMER_CODE_PROMPT, farmer=None, state=state)
+            return UssdResponse(text=LINK_FARMER_CODE_PROMPT, continue_session=True)
+
+        # ---- Link phone: farmer code
+        if state["step"] == "link_farmer_code":
+            membership = (
+                db.query(CooperativeMembership)
+                .filter(
+                    CooperativeMembership.cooperative_id == state.get("link_cooperative_id"),
+                    CooperativeMembership.farmer_code == message,
+                )
+                .first()
+            )
+            clear_ussd_state(db, session_id)
+            if not membership:
+                msg = "Invalid Farmer ID. Please try again."
+                log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=None)
+                return UssdResponse(text=msg, continue_session=False)
+            farmer_obj = db.query(Farmer).filter(Farmer.id == membership.farmer_id).first()
+            if not farmer_obj:
+                msg = "System error. Farmer not found."
+                log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=None)
+                return UssdResponse(text=msg, continue_session=False)
+            farmer_obj.phone = msisdn
+            db.commit()
+            log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=LINK_SUCCESS_MSG, farmer=membership)
+            return UssdResponse(text=LINK_SUCCESS_MSG, continue_session=False)
 
         # ---- Repay loan: select
         if state["step"] == "repay_loan_select":
