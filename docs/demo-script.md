@@ -182,7 +182,7 @@ Set `VITE_API_URL=http://localhost:8000` in `frontend/.env` for local wiring.
 ### Fallback: USSD without live short code
 
 ```bash
-curl -X POST "$VITE_API_URL/webhooks/moolre/ussd" \
+curl -X POST "$VITE_API_URL/webhooks/ussd" \
   -H "Content-Type: application/json" \
   -d '{"sessionid":"demo-1","phone":"+233552341234","input":"2"}'
 ```

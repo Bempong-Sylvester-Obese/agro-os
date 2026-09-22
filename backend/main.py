@@ -68,6 +68,10 @@ _PUBLIC_PATHS = frozenset({
     "/marketing/demo-bookings",
     "/plans",
     "/subscriptions/pre-checkout",
+    # Provider-neutral webhook paths (canonical) + legacy Moolre aliases.
+    "/webhooks/payment",
+    "/webhooks/ussd",
+    settings.webhook_callback_path,
     "/webhooks/moolre/payment",
     "/webhooks/moolre/ussd",
     "/ussd/callback",

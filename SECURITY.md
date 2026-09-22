@@ -64,7 +64,7 @@ gated behind feature flags and must not be active in production:
 | Endpoint | Verification |
 |---|---|
 | `POST /webhooks/payment` | HMAC-SHA256 via provider-specific header when webhook secret is set |
-| `POST /webhooks/moolre/ussd` | Query-string shared secret via `MOOLRE_USSD_SECRET` |
+| `POST /webhooks/ussd` (alias `/webhooks/moolre/ussd`) | Query-string shared secret via `MOOLRE_USSD_SECRET` |
 | `POST /ussd/callback` | Query-string shared secret via `USSD_CALLBACK_SECRET` |
 | `POST /ussdk/*` | HMAC-SHA256 via `X-USSDK-Signature` and `USSDK_HOOK_SECRET` |
 

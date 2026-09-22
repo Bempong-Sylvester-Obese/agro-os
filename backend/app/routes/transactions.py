@@ -581,12 +581,21 @@ async def create_payment_link(
 
 
 # ---------------------------------------------------------------------------
-# Moolre sync — list transactions from Moolre account
+# Provider wallet sync — list transactions / balance from the payment provider
+#
+# Canonical paths are provider-neutral (/transactions/provider/*). The
+# /transactions/moolre/* aliases are kept for existing clients and hidden from
+# the OpenAPI schema.
 # ---------------------------------------------------------------------------
 
 
-@router.get("/moolre/account-transactions")
-async def list_moolre_transactions(
+@router.get("/provider/account-transactions", name="provider_account_transactions")
+@router.get(
+    "/moolre/account-transactions",
+    name="provider_account_transactions_legacy",
+    include_in_schema=False,
+)
+async def list_provider_transactions(
     start_date: str | None = None,
     end_date: str | None = None,
     limit: int = 50,
@@ -594,8 +603,8 @@ async def list_moolre_transactions(
     current_user: User | None = Depends(require_roles("admin", "finance_officer")),
 ):
     """
-    Proxy to Moolre List Transactions API for the cooperative wallet.
-    Returns raw Moolre transaction data for the finance dashboard.
+    Proxy to the payment provider's list-transactions API for the cooperative wallet.
+    Returns the provider's transaction data for the finance dashboard.
     """
     provider = get_payment_provider()
     cooperative_account = None
@@ -619,12 +628,17 @@ async def list_moolre_transactions(
     )
 
 
-@router.get("/moolre/wallet-balance")
+@router.get("/provider/wallet-balance", name="provider_wallet_balance")
+@router.get(
+    "/moolre/wallet-balance",
+    name="provider_wallet_balance_legacy",
+    include_in_schema=False,
+)
 async def get_wallet_balance(
     db: Session = Depends(get_db),
     current_user: User | None = Depends(require_roles("admin", "finance_officer")),
 ):
-    """Check cooperative Moolre wallet balance."""
+    """Check the cooperative's wallet balance at the payment provider."""
     provider = get_payment_provider()
     cooperative_account = None
     if current_user and current_user.cooperative_id:

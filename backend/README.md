@@ -221,8 +221,8 @@ Frontend–backend contract and response shapes: [`docs/api-contract.md`](../doc
 | PATCH | `/transactions/{id}/status` | Update transaction status |
 | GET | `/transactions/farmer/{farmer_id}` | Get all transactions for a farmer |
 | POST | `/transactions/dues/collect` | Initiate dues collection via Moolre USSD push |
-| GET | `/transactions/moolre/account-transactions` | Sync transactions from Moolre wallet |
-| GET | `/transactions/moolre/wallet-balance` | Check cooperative Moolre wallet balance |
+| GET | `/transactions/provider/account-transactions` | Sync transactions from the cooperative's provider wallet (legacy alias: `/transactions/moolre/account-transactions`) |
+| GET | `/transactions/provider/wallet-balance` | Check cooperative wallet balance at the provider (legacy alias: `/transactions/moolre/wallet-balance`) |
 
 ### Loans
 | Method | Path | Description |
@@ -261,8 +261,9 @@ settlement still accept crop produce only.
 ### Webhooks
 | Method | Path | Description |
 |---|---|---|
-| POST | `/webhooks/moolre/payment` | Moolre payment confirmation webhook (HMAC verified) |
-| POST | `/webhooks/moolre/ussd` | USSD session handler (5-option farmer menu) |
+| POST | `/webhooks/payment` | Payment confirmation webhook (HMAC verified). Path is `WEBHOOK_CALLBACK_PATH`; legacy alias `/webhooks/moolre/payment` |
+| POST | `/webhooks/ussd` | USSD session handler, Moolre JSON contract (7-option farmer menu). Legacy alias `/webhooks/moolre/ussd` |
+| POST | `/ussd/callback` | USSD session handler, Africa's Talking contract (same menu) |
 
 ### Agro-AI
 | Method | Path | Description |

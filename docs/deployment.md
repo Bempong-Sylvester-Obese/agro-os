@@ -24,7 +24,7 @@ Render (Backend)           ← FastAPI
      ▼
 Supabase (PostgreSQL)      ← farmer records, transactions, scores
 
-Moolre ──webhook──▶ Render /webhooks/moolre/payment
+Moolre ──webhook──▶ Render /webhooks/payment
 ```
 
 ---
@@ -180,19 +180,19 @@ farmer's Trust Score.
 
 ### Webhook endpoint
 ```
-POST /webhooks/moolre/payment
+POST /webhooks/payment
 ```
 
 ### Full callback URL (production)
 ```
-https://agro-os-api.onrender.com/webhooks/moolre/payment
+https://agro-os-api.onrender.com/webhooks/payment
 ```
 
 ### Steps to register in the Moolre portal
 1. Log in to the Moolre merchant/developer portal
 2. Navigate to **Webhooks** or **Developer Settings**
 3. Add a new webhook endpoint:
-   - **URL:** `https://agro-os-api.onrender.com/webhooks/moolre/payment`
+   - **URL:** `https://agro-os-api.onrender.com/webhooks/payment`
    - **Events:** payment completed, transfer completed (select all relevant)
 4. Copy the webhook secret provided by Moolre
 5. Set `MOOLRE_WEBHOOK_SECRET` in the Render environment variable dashboard
@@ -285,7 +285,7 @@ Forwarding  https://abc123.ngrok-free.app -> http://localhost:8000
 ### Register the ngrok URL with Moolre
 Use this as your temporary webhook callback URL in the Moolre portal:
 ```
-https://abc123.ngrok-free.app/webhooks/moolre/payment
+https://abc123.ngrok-free.app/webhooks/payment
 ```
 
 Update `MOOLRE_WEBHOOK_SECRET` in your local `backend/.env` with the
@@ -406,7 +406,7 @@ return 200).
 
 ### 9.7 Webhook reachability (production)
 Send a test event from the Moolre portal to
-`https://agro-os-api.onrender.com/webhooks/moolre/payment`. Check Render logs for
+`https://agro-os-api.onrender.com/webhooks/payment`. Check Render logs for
 a 200 response.
 
 ---
