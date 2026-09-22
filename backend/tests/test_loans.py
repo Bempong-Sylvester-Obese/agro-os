@@ -13,7 +13,7 @@ from app.models.models import (
     TransactionStatus,
     TransactionType,
 )
-from app.routes.loans import _disburse_external_ref
+from app.services.loan_ledger import disburse_external_ref as _disburse_external_ref
 from app.services.moolre_service import MoolreService
 
 

@@ -75,7 +75,10 @@ backend/
 │   │   ├── ussd_application.py  # Provider-neutral USSD state machine
 │   │   ├── subscription_service.py
 │   │   ├── dues_service.py
-│   │   ├── loan_workflow.py
+│   │   ├── loan_workflow.py     # Approval state changes
+│   │   ├── loan_ledger.py       # Shared loan/transaction helpers + reference formats
+│   │   ├── loan_disbursement_service.py  # Payout initiate/reconcile (HTTP + USSD)
+│   │   ├── loan_repayment_service.py     # Collection start/OTP resume/finalize (HTTP + USSD)
 │   │   └── ...                  # Other domain services
 │   ├── dependencies/            # FastAPI dependency injection
 │   │   └── cooperative_scope.py # Tenant isolation helpers
