@@ -49,7 +49,7 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
         location: cooperative.location || '',
         description: cooperative.description || '',
         default_currency: cooperative.currency || cooperative.default_currency || 'GHS',
-        integration_account_number: cooperative.moolre_account_number || ''
+        integration_account_number: cooperative.wallet_account_id || ''
       })
     }
   }, [cooperative])
@@ -115,7 +115,7 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
       await updateCooperative(cooperative.id, {
         ...rest,
         currency: default_currency,
-        moolre_account_number: integration_account_number,
+        wallet_account_id: integration_account_number,
       })
       setSuccessMsg('Settings updated successfully.')
       if (onRefresh) onRefresh()

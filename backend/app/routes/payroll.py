@@ -256,7 +256,7 @@ async def disburse_payroll(
                 payout.status = PayoutStatus.paid
                 payout.paid_at = datetime.utcnow()
                 payout.provider_payment_ref = (
-                    transfer.get("moolre_transfer_ref")
+                    transfer.get("provider_transfer_ref")
                     or transfer.get("external_ref")
                     or external_ref
                 )

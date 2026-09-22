@@ -748,7 +748,7 @@ async def disburse_loan(
         if locked_attempt.status == TransactionStatus.pending:
             locked_attempt.status = TransactionStatus.failed
             locked_attempt.provider_transfer_ref = (
-                transfer_result.get("moolre_transfer_ref")
+                transfer_result.get("provider_transfer_ref")
                 or locked_attempt.provider_transfer_ref
             )
             db.commit()
@@ -757,7 +757,7 @@ async def disburse_loan(
             detail=f"Moolre transfer failed: {transfer_result['message']}",
         )
 
-    transfer_ref = transfer_result.get("moolre_transfer_ref") or attempt_tx.provider_transfer_ref
+    transfer_ref = transfer_result.get("provider_transfer_ref") or attempt_tx.provider_transfer_ref
     status_result = await provider.transfer_status(
         reference=transfer_ref,
         account_number=account_number,

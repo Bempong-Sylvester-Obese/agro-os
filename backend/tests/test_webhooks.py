@@ -77,14 +77,14 @@ def test_webhook_payment_success(client, farmer):
             "farmer_id": farmer["id"],
             "transaction_type": "dues",
             "amount": 50.0,
-            "moolre_reference": "WEBHOOK-TEST-001",
+            "provider_payment_ref": "WEBHOOK-TEST-001",
         },
     )
-    # Set its moolre_reference manually via status — our test needs the reference stored
-    # (the transaction factory doesn't set moolre_reference; patch directly via DB instead)
+    # Set its provider_payment_ref manually via status — our test needs the reference stored
+    # (the transaction factory doesn't set provider_payment_ref; patch directly via DB instead)
     tx_id = tx_resp.json()["id"]
 
-    # Manually set the moolre_reference in DB (simulate what dues/collect does)
+    # Manually set the provider_payment_ref in DB (simulate what dues/collect does)
     from app.models.models import Transaction as TxModel
 
     # Use the DB fixture indirectly via conftest — access via dependency
@@ -574,8 +574,8 @@ def test_direct_ussd_resumes_dashboard_payment_without_logging_otp(client, farme
         "success": False,
         "verification_required": True,
         "outcome": "verification_required",
-        "moolre_code": "TP14",
-        "moolre_reference": "dashboard-otp-ref",
+        "provider_code": "TP14",
+        "provider_payment_ref": "dashboard-otp-ref",
         "external_ref": "dashboard-otp-ref",
         "message": "OTP required",
     }
@@ -583,8 +583,8 @@ def test_direct_ussd_resumes_dashboard_payment_without_logging_otp(client, farme
         "success": True,
         "verification_required": False,
         "outcome": "push_sent",
-        "moolre_code": "TR099",
-        "moolre_reference": "dashboard-otp-ref",
+        "provider_code": "TR099",
+        "provider_payment_ref": "dashboard-otp-ref",
         "external_ref": "dashboard-otp-ref",
         "message": "Payment request sent",
     }

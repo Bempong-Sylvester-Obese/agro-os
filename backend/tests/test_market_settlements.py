@@ -342,12 +342,12 @@ def test_payout_is_durable_idempotent_and_retries_failed_only(
         if len(calls) == 1:
             return {
                 "success": False,
-                "moolre_transfer_ref": kwargs["external_ref"],
+                "provider_transfer_ref": kwargs["external_ref"],
                 "message": "temporary failure",
             }
         return {
             "success": True,
-            "moolre_transfer_ref": kwargs["external_ref"],
+            "provider_transfer_ref": kwargs["external_ref"],
             "message": "accepted",
         }
 

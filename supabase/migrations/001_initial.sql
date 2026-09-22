@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS cooperatives (
     description TEXT,
     location VARCHAR,
     currency VARCHAR DEFAULT 'GHS',
-    moolre_account_number VARCHAR,
+    wallet_account_id VARCHAR,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -37,8 +37,8 @@ CREATE TABLE IF NOT EXISTS transactions (
     amount DOUBLE PRECISION NOT NULL,
     currency VARCHAR DEFAULT 'GHS',
     status VARCHAR DEFAULT 'pending',
-    moolre_reference VARCHAR UNIQUE,
-    moolre_transfer_ref VARCHAR UNIQUE,
+    provider_payment_ref VARCHAR UNIQUE,
+    provider_transfer_ref VARCHAR UNIQUE,
     payer_phone VARCHAR,
     payee_phone VARCHAR,
     channel VARCHAR,
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS loans (
     status VARCHAR DEFAULT 'requested',
     approved_by VARCHAR,
     approved_at TIMESTAMP,
-    moolre_transfer_ref VARCHAR,
+    provider_transfer_ref VARCHAR,
     disbursed_at TIMESTAMP,
     repaid_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT NOW(),
@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS communication_logs (
     cooperative_id INTEGER REFERENCES cooperatives(id),
     recipients_count INTEGER DEFAULT 0,
     body TEXT NOT NULL,
-    moolre_ref VARCHAR,
+    provider_ref VARCHAR,
     sent_by VARCHAR,
     status VARCHAR DEFAULT 'sent',
     sent_at TIMESTAMP DEFAULT NOW()
@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS communication_logs (
 CREATE TABLE IF NOT EXISTS payment_webhook_events (
     id SERIAL PRIMARY KEY,
     event_type VARCHAR DEFAULT 'payment',
-    moolre_reference VARCHAR,
+    provider_payment_ref VARCHAR,
     transaction_id INTEGER REFERENCES transactions(id),
     signature_valid BOOLEAN DEFAULT TRUE,
     payload TEXT NOT NULL,

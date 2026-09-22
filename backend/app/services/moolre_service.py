@@ -437,7 +437,7 @@ class MoolreService:
         Trigger a USSD payment prompt on the payer's phone.
 
         channel codes: 13=MTN Ghana, 6=Telecel, 7=AT
-        Returns a normalised dict with ``success``, ``moolre_reference``, ``message``.
+        Returns a normalised dict with ``success``, ``provider_payment_ref``, ``message``.
         """
         ext_ref = external_ref or str(uuid.uuid4())
         acc = self.resolve_account_number(account_number)
@@ -447,8 +447,8 @@ class MoolreService:
                 "success": False,
                 "verification_required": False,
                 "outcome": "failed",
-                "moolre_code": None,
-                "moolre_reference": ext_ref,
+                "provider_code": None,
+                "provider_payment_ref": ext_ref,
                 "external_ref": ext_ref,
                 "message": config_error,
                 "raw": {},
@@ -486,8 +486,8 @@ class MoolreService:
             "success": success,
             "verification_required": verification_required,
             "outcome": outcome,
-            "moolre_code": code or None,
-            "moolre_reference": (raw.get("data") if not verification_required else None) or ext_ref,
+            "provider_code": code or None,
+            "provider_payment_ref": (raw.get("data") if not verification_required else None) or ext_ref,
             "external_ref": ext_ref,
             "message": raw.get("message") or raw.get("error", ""),
             "raw": raw,
@@ -544,7 +544,7 @@ class MoolreService:
         if config_error:
             return {
                 "success": False,
-                "moolre_transfer_ref": ext_ref,
+                "provider_transfer_ref": ext_ref,
                 "external_ref": ext_ref,
                 "message": config_error,
                 "raw": {},
@@ -559,7 +559,7 @@ class MoolreService:
             if validate_error:
                 return {
                     "success": False,
-                    "moolre_transfer_ref": ext_ref,
+                    "provider_transfer_ref": ext_ref,
                     "external_ref": ext_ref,
                     "message": validate_error,
                     "raw": {},
@@ -587,7 +587,7 @@ class MoolreService:
             message = self.format_transfer_error(code, message)
         return {
             "success": success,
-            "moolre_transfer_ref": tx_data.get("transactionid") or ext_ref,
+            "provider_transfer_ref": tx_data.get("transactionid") or ext_ref,
             "external_ref": ext_ref,
             "message": message,
             "raw": raw,

@@ -24,7 +24,7 @@ const cooperative = {
   name: 'AgroOS Demo Cooperative',
   location: 'Accra',
   currency: 'GHS',
-  moolre_account_number: '1089700',
+  wallet_account_id: '1089700',
 }
 
 const preview = {
