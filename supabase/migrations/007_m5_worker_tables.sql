@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS wage_payouts (
     approved_by INTEGER REFERENCES users(id),
     approved_at TIMESTAMP,
     paid_at TIMESTAMP,
-    moolre_reference VARCHAR,
+    provider_payment_ref VARCHAR,
     failure_reason TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
     CONSTRAINT fk_wage_payouts_cooperative_worker

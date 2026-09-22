@@ -59,7 +59,7 @@ def _dues_collect_response(tx: Transaction, result: dict) -> DuesCollectResponse
         or ("Payment request sent" if result.get("success") else "Moolre request failed"),
         verification_required=verification_required,
         outcome=outcome,
-        provider_code=result.get("moolre_code"),
+        provider_code=result.get("provider_code"),
         customer_action=tx.customer_action,
         action_expires_at=tx.action_expires_at,
     )
@@ -145,10 +145,10 @@ async def run_dues_collect(
             },
         )
 
-    if result.get("moolre_reference") and result["moolre_reference"] != external_ref:
-        ref_val = str(result["moolre_reference"]).lower()
+    if result.get("provider_payment_ref") and result["provider_payment_ref"] != external_ref:
+        ref_val = str(result["provider_payment_ref"]).lower()
         if ref_val not in ("all", "phoneno", "externalref", "senderid"):
-            tx.provider_payment_ref = result["moolre_reference"]
+            tx.provider_payment_ref = result["provider_payment_ref"]
 
     verification_required = result.get("verification_required", False) or result.get("outcome") == "verification_required"
     if verification_required:

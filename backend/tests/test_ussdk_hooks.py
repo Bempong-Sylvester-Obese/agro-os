@@ -11,8 +11,8 @@ def _tp14_result(ext_ref: str) -> dict:
     return {
         "success": False,
         "outcome": "verification_required",
-        "moolre_code": "TP14",
-        "moolre_reference": ext_ref,
+        "provider_code": "TP14",
+        "provider_payment_ref": ext_ref,
         "external_ref": ext_ref,
         "message": (
             "Please complete the verification process sent to you via SMS "
@@ -25,8 +25,8 @@ def _tr099_result(ext_ref: str) -> dict:
     return {
         "success": True,
         "outcome": "push_sent",
-        "moolre_code": "TR099",
-        "moolre_reference": ext_ref,
+        "provider_code": "TR099",
+        "provider_payment_ref": ext_ref,
         "external_ref": ext_ref,
         "message": "Payment request sent",
     }

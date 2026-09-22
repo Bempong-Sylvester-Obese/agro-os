@@ -93,7 +93,7 @@ def test_disburse_payroll_uses_stable_external_ref(auth_client, test_cooperative
         seen_refs.append(external_ref)
         return {
             "success": True,
-            "moolre_transfer_ref": external_ref,
+            "provider_transfer_ref": external_ref,
             "external_ref": external_ref,
             "message": "ok",
             "raw": {},

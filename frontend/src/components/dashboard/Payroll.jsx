@@ -211,7 +211,7 @@ export default function Payroll({ cooperativeId }) {
                           Worker #{p.worker_id} &mdash; GHS {p.gross_amount.toFixed(2)}
                         </td>
                         <td colSpan={2}>
-                          {p.moolre_reference ? `Ref: ${p.moolre_reference}` : ''}
+                          {p.provider_payment_ref ? `Ref: ${p.provider_payment_ref}` : ''}
                         </td>
                         <td colSpan={2}>
                           {p.failure_reason && <span className="text-danger">{p.failure_reason}</span>}

@@ -524,7 +524,7 @@ class SettlementService:
             )
             if result.get("success"):
                 tx.provider_transfer_ref = (
-                    result.get("moolre_transfer_ref") or tx.provider_payment_ref
+                    result.get("provider_transfer_ref") or tx.provider_payment_ref
                 )
                 line.status = SettlementLineStatus.processing
             else:

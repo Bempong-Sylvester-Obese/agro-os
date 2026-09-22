@@ -325,7 +325,7 @@ async def handle_moolre_payment_webhook(
       "message": "Transaction Successful",
       "data": {
         "transactionid": "...",
-        "externalref": "...",    ← matches our moolre_reference
+        "externalref": "...",    ← matches our provider_payment_ref
         "amount": "10.00",
         "payer": "233551300186",
         ...

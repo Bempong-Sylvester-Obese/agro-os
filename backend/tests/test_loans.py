@@ -61,7 +61,7 @@ def test_legacy_loan_creation_is_available_only_in_test_mode(client, farmer):
 def _transfer_initiated(ext_ref: str = "some-uuid") -> dict:
     return {
         "success": True,
-        "moolre_transfer_ref": "TEST-TRANSFER-001",
+        "provider_transfer_ref": "TEST-TRANSFER-001",
         "external_ref": ext_ref,
         "message": "Pay out Successful",
         "raw": {},
@@ -82,7 +82,7 @@ def _payment_initiated(ext_ref: str = "repay-uuid") -> dict:
     return {
         "success": True,
         "verification_required": False,
-        "moolre_reference": ext_ref,
+        "provider_payment_ref": ext_ref,
         "external_ref": ext_ref,
         "message": "Payment request sent",
         "raw": {},
@@ -94,7 +94,7 @@ def _payment_otp_required(ext_ref: str = "repay-otp") -> dict:
         "success": False,
         "verification_required": True,
         "outcome": "verification_required",
-        "moolre_reference": ext_ref,
+        "provider_payment_ref": ext_ref,
         "external_ref": ext_ref,
         "message": "OTP required",
         "raw": {},
@@ -425,7 +425,7 @@ def test_disburse_loan_keeps_approved_when_transfer_fails(client, farmer):
 
     mock_result = {
         "success": False,
-        "moolre_transfer_ref": None,
+        "provider_transfer_ref": None,
         "external_ref": "some-uuid",
         "message": "Transfer failed",
         "raw": {},
@@ -520,7 +520,7 @@ def test_disburse_retry_updates_pending_transaction_without_duplicate(client, fa
             new_callable=AsyncMock,
             return_value={
                 **_transfer_initiated("fresh-attempt"),
-                "moolre_transfer_ref": "TEST-TRANSFER-002",
+                "provider_transfer_ref": "TEST-TRANSFER-002",
             },
         ) as mock_transfer,
     ):
