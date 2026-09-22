@@ -1,14 +1,14 @@
 # Agro-AI Governance and Model Card
 
-> **Status:** Hackathon Reference Doc — Moolre Startup Cup (July 2026)
+> **Status:** Model card for the B2B product — model is synthetic-trained and advisory
 > **Model version:** `agro-ai-rf-v1`
 > **Feature schema version:** `agro-ai-features-v1`
 > **Maintainer:** AgroOS Core Team
-> **Last updated:** 2026-06
+> **Last updated:** 2026-09
 >
 > This document is the governance and model card for the Agro-AI credit
-> scoring system. It is intended for judges, cooperative administrators,
-> and future engineering and compliance reviewers.
+> scoring system. It is intended for cooperative administrators, customers
+> evaluating the product, and engineering and compliance reviewers.
 
 ---
 
@@ -128,22 +128,22 @@ Each log entry captures:
 - Model version and feature schema version
 - Timestamp
 
-In the current hackathon build these fields are optional — the endpoint
-accepts them but does not require authentication. In production, auth will
-populate `actor_id` and `cooperative_id` from the session without changing
-the model contract.
+When `AUTH_ENABLED=true` (mandatory in production) `actor_id` and
+`cooperative_id` are populated from the authenticated session and any
+cooperative scope in the request is ignored. In development with auth
+disabled the fields are optional.
 
 ---
 
 ## 6. Not a Substitute for Cooperative Judgment
 
-> ⚠️ **Important disclaimer for demo and hackathon use.**
+> ⚠️ **Important disclaimer while the model is synthetic-trained.**
 
 The Agro-AI score is a **decision-support tool**, not an autonomous lending
 system. It is designed to surface relevant signals to cooperative
 administrators — not to replace their judgment.
 
-**During the hackathon demo:**
+**Until the model is retrained on real outcomes:**
 - All scores are computed from synthetic data
 - No real farmer's creditworthiness is being assessed
 - Scores should not be used to make any real financial decisions
@@ -176,7 +176,7 @@ Two scoring systems run in parallel. This is a summary; see
 
 The model is ready for promotion when the following conditions are met:
 
-### Phase 1 — Real labels (post-hackathon)
+### Phase 1 — Real labels
 - [ ] Replace `DEMO_FARMERS` with Supabase-backed farmer records
 - [ ] Define repayment outcome labels from Moolre transaction history
       (dues repayment, loan repayment, late repayment, default)

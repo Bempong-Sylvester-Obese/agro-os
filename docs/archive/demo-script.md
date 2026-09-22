@@ -1,5 +1,7 @@
 # Golden Path Demo Script
 
+> **Archived (hackathon, July 2026).** Kept for historical context; not maintained. See [`../product-strategy.md`](../product-strategy.md) for the current product.
+
 This script keeps the hackathon demo focused on one complete story instead of a feature tour.
 
 ## Demo Goal

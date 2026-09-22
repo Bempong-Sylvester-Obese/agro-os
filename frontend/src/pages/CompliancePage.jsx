@@ -61,12 +61,11 @@ export default function CompliancePage() {
               marginBottom: 48,
             }}
           >
-            <strong>Draft — hackathon scope (Moolre Startup Cup, July 2026).</strong>{' '}
+            <strong>Pre-production policy — pending legal review.</strong>{' '}
             This page is a non-legal summary for cooperative administrators,
-            partners, and evaluators. It is not legal advice. Before any
-            production deployment or onboarding of real farmer data or
-            funds, this policy requires review by qualified Ghanaian legal
-            counsel and Moolre's compliance team.
+            customers, and partners. It is not legal advice. Before onboarding
+            real farmer data or funds, this policy requires review by qualified
+            Ghanaian legal counsel and our payment provider's compliance team.
           </div>
 
           <h2 className="sec-h2 serif" id="framework">Regulatory framework</h2>
