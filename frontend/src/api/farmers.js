@@ -1,4 +1,4 @@
-import { API_URL, apiErrorFromBody, apiFetch, authHeaders } from './config'
+import { API_URL, apiErrorFromBody, apiFetch, authHeaders, fetchJson } from './config'
 
 /**
  * Fetch all farmers, optionally filtered to a specific cooperative.
@@ -82,4 +82,61 @@ export async function recalculateTrustScore(farmerId) {
   })
   if (!res.ok) return null
   return res.json()
+}
+
+/** Recent meeting attendance records for one member (`GET /farmers/{id}/attendance`). */
+export async function fetchFarmerAttendance(farmerId, cooperativeId, { limit = 5 } = {}) {
+  const params = new URLSearchParams({ limit: String(limit) })
+  if (cooperativeId != null) params.set('cooperative_id', String(cooperativeId))
+  return fetchJson(`${API_URL}/farmers/${farmerId}/attendance?${params}`, { headers: authHeaders() })
+}
+
+/**
+ * Recent attendance across a set of members, newest first. One request per
+ * member (the API is per-farmer); failures for an individual member surface as
+ * a rejected promise so the caller can show a real error state.
+ */
+export async function fetchCooperativeAttendance(cooperativeId, farmerIds, { limit = 5 } = {}) {
+  const ids = (farmerIds || []).filter((id) => id != null)
+  if (ids.length === 0) return []
+  const perMember = await Promise.all(ids.map((id) => fetchFarmerAttendance(id, cooperativeId, { limit })))
+  return perMember.flat().sort((a, b) => {
+    const dateA = a.event_date || a.date || ''
+    const dateB = b.event_date || b.date || ''
+    return dateB.localeCompare(dateA)
+  })
+}
+
+/**
+ * Record one member's attendance for a meeting
+ * (`POST /farmers/{id}/attendance`). Feeds the Trust Score attendance factor.
+ */
+export async function recordFarmerAttendance(farmerId, cooperativeId, { eventName, eventDate, attended }) {
+  const params = cooperativeId != null ? `?cooperative_id=${encodeURIComponent(cooperativeId)}` : ''
+  return fetchJson(`${API_URL}/farmers/${farmerId}/attendance${params}`, {
+    method: 'POST',
+    headers: authHeaders(true),
+    body: JSON.stringify({
+      cooperative_id: cooperativeId,
+      farmer_id: farmerId,
+      event_name: eventName,
+      event_date: eventDate,
+      attended,
+    }),
+  })
+}
+
+/**
+ * Record a whole meeting: one attendance row per member in `attendanceMap`
+ * (`{ [farmerId]: attended }`). Returns `{ recorded, present }` counts.
+ */
+export async function recordMeetingAttendance(cooperativeId, attendanceMap, { eventName, eventDate }) {
+  const entries = Object.entries(attendanceMap || {})
+  await Promise.all(entries.map(([farmerId, attended]) =>
+    recordFarmerAttendance(Number(farmerId), cooperativeId, { eventName, eventDate, attended: Boolean(attended) }),
+  ))
+  return {
+    recorded: entries.length,
+    present: entries.filter(([, attended]) => attended).length,
+  }
 }

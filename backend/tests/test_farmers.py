@@ -281,3 +281,30 @@ def test_list_attendance(client, farmer):
 def test_list_farmers_rejects_excessive_limit(client):
     resp = client.get("/farmers/?limit=101")
     assert resp.status_code == 422
+
+
+def test_recorded_attendance_moves_trust_score_attendance_factor(client, farmer):
+    """Dashboard attendance recording (#245) must feed the AgroCredit trust score."""
+    from datetime import datetime, timedelta
+
+    baseline = client.post(f"/farmers/{farmer['id']}/recalculate-trust-score")
+    assert baseline.status_code == 200
+    assert baseline.json()["attendance"] == 50.0  # no records → neutral default
+
+    recent = (datetime.utcnow() - timedelta(days=3)).isoformat()
+    for attended in (True, True, True, False):
+        resp = client.post(
+            f"/farmers/{farmer['id']}/attendance",
+            json={
+                "farmer_id": farmer["id"],
+                "event_name": "Monthly General Meeting",
+                "event_date": recent,
+                "attended": attended,
+            },
+        )
+        assert resp.status_code == 201
+
+    updated = client.post(f"/farmers/{farmer['id']}/recalculate-trust-score")
+    assert updated.status_code == 200
+    assert updated.json()["attendance"] == 75.0
+    assert updated.json()["score"] != baseline.json()["score"]

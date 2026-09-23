@@ -123,7 +123,7 @@ export function defaultSectionFor(role, organizationType) {
 /** Roles that may mutate a given resource, mirroring backend `require_roles`. */
 export const ACTION_ROLES = Object.freeze({
   manageMembers: ['admin'],
-  recordMemberAttendance: ['admin'],
+  recordMemberAttendance: ['admin', 'finance_officer'],
   recordProduction: ['admin'],
   managePayments: ['admin', 'finance_officer'],
   manageLoans: ['admin', 'finance_officer'],
