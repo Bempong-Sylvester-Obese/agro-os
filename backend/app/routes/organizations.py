@@ -19,7 +19,7 @@ Scope rules (see docs/architecture/tenancy-decision.md, "Organizations"):
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -30,12 +30,7 @@ from app.database.db import get_db
 from app.models.models import AdminAuditLog, Cooperative, Organization, PendingCheckout, User
 from app.schemas.auth import Token, UserResponse
 from app.services import entitlements, subscription_lifecycle as lifecycle
-from app.services.auth_service import (
-    ACCESS_TOKEN_EXPIRE_MINUTES,
-    create_access_token,
-    get_current_user,
-    require_roles,
-)
+from app.services.auth_service import get_current_user, require_roles, session_response
 
 router = APIRouter(prefix="/organizations", tags=["organizations"])
 
@@ -129,21 +124,12 @@ def _coop_row(db: Session, coop: Cooperative, active_id: int | None) -> dict[str
     }
 
 
-def _issue_token(user: User) -> dict[str, Any]:
-    access_token = create_access_token(
-        data={
-            "sub": user.email,
-            "user_id": user.id,
-            "cooperative_id": user.cooperative_id,
-            "organization_id": user.organization_id,
-            "role": user.role,
-            "organization_type": user.cooperative.organization_type if user.cooperative else None,
-        },
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
-    )
+def _issue_token(db: Session, user: User) -> dict[str, Any]:
+    """Scope switch re-issues the session so the JWT carries the new
+    ``cooperative_id``; the refresh token rotates with it (#248)."""
+    session = session_response(db, user)
     return {
-        "access_token": access_token,
-        "token_type": "bearer",
+        **session,
         "user": UserResponse.model_validate(user),
         "organization_type": user.cooperative.organization_type if user.cooperative else None,
         "password_change_required": user.must_change_password,
@@ -311,7 +297,9 @@ def switch_active_cooperative(
            resource_id=str(org.id), details=f"from={previous} to={target.id}")
     db.commit()
     db.refresh(user)
-    return _issue_token(user)
+    payload = _issue_token(db, user)
+    db.commit()
+    return payload
 
 
 @router.get("/{organization_id}/billing")

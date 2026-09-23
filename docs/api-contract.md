@@ -243,14 +243,33 @@ crop columns.
 | UI | Method | Path |
 |----|--------|------|
 | Login | POST | `/auth/login` |
+| Silent refresh | POST | `/auth/refresh` |
+| Logout | POST | `/auth/logout` |
 | Session hydrate (app load) | GET | `/auth/me` |
 | Signup | POST | `/auth/signup` |
 | Add cooperative user | POST | `/auth/register` |
+| Invite team member | POST | `/auth/invite` |
+| Accept invite | POST | `/auth/accept-invite` |
+| Request password reset | POST | `/auth/password-reset-request` |
+| Confirm password reset | POST | `/auth/password-reset-confirm` |
 
-`POST /auth/login` returns `{access_token, token_type, user, cooperative_name,
-organization_type, password_change_required}`. `GET /auth/me` returns the same
-`user` fields plus `cooperative_name`, `organization_type`, and
-`password_change_required` for the token's user (401 without a valid token).
+`POST /auth/login` (and signup / refresh / org switch) returns
+`{access_token, refresh_token, token_type, expires_in, user, cooperative_name,
+organization_type, password_change_required}`. Access tokens last 60 minutes
+in production (7 days in development unless `ACCESS_TOKEN_EXPIRE_MINUTES` is
+set; production refuses >24h). The dashboard stores the opaque
+`refresh_token` and exchanges it at `POST /auth/refresh` (rotation: the
+presented token is revoked; replaying it revokes the user's whole family).
+`POST /auth/logout` revokes the presented refresh token.
+
+Invite and reset links are delivered through the `EmailProvider` port
+(`EMAIL_PROVIDER=log` writes the link to the backend log and returns it to
+the inviting admin; `smtp` sends it). Reset links use `/login?reset=…`;
+invite links use `/login?invite=…`.
+
+`GET /auth/me` returns the same `user` fields plus `cooperative_name`,
+`organization_type`, and `password_change_required` for the token's user
+(401 without a valid token).
 
 **Session hydration (#251).** The frontend never invents display strings. On
 load it bootstraps from the stored user or, failing that, from JWT claims only
@@ -260,8 +279,9 @@ load it bootstraps from the stored user or, failing that, from JWT claims only
 dashboard shows its own error state; a reachable backend rejecting the token
 clears the session.
 
-When `AUTH_ENABLED=true`, every route except signup/login, health probes, and
-the exact Moolre/USSDK callback paths requires `Authorization: Bearer <token>`.
+When `AUTH_ENABLED=true`, every route except signup/login/refresh/logout,
+password-reset and accept-invite, health probes, the public role catalogue,
+and the exact Moolre/USSDK callback paths requires `Authorization: Bearer <token>`.
 Tokens contain `cooperative_id` and `role`; authenticated query/body scope is
 always replaced by the token's cooperative.
 

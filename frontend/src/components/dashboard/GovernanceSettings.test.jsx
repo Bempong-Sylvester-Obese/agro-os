@@ -5,12 +5,14 @@ import GovernanceSettings from './GovernanceSettings'
 import {
   fetchCooperativeUsers,
   fetchIntegrationHealth,
+  inviteCooperativeUser,
   updateCooperativeUser,
 } from '../../api/governance'
 
 vi.mock('../../api/governance', () => ({
   fetchCooperativeUsers: vi.fn(),
   fetchIntegrationHealth: vi.fn(),
+  inviteCooperativeUser: vi.fn(),
   registerCooperativeUser: vi.fn(),
   updateCooperativeUser: vi.fn(),
 }))
@@ -26,6 +28,17 @@ describe('GovernanceSettings', () => {
       policy: {},
     })
     updateCooperativeUser.mockResolvedValue({})
+    inviteCooperativeUser.mockResolvedValue({
+      id: 9,
+      email: 'new@example.com',
+      role: 'finance_officer',
+      delivery: {
+        channel: 'log',
+        delivered: false,
+        message: 'Email delivery is not configured',
+        invite_link: 'http://localhost:5173/login?invite=abc',
+      },
+    })
   })
   afterEach(() => {
     cleanup()
@@ -54,6 +67,15 @@ describe('GovernanceSettings', () => {
 
     fireEvent.change(picker, { target: { value: 'sales_officer' } })
     expect(screen.getByText('Buyers and buyer sales')).toBeTruthy()
+  })
+
+  it('surfaces the invite link when email delivery is not configured (#248)', async () => {
+    render(<GovernanceSettings />)
+    fireEvent.change(await screen.findByLabelText('New user email'), { target: { value: 'new@example.com' } })
+    fireEvent.submit(screen.getByRole('button', { name: 'Send invite' }).closest('form'))
+    await waitFor(() => expect(inviteCooperativeUser).toHaveBeenCalledWith('new@example.com', 'finance_officer'))
+    expect(screen.getByText(/share this link with new@example.com/)).toBeTruthy()
+    expect(screen.getByText(/login\?invite=abc/)).toBeTruthy()
   })
 
   it('hides team controls from non-administrators', async () => {

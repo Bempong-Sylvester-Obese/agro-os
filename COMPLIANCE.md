@@ -141,7 +141,7 @@ cooperative society under Act 1148:
 | Data Protection Commission registration | Not applicable pre-launch; required before real farmer data |
 | Legal review of this policy and data-privacy.md | Outstanding — required before production |
 | Per-member SMS consent recorded and enforced | Done — `sms_consent` defaults off, grant/withdraw timestamps + audit rows, USSD self-service opt-out, every member-addressed send path skips and logs `skipped_no_consent` ([#247](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/247)); see `docs/data-privacy.md` §5.1 |
-| Short production token TTL, refresh, email delivery of reset/invite tokens | Open — [#248](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/248) |
+| Short production token TTL, refresh, email delivery of reset/invite tokens | Done — 60-minute production access tokens, rotating `POST /auth/refresh`, `EmailProvider` port for invite/reset ([#248](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/248)) |
 | Formal role model beyond `admin`/`finance_officer` | Done — `Role` enum covers every gated role; invite/update accept all of them; dashboard nav and actions gated per role ([#244](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/244)) |
 | Subscription entitlements enforced server-side | Enforced — band-aware member caps, monthly SMS quotas, and AgroCredit/scores feature gates in `backend/app/services/entitlements.py`; see [`docs/billing.md`](docs/billing.md) |
 

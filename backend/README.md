@@ -276,6 +276,9 @@ Lifecycle rules (trial length, grace period, renewal semantics) are in [`docs/bi
 ### Roles
 Staff roles are the `Role` enum in `app/auth/roles.py` (mirrored by `frontend/src/utils/roles.js`). `GET /auth/roles` (public) returns the catalogue; invite/update schemas accept exactly these values. Role matrix: [`docs/api-contract.md`](../docs/api-contract.md#authentication-and-cooperative-roles).
 
+### Staff sessions (#248)
+Access tokens last 60 minutes in production (7 days in development). `POST /auth/login` and `POST /auth/signup` also return a rotating `refresh_token`; the dashboard exchanges it at `POST /auth/refresh` before expiry. Password change/reset and logout revoke live refresh tokens. Invite and reset emails go through the `EmailProvider` port (`EMAIL_PROVIDER=log` or `smtp`).
+
 ### Organizations (Enterprise parent)
 All admin-only; `/organizations/{id}/...` is 404 unless `{id}` is the caller's organization.
 

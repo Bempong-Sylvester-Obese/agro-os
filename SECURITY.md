@@ -44,14 +44,17 @@ Production deployments must set `AUTH_ENABLED=true`.
 | `AUTH_ENABLED=false` | Local tests/development only | Routes retain local-development compatibility |
 | `AUTH_ENABLED=true` | Staging / production | Every non-public route requires `Authorization: Bearer <token>` |
 
-Public routes are limited to signup/login, root and health probes, and the
+Public routes are limited to signup/login/refresh/logout, password-reset and
+accept-invite, the public role catalogue, root and health probes, and the
 configured webhook callback paths (see `WEBHOOK_CALLBACK_PATH` in config).
 
 ## Token Configuration
 
 | Setting | Default | Description |
 |---|---|---|
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | 10080 (7 days) | JWT access token TTL in minutes. **Open gap:** production should default to a short TTL with refresh — [#248](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/248) |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | 0 → 60 in production, 10080 (7 days) otherwise | JWT access-token TTL. Production refuses values above 1440 (24h). |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | 14 | Lifetime of the opaque rotating refresh token (`POST /auth/refresh`) |
+| `EMAIL_PROVIDER` | `log` | Staff email adapter (`log` writes invite/reset links to the app log; `smtp` delivers) |
 | `SECRET_KEY` | (required in production; default refused) | HMAC-SHA256 signing secret for JWTs |
 | `ADMIN_PASSWORD` | (required when `AUTH_ENABLED=true`; default refused) | Bootstrap admin credential |
 

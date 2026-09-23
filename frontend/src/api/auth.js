@@ -1,6 +1,7 @@
 import { API_URL, AUTH_FETCH_TIMEOUT_MS, authHeaders, formatTransportError, fetchJson } from './config'
 
 export const TOKEN_KEY = 'agro_os_token'
+export const REFRESH_KEY = 'agro_os_refresh'
 const USER_KEY = 'agro_os_user'
 const AVATAR_PREFIX = 'agro_os_avatar_'
 const MAX_AVATAR_BYTES = 500 * 1024
@@ -242,6 +243,70 @@ export function getAuthToken() {
   return localStorage.getItem(TOKEN_KEY)
 }
 
+export function storeRefreshToken(token) {
+  if (token) localStorage.setItem(REFRESH_KEY, token)
+  else localStorage.removeItem(REFRESH_KEY)
+}
+
+export function getRefreshToken() {
+  return localStorage.getItem(REFRESH_KEY)
+}
+
+/** Persist access + refresh tokens from a login / signup / refresh / switch payload. */
+export function storeAuthSession(payload) {
+  if (!payload) return
+  if (payload.access_token) storeAuthToken(payload.access_token)
+  if (payload.refresh_token) storeRefreshToken(payload.refresh_token)
+}
+
+let refreshInFlight = null
+
+/**
+ * Exchange the stored refresh token for a new access token (and a rotated
+ * refresh token). Concurrent callers share one request. Uses raw `fetch` so
+ * a 401 here cannot recurse through the dashboard 401 handler.
+ */
+export async function refreshAccessToken() {
+  if (refreshInFlight) return refreshInFlight
+  refreshInFlight = (async () => {
+    const refreshToken = getRefreshToken()
+    if (!refreshToken) throw new Error('No refresh token')
+    const response = await fetch(`${API_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    })
+    if (!response.ok) {
+      storeRefreshToken(null)
+      throw new Error('Refresh failed')
+    }
+    const data = await response.json()
+    storeAuthSession(data)
+    return data.access_token
+  })().finally(() => {
+    refreshInFlight = null
+  })
+  return refreshInFlight
+}
+
+/** Best-effort revoke of the stored refresh token (logout). */
+export async function logoutSession() {
+  const refreshToken = getRefreshToken()
+  if (!refreshToken && !getAuthToken()) return
+  try {
+    await fetch(`${API_URL}/auth/logout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}),
+      },
+      body: JSON.stringify({ refresh_token: refreshToken || null }),
+    })
+  } catch {
+    // Offline logout still clears local state.
+  }
+}
+
 export function isAuthTokenUsable(token = getAuthToken()) {
   if (!token) return false
   try {
@@ -281,6 +346,7 @@ export function clearAuthUser() {
 
 export function clearAuthSession() {
   clearAuthToken()
+  storeRefreshToken(null)
   clearAuthUser()
 }
 
