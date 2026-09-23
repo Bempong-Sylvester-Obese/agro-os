@@ -28,7 +28,7 @@ class Worker(Base):
     role = Column(Enum(WorkerRole), default=WorkerRole.worker)
     status = Column(Enum(WorkerStatus), default=WorkerStatus.active)
     hire_date = Column(Date, nullable=True)
-    pay_type = Column(String, default="daily", nullable=False)
+    pay_type = Column(String, default="daily", server_default="daily", nullable=False)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

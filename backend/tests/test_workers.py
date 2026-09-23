@@ -1,3 +1,12 @@
+from app.models.worker import Worker
+
+
+def test_worker_pay_type_has_migration_compatible_default():
+    column = Worker.__table__.c.pay_type
+    assert column.nullable is False
+    assert column.server_default.arg == "daily"
+
+
 def test_create_worker(auth_client, test_cooperative):
     res = auth_client.post(
         f"/workers/?cooperative_id={test_cooperative.id}",
