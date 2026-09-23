@@ -131,3 +131,17 @@ def test_log_attendance_rejects_cross_tenant_task(
 
     assert res.status_code == 404
     assert res.json()["detail"] == "Task not found"
+
+
+def test_log_attendance_refused_on_cooperative(auth_client, db):
+    from app.models.models import Cooperative
+
+    coop = Cooperative(name="Member Coop Attendance", currency="GHS", organization_type="cooperative")
+    db.add(coop)
+    db.commit()
+    res = auth_client.post(
+        f"/attendance/?cooperative_id={coop.id}",
+        json={"worker_id": 1, "date": "2026-08-01", "shift": "morning"},
+    )
+    assert res.status_code == 403
+    assert "solo farm" in res.json()["detail"].lower()

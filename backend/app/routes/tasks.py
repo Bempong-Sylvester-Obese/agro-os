@@ -12,6 +12,7 @@ from app.services.auth_service import (
     require_roles,
 )
 from app.services.communications_service import CommunicationsService
+from app.services.organization_guards import require_solo_farm
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -68,8 +69,7 @@ async def create_task(
 ):
     enforce_cooperative_scope(current_user, cooperative_id)
     coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
-    if not coop:
-        raise HTTPException(status_code=404, detail="Cooperative not found")
+    require_solo_farm(coop)
 
     workers = _load_cooperative_workers(
         db,
@@ -124,6 +124,8 @@ def update_task(
     current_user: User | None = Depends(require_roles("admin", "farm_owner", "farm_manager")),
 ):
     enforce_cooperative_scope(current_user, cooperative_id)
+    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
+    require_solo_farm(coop)
     task = db.query(WorkTask).options(joinedload(WorkTask.assignments)).filter(
         WorkTask.id == task_id, WorkTask.cooperative_id == cooperative_id
     ).first()
@@ -149,6 +151,8 @@ async def assign_workers(
     current_user: User | None = Depends(require_roles("admin", "farm_owner", "farm_manager")),
 ):
     enforce_cooperative_scope(current_user, cooperative_id)
+    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
+    require_solo_farm(coop)
     task = db.query(WorkTask).options(joinedload(WorkTask.assignments)).filter(
         WorkTask.id == task_id, WorkTask.cooperative_id == cooperative_id
     ).first()
