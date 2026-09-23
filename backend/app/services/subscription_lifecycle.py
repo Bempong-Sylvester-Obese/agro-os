@@ -71,8 +71,13 @@ def _now() -> datetime:
 
 
 def is_free_plan(plan_key: str | None) -> bool:
+    """Only the Starter tier (and unknown keys) are free.
+
+    Enterprise has ``price: 0`` in the catalogue because pricing is contracted,
+    not because it is free; it is a paid plan with a billing period.
+    """
     plan = get_plan(plan_key or "")
-    return plan is None or float(plan.get("price") or 0) <= 0
+    return plan is None or plan["key"] == FREE_PLAN
 
 
 def _assert_transition(cooperative: Cooperative, target: str) -> None:

@@ -2,9 +2,9 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { confirmDemoReset, previewDemoReset } from '../../api/admin'
-import { createSubscriptionCheckout, updateCooperative } from '../../api/cooperatives'
+import { createSubscriptionCheckout, fetchCooperativeUsage, updateCooperative } from '../../api/cooperatives'
 import { formatTransportError } from '../../api/config'
-import { fetchFarmers } from '../../api/farmers'
+import UsageMeters from './UsageMeters'
 import { SettingsSkeleton } from './DashboardSkeleton'
 import GovernanceSettings from './GovernanceSettings'
 import DashboardModal, { ModalField } from './DashboardModal'
@@ -39,7 +39,8 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
   const [resetError, setResetError] = useState(null)
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [resetting, setResetting] = useState(false)
-  const [memberCount, setMemberCount] = useState(null)
+  const [usage, setUsage] = useState(null)
+  const [usageError, setUsageError] = useState(null)
   const resetInputRef = useRef(null)
 
   useEffect(() => {
@@ -61,26 +62,21 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
   }, [resetDialogOpen])
 
   useEffect(() => {
-    if (!cooperativeId || !cooperative) return
-    const plan = (cooperative.subscription_plan || '').toLowerCase()
-    if (plan === 'starter' || plan === 'growth') {
-      let cancelled = false
-      const loadMemberCount = async () => {
-        const pageSize = 100
-        let count = 0
-        while (true) {
-          const page = await fetchFarmers(cooperativeId, null, count, pageSize)
-          count += page.length
-          if (page.length < pageSize) break
-        }
-        if (!cancelled) setMemberCount(count)
-      }
-      loadMemberCount().catch(() => {
-        if (!cancelled) setMemberCount(null)
+    if (!cooperativeId || !cooperative) return undefined
+    let cancelled = false
+    setUsageError(null)
+    fetchCooperativeUsage(cooperativeId)
+      .then((data) => {
+        if (!cancelled) setUsage(data)
       })
-      return () => {
-        cancelled = true
-      }
+      .catch((err) => {
+        if (!cancelled) {
+          setUsage(null)
+          setUsageError(formatTransportError(err))
+        }
+      })
+    return () => {
+      cancelled = true
     }
   }, [cooperativeId, cooperative])
 
@@ -175,6 +171,11 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
 
   const planNames = { starter: 'Starter', solo: 'Solo Farm', growth: 'Growth', enterprise: 'Enterprise' }
   const planName = planNames[cooperative?.subscription_plan?.toLowerCase()] || 'Unknown Plan'
+  // The effective plan (what the API enforces) can differ from the plan on
+  // record: a trial grants Growth entitlements, a lapsed plan falls to Starter.
+  const effectivePlanKey = usage?.effective_plan_key
+  const effectivePlanName = usage?.effective_plan_name || planNames[effectivePlanKey] || null
+  const showEffectivePlan = effectivePlanKey && effectivePlanKey !== (cooperative?.subscription_plan || '').toLowerCase()
 
   const statusColors = {
     active: 'green',
@@ -184,13 +185,6 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
     cancelled: 'gray',
   }
   const statusColor = statusColors[cooperative?.subscription_status] || 'gray'
-
-  const planMaxMembers = cooperative?.subscription_plan?.toLowerCase() === 'starter' ? 10
-    : cooperative?.subscription_plan?.toLowerCase() === 'growth' ? 500
-    : null
-
-  const showMemberBar = planMaxMembers && memberCount !== null
-  const memberPct = showMemberBar ? Math.min((memberCount / planMaxMembers) * 100, 100) : 0
 
   const isExpiring = cooperative?.subscription_status === 'expired' || cooperative?.subscription_status === 'past_due'
 
@@ -306,10 +300,17 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
                     </span>
                   </div>
                 </div>
-                {planMaxMembers && (
+                {showEffectivePlan && (
                   <div style={{ flex: '1 1 140px' }}>
-                    <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4 }}>Max Members</div>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>{planMaxMembers.toLocaleString()}</div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4 }}>
+                      {usage?.status === 'trial' ? 'Trial Access' : 'Enforced As'}
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>
+                      {effectivePlanName}
+                      {usage?.status === 'trial' && typeof usage?.days_remaining === 'number' && (
+                        <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted)' }}> · {usage.days_remaining} days left</span>
+                      )}
+                    </div>
                   </div>
                 )}
                 {cooperative?.subscription_expires_at && (
@@ -322,21 +323,7 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
                 )}
               </div>
 
-              {showMemberBar && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-                    <span>Active members: {memberCount} of {planMaxMembers}</span>
-                    <span>{Math.round(memberPct)}%</span>
-                  </div>
-                  <div style={{ height: 8, background: '#E5E7EB', borderRadius: 4, overflow: 'hidden' }}>
-                    <div style={{
-                      height: '100%', width: `${memberPct}%`,
-                      background: memberPct >= 90 ? '#F59E0B' : memberPct >= 70 ? '#3B82F6' : '#10B981',
-                      borderRadius: 4, transition: 'width .3s ease'
-                    }} />
-                  </div>
-                </div>
-              )}
+              <UsageMeters usage={usage} error={usageError} />
 
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
                 {cooperative?.subscription_plan?.toLowerCase() === 'starter' && (

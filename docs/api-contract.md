@@ -134,6 +134,7 @@ Optional env: `VITE_COOPERATIVE_ID`.
 | Pricing page | GET | `/plans` | Plan catalogue (public) |
 | Pricing page checkout | POST | `/subscriptions/pre-checkout` | Public. Creates a `pre_checkout` intent (`sub_pre_*`) and returns `{checkout_id, reference, authorization_url, amount}` |
 | Settings → upgrade | POST | `/subscriptions/checkout` | Auth. Creates a single-use `upgrade` intent for the caller's cooperative and returns `{intent_id, reference, authorization_url, plan_key, band, amount}` |
+| Settings → usage bars | GET | `/cooperatives/{id}/usage` | Auth. Usage vs band-aware limits (`members`, `workers`, `sms`) and `features` map for the effective plan; see `docs/billing.md` |
 | Settings → billing panel | GET | `/subscriptions/status` | Auth. Applies pending time-based transitions and returns the lifecycle view (`status`, `effective_plan_key`, `paid_access`, `in_grace`, `days_remaining`, ...) |
 | Settings → renew | POST | `/subscriptions/renew` | Admin. Single-use intent for the plan/band already on record; 400 on free tier or trial |
 | Settings → cancel | POST | `/subscriptions/cancel` | Admin. `{cooperative_id, immediately?: bool}`. Default keeps access until period end |
@@ -163,6 +164,13 @@ raw `subscription_plan` column. Routes that need a live paid plan use
 `Depends(require_active_subscription(...))`, which returns `402
 {"code": "subscription_required"}`. States, transitions, and renewal semantics
 are documented in [`docs/billing.md`](billing.md).
+
+**Entitlement errors.** Member caps, SMS quotas, and feature gates respond
+`403` with a structured `detail` — `{"code": "plan_limit_reached" |
+"sms_quota_exceeded" | "feature_not_in_plan", "message", "plan", ...}` —
+rather than a plain string. Clients should read `detail.message` for display
+and `detail.code` to decide whether to show an upgrade prompt
+(`frontend/src/components/dashboard/UpgradePrompt.jsx`).
 
 ### Cooperative commerce
 

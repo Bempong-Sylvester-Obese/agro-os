@@ -24,8 +24,7 @@ from app.schemas.schemas import (
 )
 from app.services.auth_service import get_current_user, require_roles
 from app.services.communications_service import CommunicationsService
-from app.services import subscription_lifecycle as lifecycle
-from app.services.plans import get_plan_limit
+from app.services import entitlements
 from app.services.providers.factory import get_sms_provider
 
 router = APIRouter(prefix="/communications", tags=["communications"])
@@ -75,26 +74,8 @@ async def broadcast_sms(
         .count()
     )
 
-    now = datetime.utcnow()
-    if (
-        not coop.sms_month_reset
-        or (coop.sms_month_reset.year, coop.sms_month_reset.month)
-        != (now.year, now.month)
-    ):
-        coop.sms_sent_this_month = 0
-        coop.sms_month_reset = now
-    lifecycle.reconcile_and_commit(db, coop)
-    effective_plan = lifecycle.effective_plan_key(coop)
-    limit = get_plan_limit(effective_plan, "sms_per_month")
-    new_total = coop.sms_sent_this_month + recipients_count
-    if limit > 0 and new_total > limit:
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                f"SMS quota of {limit} exceeded for this month. "
-                "Upgrade your plan for more."
-            ),
-        )
+    # Monthly quota on the effective plan; resets the window on month roll-over.
+    new_total = entitlements.assert_sms_quota(db, coop, recipients_count)
 
     service = CommunicationsService()
     result = await service.broadcast_to_cooperative(

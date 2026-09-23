@@ -2,6 +2,7 @@
 import React, { useCallback, useState } from 'react'
 import { Edit3, UserPlus, Loader2 } from 'lucide-react'
 import { createFarmer, deactivateFarmer, updateFarmer } from '../../api/farmers'
+import UpgradePrompt from './UpgradePrompt'
 import { exportDashboardReport } from '../../api/reports'
 import { MembersSkeleton } from './DashboardSkeleton'
 import DashboardModal, { ModalField } from './DashboardModal'
@@ -153,7 +154,7 @@ function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
       })
       onSuccess(created)
     } catch (err) {
-      setError(err.message)
+      setError(err)
     } finally {
       setLoading(false)
     }
@@ -172,7 +173,7 @@ function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
       bodyProps={{ onSubmit: handleSubmit }}
     >
       <div className="dashboard-modal-body">
-        {error && <div role="alert" className="dashboard-form-error">{error}</div>}
+        <UpgradePrompt error={error} />
 
         <div className="modal-row">
           <ModalField htmlFor="member-name" label="Full name">

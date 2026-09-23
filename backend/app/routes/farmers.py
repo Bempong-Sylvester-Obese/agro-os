@@ -25,6 +25,7 @@ from app.schemas.schemas import (
     FarmerUpdate,
     TrustScoreResponse,
 )
+from app.services import entitlements
 from app.services.auth_service import (
     enforce_cooperative_scope,
     get_current_user,
@@ -71,23 +72,9 @@ def create_farmer(
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
 
-    from app.services import subscription_lifecycle as lifecycle
-    from app.services.plans import get_plan_limit
-
-    active_count = db.query(CooperativeMembership).filter(
-        CooperativeMembership.membership_status == MembershipStatus.active,
-        CooperativeMembership.cooperative_id == cooperative_id,
-    ).count()
-    # Limits follow the *effective* plan: a lapsed or expired subscription
-    # is enforced at the free tier even if a paid plan is still on record.
-    lifecycle.reconcile_and_commit(db, coop)
-    effective_plan = lifecycle.effective_plan_key(coop)
-    max_members = get_plan_limit(effective_plan, "max_members")
-    if max_members > 0 and active_count >= max_members:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Member limit of {max_members} reached for the {effective_plan} plan. Upgrade to add more members."
-        )
+    # Band-aware member cap on the *effective* plan (lapsed plans enforce
+    # the free tier). Raises 403 {"code": "plan_limit_reached", ...}.
+    entitlements.assert_within_limit(db, coop, "max_members")
 
     normalized_phone = normalize_ghana_phone(farmer_in.phone)
     farmer = db.query(Farmer).filter(Farmer.phone == normalized_phone).first()

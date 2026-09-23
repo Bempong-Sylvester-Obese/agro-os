@@ -631,7 +631,7 @@ def test_direct_ussd_resumes_dashboard_payment_without_logging_otp(client, farme
     )
 
 
-def test_ussd_farmer_can_submit_loan_request(client, farmer, db):
+def test_ussd_farmer_can_submit_loan_request(client, farmer, db, growth_plan):
     from app.models.models import Loan
 
     client.post("/webhooks/moolre/ussd", json=_ussd_new("loan-1", farmer["phone"]))
@@ -711,7 +711,7 @@ def test_ussd_unregistered_phone_cannot_request_loan(client):
     assert "not registered" in response.json()["message"].lower()
 
 
-def test_ussd_rejects_second_pending_loan_request(client, farmer):
+def test_ussd_rejects_second_pending_loan_request(client, farmer, growth_plan):
     for session_id in ("loan-first", "loan-second"):
         client.post(
             "/webhooks/moolre/ussd",

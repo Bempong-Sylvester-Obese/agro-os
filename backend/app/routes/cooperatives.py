@@ -18,6 +18,7 @@ from app.services.auth_service import (
     get_current_user,
     require_roles,
 )
+from app.services import entitlements
 from app.services import subscription_lifecycle as lifecycle
 from app.services.providers.factory import get_payment_provider
 
@@ -68,6 +69,25 @@ def get_cooperative(
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
     return coop
+
+
+@router.get("/{cooperative_id}/usage")
+def get_cooperative_usage(
+    cooperative_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+    cooperative_scope: CooperativeScope | None = Depends(require_cooperative_scope),
+) -> dict:
+    """Usage vs plan limits (members, workers, SMS) and feature availability.
+
+    Computed on the *effective* plan after applying lifecycle transitions, so
+    the dashboard shows exactly what the API will enforce.
+    """
+    enforce_cooperative_scope(current_user, cooperative_id)
+    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
+    if not coop:
+        raise HTTPException(status_code=404, detail="Cooperative not found")
+    return entitlements.usage_summary(db, coop)
 
 
 @router.put("/{cooperative_id}", response_model=CooperativeResponse)

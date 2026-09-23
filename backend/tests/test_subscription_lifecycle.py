@@ -240,7 +240,9 @@ def test_expired_plan_is_enforced_at_free_tier_limits(client, db, cooperative):
         json={"name": "One too many", "phone": "+233009999999", "cooperative_id": coop.id, "crop_type": "cocoa"},
     )
     assert blocked.status_code == 403
-    assert "starter" in blocked.json()["detail"]
+    assert blocked.json()["detail"]["code"] == "plan_limit_reached"
+    assert blocked.json()["detail"]["plan"] == "starter"
+    assert blocked.json()["detail"]["limit"] == starter_limit
     db.refresh(coop)
     assert coop.subscription_status == "expired"  # reconciled on the way through
 
