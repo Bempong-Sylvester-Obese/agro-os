@@ -1,4 +1,4 @@
-import { API_URL, apiFetch, authHeaders } from './config'
+import { API_URL, apiErrorFromBody, apiFetch, authHeaders } from './config'
 
 /**
  * Fetch all farmers, optionally filtered to a specific cooperative.
@@ -31,7 +31,7 @@ export async function createFarmer(data) {
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.detail || 'Failed to create farmer')
+    throw apiErrorFromBody(err, res.status, 'Failed to create farmer')
   }
   return res.json()
 }

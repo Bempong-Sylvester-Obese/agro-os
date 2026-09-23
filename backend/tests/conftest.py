@@ -161,6 +161,22 @@ def cooperative(client):
 
 
 @pytest.fixture()
+def growth_plan(db, cooperative):
+    """Put the shared cooperative on an active Growth plan (AgroCredit, USSD, scores)."""
+    from datetime import datetime, timedelta
+
+    from app.models.models import Cooperative
+
+    coop = db.get(Cooperative, cooperative["id"])
+    coop.subscription_plan = "growth"
+    coop.subscription_band = "base"
+    coop.subscription_status = "active"
+    coop.subscription_expires_at = datetime.utcnow() + timedelta(days=30)
+    db.commit()
+    return coop
+
+
+@pytest.fixture()
 def farmer(client, cooperative):
     resp = client.post(
         "/farmers/",

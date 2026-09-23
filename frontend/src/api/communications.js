@@ -1,4 +1,4 @@
-import { API_URL, apiFetch, authHeaders } from './config'
+import { API_URL, apiErrorFromBody, apiFetch, authHeaders } from './config'
 
 /**
  * Fetch sent SMS logs, optionally scoped to a cooperative.
@@ -30,10 +30,7 @@ export async function sendBroadcast(cooperativeId, message) {
   })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    const detail = err.detail
-    throw new Error(
-      typeof detail === 'string' ? detail : 'Failed to send broadcast'
-    )
+    throw apiErrorFromBody(err, res.status, 'Failed to send broadcast')
   }
   const data = await res.json()
   if (data.status !== 'success') {

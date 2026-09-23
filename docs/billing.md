@@ -78,22 +78,63 @@ amount before `renew()` is called. Duplicate webhook deliveries are ignored
 after the first activation, so a period is never extended twice for one
 payment.
 
-## Enforcement
+## Enforcement (entitlements)
 
-Route handlers should never read `cooperative.subscription_plan` directly for
-gating. Use:
+Route handlers never read `cooperative.subscription_plan` directly for gating.
+`backend/app/services/entitlements.py` is the single place that turns the
+effective plan into decisions:
 
-- `lifecycle.reconcile_and_commit(db, coop)` then
-  `lifecycle.effective_plan_key(coop)` for plan limits (`get_plan_limit`) and
-  features (`has_feature`);
-- `Depends(lifecycle.require_active_subscription("feature"))` on routes that
-  require a live paid plan. It responds `402 Payment Required` with
-  `{"code": "subscription_required", "status": ..., "effective_plan_key": ...}`
-  and is a no-op when authentication is disabled or the user has no
-  cooperative.
+| Helper | Use |
+|---|---|
+| `assert_within_limit(db, coop, "max_members" \| "max_workers", current_count=None)` | Band-aware cap. Raises 403 `plan_limit_reached`; or `feature_not_in_plan` when the plan has no such module at all (Starter has no workers, Solo has no members). `0` means unlimited only when the module is included. |
+| `assert_sms_quota(db, coop, recipients)` | Monthly quota on `sms_per_month`; resets the counter when the calendar month rolls over. Raises 403 `sms_quota_exceeded`. Returns the projected total to persist after a successful send. |
+| `assert_feature(db, coop, "loans")` / `require_feature("loans")` | Feature flag from `feature_keys` in the catalogue. Raises 403 `feature_not_in_plan`. The dependency form is a no-op when auth is disabled (mirrors `require_roles`). |
+| `require_active_subscription(feature=None)` (lifecycle) | 402 `subscription_required` when the caller has no live paid plan. |
+| `usage_summary(db, coop)` | Payload for `GET /cooperatives/{id}/usage`. |
 
-`GET /subscriptions/status` returns the same `SubscriptionState` view the
-dependency uses (`status`, `plan_key`, `band`, `effective_plan_key`,
+Every 403 from an entitlement gate carries a structured `detail`:
+
+```json
+{"code": "plan_limit_reached", "message": "Member limit of 10 reached for the starter plan. Upgrade to add more.",
+ "plan": "starter", "limit_key": "max_members", "limit": 10, "used": 10}
+```
+
+The dashboard renders these through `UpgradePrompt` (message + link to the
+billing panel) and shows usage bars from the usage endpoint in Settings.
+
+### Band-aware limits
+
+| Plan | Bands size | Members | Workers | SMS / month |
+|---|---|---|---|---|
+| Starter | — | 10 | module not included | 100 |
+| Growth `base` / `plus_50` / `plus_100` | members | 50 / 100 / 200 | module not included | 1,000 |
+| Solo `w20` / `w50` / `w100` / `custom` | workers | module not included | 20 / 50 / 100 / unlimited | 200 |
+| Enterprise | — | unlimited | unlimited | 999,999 |
+| Trial (free signup) | Growth default band | 50 | module not included | 1,000 |
+
+A recorded band only applies while its plan is the effective plan; a lapsed
+Growth `plus_100` cooperative is enforced at Starter's 10 members.
+
+### Where gates are wired
+
+| Surface | Gate |
+|---|---|
+| `POST /farmers/` (member create) | `assert_within_limit(..., "max_members")` |
+| `POST /communications/sms/broadcast` | `assert_sms_quota` |
+| `/loans/*` (router-level) | `require_feature("loans")` — AgroCredit is Growth+ |
+| `/api/farmers`, `/api/agro-ai/*` (router-level) | `require_feature("scores")` |
+| Farmer loan request via USSD / USSDK | `create_farmer_loan_request` checks `has_feature(effective_plan, "loans")` and ends the session with an explanatory message |
+| `POST /workers/` cap and payroll feature | tracked in #260 (uses the same helpers) |
+
+**Documented exception — member USSD menu.** The USSD menu itself (balance,
+dues, announcements, link phone) is *not* gated on the `ussd` feature key even
+though the pricing copy lists "USSD access" under Growth. Blocking it would
+punish farmers for their cooperative's billing state, and the paid features
+reachable from the menu (loan requests) are gated individually. Revisit when
+the Starter tier's USSD scope is decided.
+
+`GET /subscriptions/status` returns the `SubscriptionState` view the
+lifecycle dependency uses (`status`, `plan_key`, `band`, `effective_plan_key`,
 `paid_access`, `in_grace`, `days_remaining`, `expires_at`, `trial_days`,
 `grace_days`) for the Settings billing panel.
 

@@ -184,7 +184,7 @@ def test_loan_balance_registered_farmer_no_loans(client, farmer):
     assert body["balance"] == 0
 
 
-def test_farmer_can_request_loan_from_ussdk(client, farmer, db):
+def test_farmer_can_request_loan_from_ussdk(client, farmer, db, growth_plan):
     from app.models.models import Loan
 
     resp = client.post(
@@ -240,7 +240,7 @@ def test_ussdk_loan_request_handles_unregistered_and_multiple_memberships(
     assert len(choose.json()["cooperatives"]) == 2
 
 
-def test_ussdk_loan_request_validates_input_and_pending_request(client, farmer):
+def test_ussdk_loan_request_validates_input_and_pending_request(client, farmer, growth_plan):
     invalid = client.post(
         "/ussdk/loan-request",
         json=_hook_payload(farmer["phone"], {"amount": "0", "purpose": ""}),

@@ -141,7 +141,7 @@ cooperative society under Act 1148:
 | Per-member SMS consent recorded and enforced | Open — [#247](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/247) |
 | Short production token TTL, refresh, email delivery of reset/invite tokens | Open — [#248](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/248) |
 | Formal role model beyond `admin`/`finance_officer` | Open — [#244](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/244) |
-| Subscription entitlements enforced server-side | Open — [#233](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/233) |
+| Subscription entitlements enforced server-side | Enforced — band-aware member caps, monthly SMS quotas, and AgroCredit/scores feature gates in `backend/app/services/entitlements.py`; see [`docs/billing.md`](docs/billing.md) |
 
 ---
 

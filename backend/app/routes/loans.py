@@ -37,6 +37,7 @@ from app.services.auth_service import (
     require_roles,
 )
 from app.services.communications_service import CommunicationsService
+from app.services.entitlements import require_feature
 from app.services.loan_disbursement_service import (
     disburse_loan as disburse_loan_service,
     disbursement_status_response,
@@ -45,7 +46,13 @@ from app.services.loan_disbursement_service import (
 from app.services.loan_ledger import latest_loan_transaction as _latest_loan_transaction
 from app.services.loan_repayment_service import start_farmer_loan_repayment
 
-router = APIRouter(prefix="/loans", tags=["loans"])
+# AgroCredit is a Growth-tier feature: every loan endpoint requires the
+# caller's cooperative plan to include "loans" (403 feature_not_in_plan).
+router = APIRouter(
+    prefix="/loans",
+    tags=["loans"],
+    dependencies=[Depends(require_feature("loans"))],
+)
 logger = logging.getLogger(__name__)
 
 

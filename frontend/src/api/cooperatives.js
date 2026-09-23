@@ -1,4 +1,4 @@
-import { API_URL, apiFetch, authHeaders } from './config'
+import { API_URL, apiFetch, authHeaders, fetchJson } from './config'
 
 /**
  * Fetch a cooperative by ID. Returns null on any error.
@@ -10,6 +10,16 @@ export async function fetchCooperative(cooperativeId) {
   })
   if (!res.ok) return null
   return res.json()
+}
+
+/**
+ * Usage vs plan limits for the dashboard (members, workers, SMS) and the
+ * feature flags of the *effective* plan. Throws ApiError on failure.
+ */
+export async function fetchCooperativeUsage(cooperativeId) {
+  return fetchJson(`${API_URL}/cooperatives/${cooperativeId}/usage`, {
+    headers: authHeaders(),
+  })
 }
 
 export async function updateCooperative(cooperativeId, data) {

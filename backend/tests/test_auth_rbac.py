@@ -1,5 +1,7 @@
 """Fail-closed authentication and cooperative isolation tests."""
 
+from datetime import datetime, timedelta
+
 import pytest
 
 from app.config import get_settings
@@ -18,7 +20,15 @@ def auth_enabled(monkeypatch):
 
 
 def _tenant(db, suffix: str, role: str = "admin"):
-    cooperative = Cooperative(name=f"Cooperative {suffix}", currency="GHS")
+    cooperative = Cooperative(
+        name=f"Cooperative {suffix}",
+        currency="GHS",
+        # Paid plan so AgroCredit / scores feature gates (#233) do not mask RBAC outcomes.
+        subscription_plan="growth",
+        subscription_band="base",
+        subscription_status="active",
+        subscription_expires_at=datetime.utcnow() + timedelta(days=30),
+    )
     db.add(cooperative)
     db.flush()
     user = User(
