@@ -266,6 +266,7 @@ settlement still accept crop produce only.
 | POST | `/subscriptions/checkout` | Auth: create a single-use `upgrade` intent for the caller's cooperative; returns a non-reusable payment link. The webhook verifies the paid amount against the intent and activates once |
 | GET | `/cooperatives/{id}/usage` | Auth: usage vs plan limits (members/workers/SMS, band-aware) and feature flags of the effective plan |
 | GET | `/subscriptions/status` | Auth: lifecycle view (`trial`/`active`/`past_due`/`expired`/`cancelled`, effective plan, days remaining) after applying time-based transitions |
+| GET | `/subscriptions/history` | Admin: payment history from subscription intents (signup + upgrades/renewals), with `outcome` pending/paid and `total_paid` |
 | POST | `/subscriptions/renew` | Admin: payment intent renewing the plan on record; extends the current period |
 | POST | `/subscriptions/cancel` | Admin: cancel at period end (default) or immediately |
 | POST | `/subscriptions/resume` | Admin: undo a cancellation before the period ends |

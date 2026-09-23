@@ -2,9 +2,9 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { confirmDemoReset, previewDemoReset } from '../../api/admin'
-import { createSubscriptionCheckout, fetchCooperativeUsage, updateCooperative } from '../../api/cooperatives'
+import { updateCooperative } from '../../api/cooperatives'
 import { formatTransportError } from '../../api/config'
-import UsageMeters from './UsageMeters'
+import BillingPanel from './BillingPanel'
 import { SettingsSkeleton } from './DashboardSkeleton'
 import GovernanceSettings from './GovernanceSettings'
 import DashboardModal, { ModalField } from './DashboardModal'
@@ -39,8 +39,6 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
   const [resetError, setResetError] = useState(null)
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [resetting, setResetting] = useState(false)
-  const [usage, setUsage] = useState(null)
-  const [usageError, setUsageError] = useState(null)
   const resetInputRef = useRef(null)
 
   useEffect(() => {
@@ -60,25 +58,6 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
     const focusFrame = requestAnimationFrame(() => resetInputRef.current?.focus())
     return () => cancelAnimationFrame(focusFrame)
   }, [resetDialogOpen])
-
-  useEffect(() => {
-    if (!cooperativeId || !cooperative) return undefined
-    let cancelled = false
-    setUsageError(null)
-    fetchCooperativeUsage(cooperativeId)
-      .then((data) => {
-        if (!cancelled) setUsage(data)
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setUsage(null)
-          setUsageError(formatTransportError(err))
-        }
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [cooperativeId, cooperative])
 
   if (loading) return <SettingsSkeleton />
 
@@ -169,25 +148,6 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
 
   const labelStyle = { fontSize: 13, fontWeight: 600 }
 
-  const planNames = { starter: 'Starter', solo: 'Solo Farm', growth: 'Growth', enterprise: 'Enterprise' }
-  const planName = planNames[cooperative?.subscription_plan?.toLowerCase()] || 'Unknown Plan'
-  // The effective plan (what the API enforces) can differ from the plan on
-  // record: a trial grants Growth entitlements, a lapsed plan falls to Starter.
-  const effectivePlanKey = usage?.effective_plan_key
-  const effectivePlanName = usage?.effective_plan_name || planNames[effectivePlanKey] || null
-  const showEffectivePlan = effectivePlanKey && effectivePlanKey !== (cooperative?.subscription_plan || '').toLowerCase()
-
-  const statusColors = {
-    active: 'green',
-    trial: 'blue',
-    past_due: 'orange',
-    expired: 'red',
-    cancelled: 'gray',
-  }
-  const statusColor = statusColors[cooperative?.subscription_status] || 'gray'
-
-  const isExpiring = cooperative?.subscription_status === 'expired' || cooperative?.subscription_status === 'past_due'
-
   return (
     <div style={{ maxWidth: 800 }}>
       <div className="admin-card">
@@ -263,155 +223,8 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
             </div>
             <div style={{ height: 1, background: 'var(--border)', margin: '12px 0' }} />
 
-            {/* Platform Subscription */}
-            <div>
-              <h3 className="serif" style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Platform Subscription</h3>
-              <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>Manage your cooperative's plan and billing status.</p>
-
-              {isExpiring && (
-                <div role="alert" style={{
-                  padding: '12px 16px', background: '#FFFBEB', border: '1px solid #FBBF24',
-                  borderRadius: 8, fontSize: 13, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8
-                }}>
-                  <span style={{ fontWeight: 700, color: '#92400E' }}>
-                    {cooperative.subscription_status === 'expired' ? 'Subscription expired.' : 'Payment past due.'}
-                  </span>
-                  <span style={{ color: '#78350F' }}>Some features may be limited. Renew your plan to restore full access.</span>
-                </div>
-              )}
-
-              <div style={{
-                display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 16,
-                background: 'var(--background)', borderRadius: 10, padding: 16
-              }}>
-                <div style={{ flex: '1 1 140px' }}>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4 }}>Current Plan</div>
-                  <div style={{ fontSize: 18, fontWeight: 700 }}>{planName}</div>
-                </div>
-                <div style={{ flex: '1 1 140px' }}>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4 }}>Status</div>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{
-                      width: 8, height: 8, borderRadius: '50%', display: 'inline-block',
-                      background: statusColor
-                    }} />
-                    <span style={{ fontSize: 14, fontWeight: 600, textTransform: 'capitalize' }}>
-                      {(cooperative?.subscription_status || 'inactive').replace(/_/g, ' ')}
-                    </span>
-                  </div>
-                </div>
-                {showEffectivePlan && (
-                  <div style={{ flex: '1 1 140px' }}>
-                    <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4 }}>
-                      {usage?.status === 'trial' ? 'Trial Access' : 'Enforced As'}
-                    </div>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>
-                      {effectivePlanName}
-                      {usage?.status === 'trial' && typeof usage?.days_remaining === 'number' && (
-                        <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--muted)' }}> · {usage.days_remaining} days left</span>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {cooperative?.subscription_expires_at && (
-                  <div style={{ flex: '1 1 140px' }}>
-                    <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4 }}>Expires</div>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>
-                      {new Date(cooperative.subscription_expires_at).toLocaleDateString()}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <UsageMeters usage={usage} error={usageError} />
-
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
-                {cooperative?.subscription_plan?.toLowerCase() === 'starter' && (
-                  <button
-                    type="button"
-                    className="btn-lg"
-                    onClick={async () => {
-                      try {
-                        setSaving(true)
-                        const res = await createSubscriptionCheckout(cooperativeId, 'growth')
-                        if (res.authorization_url) window.location.href = res.authorization_url
-                      } catch (err) {
-                        setError(err.message)
-                        setSaving(false)
-                      }
-                    }}
-                    disabled={saving}
-                    style={{ padding: '10px 16px', display: 'inline-flex', alignItems: 'center', gap: 8, background: '#10B981', color: 'white' }}
-                  >
-                    Upgrade to Growth (GHS 299/mo)
-                  </button>
-                )}
-                {cooperative?.subscription_plan?.toLowerCase() === 'growth' && (
-                  <button
-                    type="button"
-                    className="btn-lg"
-                    onClick={async () => {
-                      try {
-                        setSaving(true)
-                        await updateCooperative(cooperativeId, { subscription_plan: 'starter' })
-                        setSuccessMsg('Plan downgraded to Starter.')
-                        if (onRefresh) onRefresh()
-                      } catch (err) {
-                        setError(err.message)
-                      } finally {
-                        setSaving(false)
-                      }
-                    }}
-                    disabled={saving}
-                    style={{ padding: '10px 16px', display: 'inline-flex', alignItems: 'center', gap: 8, background: '#6B7280', color: 'white' }}
-                  >
-                    Downgrade to Starter
-                  </button>
-                )}
-                {cooperative?.subscription_plan?.toLowerCase() === 'solo' && (
-                  <button
-                    type="button"
-                    className="btn-lg"
-                    onClick={() => window.location.href = '/pricing'}
-                    style={{ padding: '10px 16px', display: 'inline-flex', alignItems: 'center', gap: 8, background: '#3B82F6', color: 'white' }}
-                  >
-                    View Plans &amp; Pricing
-                  </button>
-                )}
-                {/* Fallback upgrade / renew for any other state */}
-                {!['starter', 'growth', 'solo'].includes(cooperative?.subscription_plan?.toLowerCase()) && (
-                  <button
-                    type="button"
-                    className="btn-lg"
-                    onClick={async () => {
-                      try {
-                        setSaving(true)
-                        const res = await createSubscriptionCheckout(cooperativeId, 'growth')
-                        if (res.authorization_url) window.location.href = res.authorization_url
-                      } catch (err) {
-                        setError(err.message)
-                        setSaving(false)
-                      }
-                    }}
-                    disabled={saving}
-                    style={{ padding: '10px 16px', display: 'inline-flex', alignItems: 'center', gap: 8, background: '#10B981', color: 'white' }}
-                  >
-                    Upgrade / Renew Plan
-                  </button>
-                )}
-              </div>
-
-              {/* Billing history stub */}
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Billing History</div>
-                <div style={{
-                  border: '1px dashed var(--border)', borderRadius: 8, padding: 20,
-                  textAlign: 'center', color: 'var(--muted)', fontSize: 13
-                }}>
-                  Billing history coming soon.
-                </div>
-              </div>
-            </div>
+            {/* Platform Subscription — catalogue-driven billing portal */}
+            <BillingPanel cooperative={cooperative} cooperativeId={cooperativeId} onRefresh={onRefresh} />
             
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
               <button type="submit" className="btn-lg" disabled={saving} style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 8 }}>

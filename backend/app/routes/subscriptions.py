@@ -201,6 +201,70 @@ def subscription_status(
     return lifecycle.describe(coop).as_dict()
 
 
+def _intent_to_history_row(intent: PendingCheckout) -> dict[str, Any]:
+    plan = get_plan(intent.plan_key) or {}
+    band = get_band(intent.plan_key, intent.band) if intent.band else None
+    if intent.status == PendingCheckout.STATUS_PENDING:
+        outcome = "pending"
+    elif intent.kind == PendingCheckout.KIND_UPGRADE:
+        outcome = "paid"  # consumed == activated for upgrades/renewals
+    else:
+        outcome = "paid" if intent.status in (PendingCheckout.STATUS_PAID, PendingCheckout.STATUS_CONSUMED) else intent.status
+    return {
+        "id": intent.id,
+        "reference": intent.reference,
+        "kind": intent.kind,
+        "plan_key": intent.plan_key,
+        "plan_name": plan.get("name") or intent.plan_key,
+        "band": intent.band,
+        "band_label": band["label"] if band else None,
+        "amount": intent.amount,
+        "currency": intent.currency or "GHS",
+        "status": intent.status,
+        "outcome": outcome,
+        "provider_transaction_id": intent.provider_transaction_id,
+        "created_at": intent.created_at.isoformat() if intent.created_at else None,
+        "paid_at": intent.paid_at.isoformat() if intent.paid_at else None,
+        "consumed_at": intent.consumed_at.isoformat() if intent.consumed_at else None,
+    }
+
+
+@router.get("/history")
+def subscription_history(
+    cooperative_id: int | None = None,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+) -> dict[str, Any]:
+    """Payment history for the billing panel, from subscription intents.
+
+    Includes the pre-checkout intent that created the account (linked at
+    signup) and every upgrade/renewal intent since. ``outcome`` collapses the
+    intent state machine to ``pending`` / ``paid`` for display; the raw
+    ``status`` is kept for audit.
+    """
+    scoped_id = current_user.cooperative_id if current_user and current_user.cooperative_id else cooperative_id
+    if scoped_id is None:
+        raise HTTPException(status_code=400, detail="cooperative_id is required")
+    coop = _scoped_cooperative(db, current_user, scoped_id)
+    limit = max(1, min(limit, 200))
+    intents = (
+        db.query(PendingCheckout)
+        .filter(PendingCheckout.cooperative_id == coop.id)
+        .order_by(PendingCheckout.created_at.desc(), PendingCheckout.id.desc())
+        .limit(limit)
+        .all()
+    )
+    rows = [_intent_to_history_row(i) for i in intents]
+    total_paid = sum(r["amount"] for r in rows if r["outcome"] == "paid")
+    return {
+        "cooperative_id": coop.id,
+        "items": rows,
+        "total_paid": round(total_paid, 2),
+        "currency": coop.currency or "GHS",
+    }
+
+
 @router.post("/renew")
 async def renew_subscription(
     req: LifecycleRequest,

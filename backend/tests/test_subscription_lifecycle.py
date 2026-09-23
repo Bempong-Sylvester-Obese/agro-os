@@ -357,3 +357,60 @@ def test_require_active_subscription_dependency(client, db, monkeypatch):
         monkeypatch.setenv("AUTH_ENABLED", "false")
         get_settings.cache_clear()
         app.router.routes[:] = [r for r in app.router.routes if getattr(r, "path", "") != "/_probe/paid-only"]
+
+
+# ---------------------------------------------------------------------------
+# Payment history (#236)
+# ---------------------------------------------------------------------------
+
+
+def test_history_lists_intents_newest_first_with_outcomes(client, db, cooperative):
+    coop = db.get(Cooperative, cooperative["id"])
+    signup_intent = PendingCheckout(
+        reference="sub_pre_hist", kind=PendingCheckout.KIND_PRE_CHECKOUT, cooperative_id=coop.id,
+        plan_key="growth", band="base", amount=299.0, organisation=coop.name,
+        status=PendingCheckout.STATUS_CONSUMED, provider_transaction_id="TX-SIGNUP",
+        paid_at=datetime(2026, 8, 1, 10, 5), consumed_at=datetime(2026, 8, 1, 10, 6),
+        created_at=datetime(2026, 8, 1, 10, 0),
+    )
+    renewal = PendingCheckout(
+        reference="sub_upg_hist_paid", kind=PendingCheckout.KIND_UPGRADE, cooperative_id=coop.id,
+        plan_key="growth", band="plus_50", amount=449.0, status=PendingCheckout.STATUS_CONSUMED,
+        provider_transaction_id="TX-RENEW", paid_at=datetime(2026, 9, 1, 9, 0),
+        consumed_at=datetime(2026, 9, 1, 9, 0), created_at=datetime(2026, 9, 1, 8, 55),
+    )
+    abandoned = PendingCheckout(
+        reference="sub_upg_hist_pending", kind=PendingCheckout.KIND_UPGRADE, cooperative_id=coop.id,
+        plan_key="growth", band="plus_100", amount=599.0, status=PendingCheckout.STATUS_PENDING,
+        created_at=datetime(2026, 9, 20, 12, 0),
+    )
+    other = PendingCheckout(  # another cooperative's intent must not leak
+        reference="sub_upg_other", kind=PendingCheckout.KIND_UPGRADE, cooperative_id=None,
+        plan_key="growth", band="base", amount=299.0, status=PendingCheckout.STATUS_PENDING,
+    )
+    db.add_all([signup_intent, renewal, abandoned, other])
+    db.commit()
+
+    resp = client.get(f"/subscriptions/history?cooperative_id={coop.id}")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["cooperative_id"] == coop.id
+    assert [r["reference"] for r in body["items"]] == ["sub_upg_hist_pending", "sub_upg_hist_paid", "sub_pre_hist"]
+    assert [r["outcome"] for r in body["items"]] == ["pending", "paid", "paid"]
+    assert body["items"][1]["plan_name"] == "Growth"
+    assert body["items"][1]["band_label"] == "Up to 100 members"
+    assert body["items"][1]["provider_transaction_id"] == "TX-RENEW"
+    assert body["items"][2]["kind"] == "pre_checkout"
+    assert body["total_paid"] == 748.0
+    assert body["currency"] == "GHS"
+
+
+def test_history_empty_for_new_cooperative(client, cooperative):
+    body = client.get(f"/subscriptions/history?cooperative_id={cooperative['id']}").json()
+    assert body["items"] == []
+    assert body["total_paid"] == 0
+
+
+def test_history_requires_cooperative(client):
+    assert client.get("/subscriptions/history").status_code == 400
+    assert client.get("/subscriptions/history?cooperative_id=999999").status_code == 404

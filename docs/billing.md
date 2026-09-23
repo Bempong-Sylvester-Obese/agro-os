@@ -138,6 +138,34 @@ lifecycle dependency uses (`status`, `plan_key`, `band`, `effective_plan_key`,
 `paid_access`, `in_grace`, `days_remaining`, `expires_at`, `trial_days`,
 `grace_days`) for the Settings billing panel.
 
+## Billing portal (dashboard)
+
+`frontend/src/components/dashboard/BillingPanel.jsx` is the admin-facing
+portal inside Settings. It is entirely catalogue-driven — no plan key, price,
+or limit is hardcoded — and composes four reads:
+
+| Data | Endpoint |
+|---|---|
+| Plan catalogue (names, prices, bands, features, CTAs) | `GET /plans` |
+| Lifecycle view (status, band, expiry, days remaining) | `GET /subscriptions/status` |
+| Usage vs limits and feature flags | `GET /cooperatives/{id}/usage` |
+| Payment history | `GET /subscriptions/history` |
+
+Actions map 1:1 to the lifecycle table above: plan/band picker →
+`POST /subscriptions/checkout` (same plan + band is disabled; use Renew),
+Renew → `POST /subscriptions/renew`, Cancel (period end or immediately, with
+an inline confirmation) → `POST /subscriptions/cancel`, Resume →
+`POST /subscriptions/resume`, Downgrade to the free plan →
+`PATCH /cooperatives/{id}`. The picker only offers purchasable plans on the
+organisation's track (`cooperative` vs `farmer`); contracted plans
+(Enterprise) link to the pricing page CTA.
+
+Payment history is derived from `PendingCheckout` intents linked to the
+cooperative: the pre-checkout intent that created the account plus every
+upgrade/renewal since. `outcome` collapses the intent state machine
+(`pending → paid → consumed`) to **Pending** / **Paid** for display; the raw
+`status`, reference, and provider transaction id are kept for audit.
+
 ## Related
 
 - `docs/api-contract.md` → "Subscriptions and billing" (endpoints and

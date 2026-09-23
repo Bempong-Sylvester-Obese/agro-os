@@ -133,9 +133,10 @@ Optional env: `VITE_COOPERATIVE_ID`.
 |----|--------|------|-------|
 | Pricing page | GET | `/plans` | Plan catalogue (public) |
 | Pricing page checkout | POST | `/subscriptions/pre-checkout` | Public. Creates a `pre_checkout` intent (`sub_pre_*`) and returns `{checkout_id, reference, authorization_url, amount}` |
-| Settings → upgrade | POST | `/subscriptions/checkout` | Auth. Creates a single-use `upgrade` intent for the caller's cooperative and returns `{intent_id, reference, authorization_url, plan_key, band, amount}` |
+| Settings → change plan | POST | `/subscriptions/checkout` | Auth. Body `{cooperative_id, plan_key, band?}`. Creates a single-use `upgrade` intent for the caller's cooperative and returns `{intent_id, reference, authorization_url, plan_key, band, amount}` |
 | Settings → usage bars | GET | `/cooperatives/{id}/usage` | Auth. Usage vs band-aware limits (`members`, `workers`, `sms`) and `features` map for the effective plan; see `docs/billing.md` |
 | Settings → billing panel | GET | `/subscriptions/status` | Auth. Applies pending time-based transitions and returns the lifecycle view (`status`, `effective_plan_key`, `paid_access`, `in_grace`, `days_remaining`, ...) |
+| Settings → payment history | GET | `/subscriptions/history` | Admin. Intents for the cooperative (signup pre-checkout + upgrades/renewals), newest first: `{items: [{plan_name, band_label, amount, currency, kind, status, outcome: pending\|paid, provider_transaction_id, created_at, paid_at}], total_paid, currency}` |
 | Settings → renew | POST | `/subscriptions/renew` | Admin. Single-use intent for the plan/band already on record; 400 on free tier or trial |
 | Settings → cancel | POST | `/subscriptions/cancel` | Admin. `{cooperative_id, immediately?: bool}`. Default keeps access until period end |
 | Settings → resume | POST | `/subscriptions/resume` | Admin. Undo a cancellation before the period ends (409 otherwise) |

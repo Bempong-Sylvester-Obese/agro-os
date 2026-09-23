@@ -3,7 +3,6 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Settings from './Settings'
 import * as adminApi from '../../api/admin'
-import * as cooperativesApi from '../../api/cooperatives'
 
 vi.mock('../../api/admin', () => ({
   previewDemoReset: vi.fn(),
@@ -11,9 +10,12 @@ vi.mock('../../api/admin', () => ({
 }))
 
 vi.mock('../../api/cooperatives', () => ({
-  createSubscriptionCheckout: vi.fn(),
-  fetchCooperativeUsage: vi.fn(),
   updateCooperative: vi.fn(),
+}))
+
+// Billing has its own tests (BillingPanel.test.jsx); keep Settings tests focused.
+vi.mock('./BillingPanel', () => ({
+  default: () => <div data-testid="billing-panel" />,
 }))
 
 const cooperative = {
@@ -80,74 +82,9 @@ describe('Settings demo reset', () => {
   })
 })
 
-describe('Settings subscription usage', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  const usage = {
-    cooperative_id: 1,
-    plan_key: 'growth',
-    effective_plan_key: 'growth',
-    effective_plan_name: 'Growth',
-    band: 'plus_50',
-    status: 'active',
-    days_remaining: 20,
-    limits: {
-      members: { used: 62, limit: 100, unlimited: false, percent: 62, remaining: 38, included: true },
-      workers: { used: 0, limit: 0, unlimited: false, percent: null, remaining: 0, included: false },
-      sms: { used: 250, limit: 1000, unlimited: false, percent: 25, remaining: 750, included: true, period: 'month' },
-    },
-    features: { loans: true, scores: true, ussd: true, commerce: true, sms: true, workers: false, payroll: false },
-    feature_labels: { loans: 'AgroCredit loans', scores: 'Trust scores', ussd: 'Member USSD', commerce: 'Commerce', sms: 'Bulk SMS', workers: 'Worker management', payroll: 'Wage payroll' },
-  }
-
-  it('renders band-aware usage meters from the usage endpoint', async () => {
-    cooperativesApi.fetchCooperativeUsage.mockResolvedValue(usage)
-
-    render(
-      <Settings
-        cooperative={{ ...cooperative, subscription_plan: 'growth', subscription_status: 'active' }}
-        cooperativeId={1}
-        loading={false}
-      />,
-    )
-
-    expect(await screen.findByText('Active members: 62 of 100')).toBeTruthy()
-    expect(screen.getByText('SMS sent this month: 250 of 1,000')).toBeTruthy()
-    expect(screen.queryByText(/Active workers/)).toBeNull() // not included on Growth
-    expect(screen.getByText('AgroCredit loans')).toBeTruthy()
-    expect(screen.getByText('Wage payroll').style.textDecoration).toBe('line-through')
-    expect(cooperativesApi.fetchCooperativeUsage).toHaveBeenCalledWith(1)
-  })
-
-  it('shows the effective plan when it differs from the plan on record', async () => {
-    cooperativesApi.fetchCooperativeUsage.mockResolvedValue({
-      ...usage,
-      plan_key: 'starter',
-      status: 'trial',
-      days_remaining: 9,
-      limits: { ...usage.limits, members: { ...usage.limits.members, used: 3, limit: 50, percent: 6, remaining: 47 } },
-    })
-
-    render(
-      <Settings
-        cooperative={{ ...cooperative, subscription_plan: 'starter', subscription_status: 'trial' }}
-        cooperativeId={1}
-        loading={false}
-      />,
-    )
-
-    const trialLabel = await screen.findByText('Trial Access')
-    expect(trialLabel.nextElementSibling.textContent).toBe('Growth · 9 days left')
-    expect(screen.getByText('Active members: 3 of 50')).toBeTruthy()
-  })
-
-  it('degrades gracefully when usage cannot be loaded', async () => {
-    cooperativesApi.fetchCooperativeUsage.mockRejectedValue(new Error('boom'))
-
-    render(<Settings cooperative={{ ...cooperative, subscription_plan: 'starter' }} cooperativeId={1} loading={false} />)
-
-    expect(await screen.findByText(/Usage is unavailable right now/)).toBeTruthy()
+describe('Settings billing section', () => {
+  it('renders the catalogue-driven billing panel', () => {
+    const { container } = render(<Settings cooperative={cooperative} cooperativeId={1} loading={false} />)
+    expect(container.querySelector('[data-testid="billing-panel"]')).toBeTruthy()
   })
 })
