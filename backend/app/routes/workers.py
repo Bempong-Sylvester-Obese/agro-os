@@ -10,6 +10,7 @@ from app.services.auth_service import (
     get_current_user,
     require_roles,
 )
+from app.services import entitlements
 from app.services.organization_guards import WORKER_SOLO_FARM_ONLY, require_solo_farm
 
 router = APIRouter(prefix="/workers", tags=["workers"])
@@ -77,6 +78,7 @@ def create_worker(
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
     require_solo_farm(coop, detail=WORKER_SOLO_FARM_ONLY)
+    entitlements.assert_within_limit(db, coop, "max_workers")
 
     existing = (
         db.query(Worker)

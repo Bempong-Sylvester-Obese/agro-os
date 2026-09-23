@@ -22,10 +22,18 @@ from app.services.auth_service import (
     get_current_user,
     require_roles,
 )
+from app.services import entitlements
 from app.services.communications_service import CommunicationsService
+from app.services.organization_guards import require_solo_farm
 
 router = APIRouter(prefix="/payroll", tags=["payroll"])
 logger = logging.getLogger(__name__)
+
+
+def _require_payroll(db: Session, coop: Cooperative) -> Cooperative:
+    require_solo_farm(coop)
+    entitlements.assert_feature(db, coop, "payroll")
+    return coop
 
 
 @router.get("/summary", response_model=PayrollSummaryResponse)
@@ -37,9 +45,9 @@ def payroll_summary(
     current_user: User | None = Depends(get_current_user),
 ):
     enforce_cooperative_scope(current_user, cooperative_id)
-    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
-    if not coop:
-        raise HTTPException(status_code=404, detail="Cooperative not found")
+    coop = _require_payroll(
+        db, db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
+    )
 
     rows = (
         db.query(
@@ -98,9 +106,9 @@ def approve_payroll(
     current_user: User | None = Depends(require_roles("admin", "farm_owner", "farm_manager")),
 ):
     enforce_cooperative_scope(current_user, cooperative_id)
-    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
-    if not coop:
-        raise HTTPException(status_code=404, detail="Cooperative not found")
+    coop = _require_payroll(
+        db, db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
+    )
 
     existing = (
         db.query(WagePayout)
@@ -170,9 +178,9 @@ async def disburse_payroll(
     current_user: User | None = Depends(require_roles("admin", "farm_owner")),
 ):
     enforce_cooperative_scope(current_user, cooperative_id)
-    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
-    if not coop:
-        raise HTTPException(status_code=404, detail="Cooperative not found")
+    coop = _require_payroll(
+        db, db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
+    )
 
     payout_ids = [
         payout_id
@@ -307,9 +315,9 @@ def payroll_history(
     current_user: User | None = Depends(get_current_user),
 ):
     enforce_cooperative_scope(current_user, cooperative_id)
-    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
-    if not coop:
-        raise HTTPException(status_code=404, detail="Cooperative not found")
+    _require_payroll(
+        db, db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
+    )
 
     periods = (
         db.query(
