@@ -6,25 +6,23 @@ import {
   inviteCooperativeUser,
 } from '../../api/governance'
 import { getOrganizationType } from '../../utils/auth'
-import { COOP_ROLES, ROLE_DESCRIPTIONS, ROLES, SOLO_ROLES, roleLabel, rolesForTrack } from '../../utils/roles'
+import { ROLE_DESCRIPTIONS, ROLES, roleLabel, rolesForTrack } from '../../utils/roles'
 
 /**
- * Role picker (#244). Lists every role the API accepts, grouped by track, with
- * the current organisation's track first so the common choice is one click.
+ * Role picker (#255). Only the roles that belong to this workspace's track —
+ * a cooperative cannot grant farm_manager, a solo farm cannot grant
+ * finance_officer. A stale off-track role is listed so it can be corrected.
  */
-function RoleOptions({ organizationType }) {
-  const primary = rolesForTrack(organizationType)
-  const primaryLabel = organizationType === 'solo_farm' ? 'Solo farm roles' : 'Cooperative roles'
-  const secondary = organizationType === 'solo_farm' ? COOP_ROLES : SOLO_ROLES
-  const secondaryLabel = organizationType === 'solo_farm' ? 'Cooperative roles' : 'Solo farm roles'
-  const renderOptions = (roles) => roles.map((role) => (
-    <option key={role} value={role} title={ROLE_DESCRIPTIONS[role]}>{roleLabel(role)}</option>
-  ))
+function RoleOptions({ organizationType, currentRole }) {
+  const allowed = [...rolesForTrack(organizationType)]
+  const extras = currentRole && !allowed.includes(currentRole) ? [currentRole] : []
+  const label = organizationType === 'solo_farm' ? 'Solo farm roles' : 'Cooperative roles'
   return (
-    <>
-      <optgroup label={primaryLabel}>{renderOptions(primary)}</optgroup>
-      <optgroup label={secondaryLabel}>{renderOptions(secondary.filter((role) => role !== ROLES.ADMIN))}</optgroup>
-    </>
+    <optgroup label={label}>
+      {[...allowed, ...extras].map((role) => (
+        <option key={role} value={role} title={ROLE_DESCRIPTIONS[role]}>{roleLabel(role)}</option>
+      ))}
+    </optgroup>
   )
 }
 
@@ -138,7 +136,7 @@ export default function GovernanceSettings({ cooperativeId }) {
                       disabled={saving === user.id || !user.is_active}
                       onChange={(event) => changeUser(user.id, { role: event.target.value })}
                     >
-                      <RoleOptions organizationType={organizationType} />
+                      <RoleOptions organizationType={organizationType} currentRole={user.role} />
                     </select>
                   </label>
                   <button
