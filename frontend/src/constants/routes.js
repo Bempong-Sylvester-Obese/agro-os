@@ -31,6 +31,12 @@ export const MARKETING_PATHS = {
   investors: '/investors',
 }
 
+const MARKETING_SEGMENT_TO_KEY = Object.fromEntries(
+  Object.entries(MARKETING_PATHS)
+    .filter(([, path]) => path !== '/')
+    .map(([key, path]) => [path.replace(/^\//, '').split('/')[0], key]),
+)
+
 export function dashboardPath(section = 'overview') {
   const safe = DASHBOARD_SECTIONS.includes(section) ? section : 'overview'
   return safe === 'overview' ? '/dashboard' : `/dashboard/${safe}`
@@ -42,6 +48,5 @@ export function pageKeyFromPath(pathname) {
   if (pathname.startsWith('/login')) return 'login'
   if (pathname.startsWith('/subscribe')) return 'subscription'
   const segment = pathname.replace(/^\//, '').split('/')[0]
-  if (segment in MARKETING_PATHS) return segment
-  return 'home'
+  return MARKETING_SEGMENT_TO_KEY[segment] || 'home'
 }

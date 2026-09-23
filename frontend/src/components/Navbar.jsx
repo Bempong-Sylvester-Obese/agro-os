@@ -48,7 +48,6 @@ export default function Navbar({ isAuthenticated, onLogout }) {
   }
 
   function isActive(key) {
-    if (key === 'bookDemo') return pathname.startsWith('/book-demo')
     return activePage === key
   }
 
