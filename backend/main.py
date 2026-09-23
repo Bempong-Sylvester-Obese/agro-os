@@ -33,6 +33,7 @@ from app.routes import (
     intake,
     loans,
     marketing,
+    organizations,
     payroll,
     plans,
     production,
@@ -65,9 +66,19 @@ _PUBLIC_PATHS = frozenset({
     "/health/ready",
     "/auth/login",
     "/auth/signup",
+    "/auth/refresh",
+    "/auth/logout",
+    "/auth/password-reset-request",
+    "/auth/password-reset-confirm",
+    "/auth/accept-invite",
+    "/auth/roles",
     "/marketing/demo-bookings",
     "/plans",
     "/subscriptions/pre-checkout",
+    # Provider-neutral webhook paths (canonical) + legacy Moolre aliases.
+    "/webhooks/payment",
+    "/webhooks/ussd",
+    settings.webhook_callback_path,
     "/webhooks/moolre/payment",
     "/webhooks/moolre/ussd",
     "/ussd/callback",
@@ -133,15 +144,14 @@ async def lifespan(app: FastAPI):
     yield
 
 
-_is_production = settings.app_env == "production"
+_is_production = settings.is_production
 _docs_url = None if _is_production else "/docs"
 _redoc_url = None if _is_production else "/redoc"
 
 app = FastAPI(
     title="AgroOS API",
     description=(
-        "Backend API for AgroOS — Digital Infrastructure for African Farmer Cooperatives.\n\n"
-        "Powered by Moolre for payments, SMS, and USSD access."
+        "Backend API for AgroOS — Digital Infrastructure for African Farmer Cooperatives."
     ),
     version="1.0.0",
     docs_url=_docs_url,
@@ -211,6 +221,7 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(cooperatives.router)
 app.include_router(subscriptions.router)
+app.include_router(organizations.router)
 app.include_router(farmers.router)
 app.include_router(intake.router)
 app.include_router(aggregation.router)
@@ -253,7 +264,7 @@ def root():
 def health_check():
     """Health check endpoint for deployment monitors."""
     model_meta = agro_ai_runtime.metadata
-    require_artifact = settings.agro_ai_require_artifact or settings.app_env == "production"
+    require_artifact = settings.agro_ai_require_artifact or settings.is_production
     model_ready = not (require_artifact and model_meta["is_synthetic_fallback"])
     status = "healthy" if model_ready else "degraded"
 
@@ -271,7 +282,7 @@ def _readiness_payload() -> tuple[dict, bool]:
     model_source = "synthetic" if model_meta["is_synthetic_fallback"] else "artifact"
     require_artifact = (
         current_settings.agro_ai_require_artifact
-        or current_settings.app_env.lower() in {"production", "prod"}
+        or current_settings.is_production
     )
     model_ready = not (require_artifact and model_source == "synthetic")
 

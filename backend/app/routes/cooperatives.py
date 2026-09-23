@@ -12,11 +12,14 @@ from app.schemas.schemas import (
     CooperativeResponse,
     CooperativeUpdate,
 )
+from app.dependencies.cooperative_scope import CooperativeScope, require_cooperative_scope
 from app.services.auth_service import (
     enforce_cooperative_scope,
     get_current_user,
     require_roles,
 )
+from app.services import entitlements
+from app.services import subscription_lifecycle as lifecycle
 from app.services.providers.factory import get_payment_provider
 
 router = APIRouter(prefix="/cooperatives", tags=["cooperatives"])
@@ -44,6 +47,7 @@ def list_cooperatives(
     limit: int = Query(default=100, le=MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user),
+    cooperative_scope: CooperativeScope | None = Depends(require_cooperative_scope),
 ):
     """List all cooperatives."""
     query = db.query(Cooperative)
@@ -57,6 +61,7 @@ def get_cooperative(
     cooperative_id: int,
     db: Session = Depends(get_db),
     current_user: User | None = Depends(get_current_user),
+    cooperative_scope: CooperativeScope | None = Depends(require_cooperative_scope),
 ):
     """Get a cooperative by ID."""
     enforce_cooperative_scope(current_user, cooperative_id)
@@ -64,6 +69,25 @@ def get_cooperative(
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
     return coop
+
+
+@router.get("/{cooperative_id}/usage")
+def get_cooperative_usage(
+    cooperative_id: int,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+    cooperative_scope: CooperativeScope | None = Depends(require_cooperative_scope),
+) -> dict:
+    """Usage vs plan limits (members, workers, SMS) and feature availability.
+
+    Computed on the *effective* plan after applying lifecycle transitions, so
+    the dashboard shows exactly what the API will enforce.
+    """
+    enforce_cooperative_scope(current_user, cooperative_id)
+    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
+    if not coop:
+        raise HTTPException(status_code=404, detail="Cooperative not found")
+    return entitlements.usage_summary(db, coop)
 
 
 @router.put("/{cooperative_id}", response_model=CooperativeResponse)
@@ -92,8 +116,10 @@ def update_cooperative(
                 status_code=403,
                 detail="Plan upgrades require a completed checkout",
             )
-        update_values["subscription_status"] = "active"
+        # Downgrade is immediate: free tier has no billing period.
+        update_values["subscription_status"] = lifecycle.STATUS_ACTIVE
         update_values["subscription_expires_at"] = None
+        update_values["subscription_band"] = None
 
     for field, value in update_values.items():
         setattr(coop, field, value)
@@ -126,7 +152,7 @@ async def provision_wallet(
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
         
-    if coop.moolre_account_number:
+    if coop.wallet_account_id:
         raise HTTPException(status_code=400, detail="Wallet already provisioned")
         
     provider = get_payment_provider()
@@ -141,7 +167,7 @@ async def provision_wallet(
             detail=f"Failed to provision wallet: {result.get('raw', {}).get('message', 'Unknown error')}"
         )
         
-    coop.moolre_account_number = result.get("account_number")
+    coop.wallet_account_id = result.get("account_number")
     
     if current_user:
         db.add(
@@ -151,7 +177,7 @@ async def provision_wallet(
                 action="wallet.provisioned",
                 resource_type="cooperative",
                 resource_id=str(coop.id),
-                details=f"account_number={coop.moolre_account_number}",
+                details=f"account_number={coop.wallet_account_id}",
             )
         )
     db.commit()
@@ -166,7 +192,7 @@ def delete_cooperative(
     current_user: User | None = Depends(require_roles("admin")),
 ):
     """Delete a cooperative (only if it has no farmers)."""
-    if get_settings().app_env.lower() in ("production", "prod"):
+    if get_settings().is_production:
         raise HTTPException(status_code=404, detail="Not found")
     enforce_cooperative_scope(current_user, cooperative_id)
     coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()

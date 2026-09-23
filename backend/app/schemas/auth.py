@@ -1,12 +1,15 @@
+from datetime import datetime
 from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field
+
+from app.auth.roles import RoleLiteral
 
 
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
-    role: Literal["admin", "finance_officer", "farm_owner", "farm_manager", "supervisor"] = "finance_officer"
+    role: RoleLiteral = "finance_officer"
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -19,21 +22,48 @@ class UserResponse(BaseModel):
     is_active: bool = True
     onboarding_role: str | None = None
     cooperative_id: int | None = None
+    organization_id: int | None = None
 
     class Config:
         from_attributes = True
 
 
 class UserUpdate(BaseModel):
-    role: Literal["admin", "finance_officer", "farm_owner", "farm_manager", "supervisor"] | None = None
+    role: RoleLiteral | None = None
     is_active: bool | None = None
+
+class CurrentUserResponse(UserResponse):
+    """Authoritative profile for the signed-in user (``GET /auth/me``).
+
+    The frontend hydrates its session from this instead of inventing display
+    strings from JWT claims (#251).
+    """
+
+    cooperative_name: str | None = None
+    organization_type: str | None = None
+    password_change_required: bool = False
+
 
 class Token(BaseModel):
     access_token: str
     token_type: str
+    # Rotating refresh token + access-token lifetime in seconds (#248). The
+    # dashboard exchanges the refresh token at ``POST /auth/refresh`` before
+    # the access token expires.
+    refresh_token: str | None = None
+    expires_in: int | None = None
     user: UserResponse | None = None
+    cooperative_name: str | None = None
     organization_type: str | None = None
     password_change_required: bool = False
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str | None = None
 
 class SignupRequest(BaseModel):
     """Combined cooperative + user registration in one step."""
@@ -51,6 +81,8 @@ class SignupRequest(BaseModel):
 class SignupResponse(BaseModel):
     access_token: str
     token_type: str
+    refresh_token: str | None = None
+    expires_in: int | None = None
     cooperative_id: int
     cooperative_name: str
     subscription_plan: Literal["starter", "growth", "solo"]
@@ -73,9 +105,40 @@ class PasswordChangeRequest(BaseModel):
 
 class InviteUserRequest(BaseModel):
     email: str
-    role: Literal[
-        "admin", "finance_officer", "farm_owner", "farm_manager", "supervisor"
-    ]
+    role: RoleLiteral
+
+
+class InviteDelivery(BaseModel):
+    """How the invite reached (or did not reach) the invitee (#248)."""
+
+    channel: str
+    delivered: bool
+    message: str
+    expires_at: datetime
+    # Only present when the configured email adapter could not deliver, so an
+    # administrator can pass the link on by hand instead of reading server logs.
+    invite_link: str | None = None
+
+
+class InviteUserResponse(UserResponse):
+    delivery: InviteDelivery
+
+
+class PasswordResetRequestResponse(BaseModel):
+    message: str
+    channel: str
+    delivered: bool
+
+
+class RoleDescriptor(BaseModel):
+    key: str
+    label: str
+    capabilities: str
+    tracks: list[str]
+
+
+class RoleCatalogue(BaseModel):
+    roles: list[RoleDescriptor]
 
 
 class AcceptInviteRequest(BaseModel):

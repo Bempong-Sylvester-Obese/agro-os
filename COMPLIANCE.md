@@ -1,14 +1,14 @@
 # AgroOS Compliance Policy
 
-> **Status:** Draft — Hackathon Scope (Moolre Startup Cup, July 2026)
-> **Last updated:** 2026-07
+> **Status:** Production — Provider-Neutral Architecture
+> **Last updated:** 2026-08
 > **Maintainer:** AgroOS Core Team (Ramzy, Julien, Elvis, Sylvester)
 >
-> ⚠️ This document is a non-legal summary for cooperative administrators,
-> Moolre reviewers, and hackathon evaluators. It does not constitute legal
-> advice. Before any production deployment or onboarding of real farmer
-> data or funds, this policy must be reviewed by qualified Ghanaian legal
-> counsel and, where relevant, by Moolre's own compliance team.
+> This document is a non-legal summary for cooperative administrators,
+> partners, and auditors. It does not constitute legal advice. Before any
+> production deployment or onboarding of real farmer data or funds, this
+> policy must be reviewed by qualified Ghanaian legal counsel and, where
+> relevant, by payment provider compliance teams.
 
 ---
 
@@ -16,11 +16,11 @@
 
 AgroOS is a cooperative management platform that touches farmer personal
 data, cooperative finances, SMS/USSD communication, and third-party payment
-rails (Moolre). Operating in this space means AgroOS sits at the
-intersection of several regulatory regimes in Ghana, not just data privacy.
-This policy is the single index of what applies, what is currently in
-place, and what is still outstanding — written so a partner (like Moolre)
-or an auditor can see our compliance posture at a glance.
+rails. Operating in this space means AgroOS sits at the intersection of
+several regulatory regimes in Ghana, not just data privacy. This policy is
+the single index of what applies, what is currently in place, and what is
+still outstanding — written so a partner or auditor can see our compliance
+posture at a glance.
 
 For the detailed data-handling policy (PII categories, retention, consent),
 see [`docs/data-privacy.md`](docs/data-privacy.md). For vulnerability
@@ -35,7 +35,7 @@ being an agritech / cooperative-fintech platform.
 | Area | Governing Law / Body | Relevance to AgroOS |
 |---|---|---|
 | Data protection | Data Protection Act, 2012 (Act 843); Data Protection Commission (DPC) | Farmer PII, credit scores, SMS logs — see `docs/data-privacy.md` |
-| Payment services | Payment Systems and Services Act, 2019 (Act 987); Bank of Ghana (BoG) | AgroOS itself is not a payment service provider — it integrates with Moolre, a licensed PSP, rather than holding or moving money directly |
+| Payment services | Payment Systems and Services Act, 2019 (Act 987); Bank of Ghana (BoG) | AgroOS itself is not a payment service provider — it integrates with licensed PSPs rather than holding or moving money directly |
 | Anti-money laundering | Anti-Money Laundering Act, 2020 (Act 1044); Financial Intelligence Centre (FIC) | Cooperative dues, loans, and aggregate wallet balances create AML exposure once real money and real identities are involved |
 | Electronic transactions | Electronic Transactions Act, 2008 (Act 772) | Consent, record-keeping, and validity of electronic/USSD transactions |
 | Telecom / SMS | Electronic Communications Act, 2008 (Act 775); National Communications Authority (NCA) | Sender ID registration, unsolicited messaging rules |
@@ -43,51 +43,47 @@ being an agritech / cooperative-fintech platform.
 | Consumer protection | Consumer Protection principles under BoG/NCA guidelines | Transparent pricing, dispute handling, opt-out rights |
 
 AgroOS does not claim compliance with all of the above today. This table
-exists so gaps are visible and trackable rather than discovered later —
-which is also what a partner like Moolre will want to see before
-accepting the integration into production.
+exists so gaps are visible and trackable rather than discovered later.
 
 ---
 
-## 3. Payment Compliance (Moolre Integration)
+## 3. Payment Compliance
 
 AgroOS does not hold a Payment Service Provider (PSP) or Dedicated
 Electronic Money Issuer (DEMI) license, and is not attempting to become
 one. Instead:
 
 - All money movement (collections, disbursements, USSD payment prompts)
-  is routed through **Moolre**, a licensed and regulated payment partner.
-  AgroOS never custodies farmer or cooperative funds directly.
-- Webhook-verified payment confirmations (`X-Moolre-Signature`,
-  HMAC-SHA256) are the system of record for whether a payment succeeded —
-  see `SECURITY.md` § Webhook Security.
-- AgroOS's obligation is to accurately reflect Moolre-confirmed
+  is routed through **licensed payment providers**. AgroOS never custodies
+  farmer or cooperative funds directly.
+- Webhook-verified payment confirmations (HMAC-SHA256) are the system of
+  record for whether a payment succeeded — see `SECURITY.md` § Webhook Security.
+- AgroOS's obligation is to accurately reflect provider-confirmed
   transaction state, not to independently settle funds.
-- The open item flagged in `SECURITY.md` — the USSD webhook currently has
-  **no signature verification** — is a payment-integrity gap and is
-  treated as **P0** for exactly this reason: an unverified webhook is a
-  direct financial-integrity risk, not just a general security bug.
+- The provider adapter layer (`backend/app/adapters/`) translates
+  provider-specific payloads into normalized `PaymentEvent` domain objects,
+  decoupling business logic from any single provider.
 
 ### 3.1 AML / KYC posture
 
-- **Current (hackathon/demo):** No KYC is performed. All farmer records
-  must be synthetic (see `docs/data-privacy.md` § 6).
-- **Production (projected):** Farmer and cooperative-admin identity
-  verification will be delegated to Moolre's existing KYC flow where
-  possible, rather than AgroOS building a parallel KYC system. Cooperative
-  aggregate wallet balances and dues collection thresholds will need
-  AML transaction-monitoring rules before real deployment — not yet
-  implemented, tracked as a future issue.
+- **Current:** No KYC is performed. All farmer records must be synthetic
+  (see `docs/data-privacy.md` § 6).
+- **Projected:** Farmer and cooperative-admin identity verification will be
+  delegated to the payment provider's existing KYC flow where possible,
+  rather than AgroOS building a parallel KYC system. Cooperative aggregate
+  wallet balances and dues collection thresholds will need AML
+  transaction-monitoring rules before real deployment — not yet implemented,
+  tracked as a future issue.
 
 ---
 
 ## 4. Telecom Compliance (SMS / USSD)
 
-- All outbound SMS uses the **Moolre-approved sender ID** only. Spoofed
+- All outbound SMS uses the **provider-approved sender ID** only. Spoofed
   or unapproved sender IDs are prohibited and would violate NCA rules —
   see `docs/data-privacy.md` § 5.2.
-- USSD menu flows run through Moolre's short-code infrastructure; AgroOS
-  does not operate its own short code.
+- USSD menu flows run through the provider's short-code infrastructure;
+  AgroOS does not operate its own short code.
 - Consent is required before financial or credit-related SMS is sent —
   cooperative membership alone is not sufficient consent (§5.1 of the
   data privacy policy).
@@ -99,16 +95,23 @@ one. Instead:
 AgroOS mirrors, but does not replace, the legal structure of a
 cooperative society under Act 1148:
 
-- Role scoping in-app (`admin`, `finance_officer`) reflects operational
-  roles, not the formal governance roles (e.g. management committee,
-  auditor) a registered cooperative is required to have.
+- Role scoping in-app (`admin`, `finance_officer`, `field_officer`,
+  `operations_officer`, `sales_officer`; `farm_owner`, `farm_manager`,
+  `supervisor` for solo farms) reflects operational roles, not the formal
+  governance roles (e.g. management committee, auditor) a registered
+  cooperative is required to have.
 - AgroOS is a record-keeping and communication tool for a cooperative's
   existing governance — it does not itself constitute the cooperative's
   legal registration, bylaws, or audit obligations to the Department of
   Co-operatives.
-- Cross-cooperative data isolation (enforced at the API layer per
-  `SECURITY.md`) reflects that each cooperative is a distinct legal
-  entity, even where multiple cooperatives use the same AgroOS instance.
+- Cross-cooperative data isolation reflects that each cooperative is a
+  distinct legal entity, even where multiple cooperatives use the same
+  AgroOS instance. AgroOS has formally adopted **API-only tenancy**: the
+  FastAPI layer derives the cooperative from the authenticated user's token
+  on every request and the browser never holds database credentials.
+  Database row-level security is not deployed; the accepted residual risk
+  (compromise of the backend host exposes all tenants) and its controls are
+  set out in `docs/architecture/tenancy-decision.md` and `SECURITY.md`.
 
 ---
 
@@ -127,29 +130,29 @@ cooperative society under Act 1148:
 
 | Item | Status |
 |---|---|
-| Data privacy policy documented | ✅ Done (`docs/data-privacy.md`) |
-| Security policy & webhook verification (payments) | ✅ Done for payment webhook |
-| USSD webhook signature verification | ✅ Implemented — shared-secret validation |
-| Role-based access control (production) | ✅ Enforced — JWT scoped per cooperative |
-| Supabase row-level security | ✅ Deployed — tenant-scoped RLS as defense-in-depth |
-| AML/transaction monitoring | ❌ Not started — deferred to Moolre KYC + future issue |
-| Data Protection Commission registration | ❌ Not applicable pre-launch; required before real farmer data |
-| Legal review of this policy and data-privacy.md | ❌ Outstanding — required before production |
-
-This table is intentionally blunt: AgroOS is hackathon-stage software, and
-this policy exists so that stays visible rather than getting glossed over
-in front of partners or judges.
+| Data privacy policy documented | Done (`docs/data-privacy.md`) |
+| Security policy & webhook verification (payments) | Done for payment webhook |
+| USSD webhook signature verification | Done — shared-secret validation |
+| Role-based access control (production) | Enforced — JWT scoped per cooperative; eight-role model in `backend/app/auth/roles.py`, per-route `require_roles` gates, role matrix in `docs/api-contract.md` |
+| Tenant isolation model | Decided — API-only tenancy; database RLS not deployed or relied on. Decision record and threat model: `docs/architecture/tenancy-decision.md` |
+| Client database access | None — browser bundle holds no DB SDK/credentials (enforced by frontend test) |
+| Provider-neutral architecture | Done — payment/SMS behind port interfaces |
+| AML/transaction monitoring | Not started — relies on the payment provider's KYC; no in-app monitoring issue opened yet |
+| Data Protection Commission registration | Not applicable pre-launch; required before real farmer data |
+| Legal review of this policy and data-privacy.md | Outstanding — required before production |
+| Per-member SMS consent recorded and enforced | Done — `sms_consent` defaults off, grant/withdraw timestamps + audit rows, USSD self-service opt-out, every member-addressed send path skips and logs `skipped_no_consent` ([#247](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/247)); see `docs/data-privacy.md` §5.1 |
+| Short production token TTL, refresh, email delivery of reset/invite tokens | Done — 60-minute production access tokens, rotating `POST /auth/refresh`, `EmailProvider` port for invite/reset ([#248](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/248)) |
+| Formal role model beyond `admin`/`finance_officer` | Done — `Role` enum covers every gated role; invite/update accept all of them; dashboard nav and actions gated per role ([#244](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/244)) |
+| Subscription entitlements enforced server-side | Enforced — band-aware member caps, monthly SMS quotas, and AgroCredit/scores feature gates in `backend/app/services/entitlements.py`; see [`docs/billing.md`](docs/billing.md) |
 
 ---
 
 ## 8. Contact
 
-For questions during the Moolre Startup Cup period, contact the AgroOS
-team via the project repository or Moolre hackathon communication
-channels. A designated compliance/DPO contact will be added here ahead of
-any production launch.
+For questions, contact the AgroOS team via the project repository. A
+designated compliance/DPO contact will be added ahead of any production
+launch.
 
 ---
 
 *AgroOS — Agricultural Cooperative Management Platform*
-*Moolre Startup Cup 2026 | Team: Ramzy · Julien · Elvis · Sylvester*

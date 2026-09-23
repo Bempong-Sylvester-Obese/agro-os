@@ -3,8 +3,9 @@
 from datetime import datetime, timedelta
 
 import jwt
+import pytest
 
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.database.demo_constants import DEMO_COOPERATIVE_NAME
 from app.database.purge_demo import purge_demo_cooperative, reset_demo_workspace
 from app.database.seed import seed_golden_path
@@ -353,3 +354,67 @@ def test_demo_reset_rejects_malformed_expired_and_cross_workspace_tokens(
     assert db.query(AdminAuditLog).filter(
         AdminAuditLog.action == "demo_workspace.reset"
     ).count() == 0
+
+
+# ---------------------------------------------------------------------------
+# #223: production gates must not depend on APP_ENV casing
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("app_env", "expected"),
+    [
+        ("production", True),
+        ("Production", True),
+        ("PRODUCTION", True),
+        ("prod", True),
+        (" prod ", True),
+        ("development", False),
+        ("staging", False),
+        ("test", False),
+    ],
+)
+def test_settings_is_production_is_case_insensitive(app_env, expected):
+    assert Settings.model_construct(app_env=app_env).is_production is expected
+
+
+@pytest.mark.parametrize("app_env", ["production", "Production", "PROD"])
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [("get", "/admin/demo-reset/preview"), ("post", "/admin/demo-reset/confirm")],
+)
+def test_demo_reset_api_is_hidden_in_production_regardless_of_casing(
+    client, monkeypatch, app_env, method, path
+):
+    from app.routes import admin as admin_module
+
+    monkeypatch.setattr(
+        admin_module,
+        "get_settings",
+        lambda: Settings.model_construct(app_env=app_env),
+    )
+    kwargs = {"json": {"confirmation_token": "x", "confirmation_phrase": "RESET DEMO"}} if method == "post" else {}
+    response = getattr(client, method)(path, **kwargs)
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("is_production", "dry_run", "allow_production", "refused"),
+    [
+        (True, False, False, True),
+        (True, True, False, False),
+        (True, False, True, False),
+        (False, False, False, False),
+    ],
+)
+def test_purge_cli_refuses_destructive_run_in_production_without_flag(
+    is_production, dry_run, allow_production, refused
+):
+    from scripts.purge_demo_data import production_guard
+
+    message = production_guard(
+        is_production=is_production,
+        dry_run=dry_run,
+        allow_production=allow_production,
+    )
+    assert (message is not None) is refused

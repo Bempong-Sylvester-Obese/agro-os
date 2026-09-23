@@ -64,10 +64,11 @@ describe('Loans operations', () => {
     expect(screen.getByRole('alert').textContent).toContain('future repayment due date')
     expect(loansApi.approveLoan).not.toHaveBeenCalled()
 
-    fireEvent.change(repaymentInput, { target: { value: '2026-09-01' } })
+    const futureDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    fireEvent.change(repaymentInput, { target: { value: futureDate } })
     fireEvent.click(screen.getByRole('button', { name: 'Approve loan' }))
 
-    await waitFor(() => expect(loansApi.approveLoan).toHaveBeenCalledWith(12, '2026-09-01'))
+    await waitFor(() => expect(loansApi.approveLoan).toHaveBeenCalledWith(12, futureDate))
   })
 
   it('requires a rejection reason and reports SMS delivery', async () => {

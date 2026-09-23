@@ -2,95 +2,106 @@
 
 **The Digital Infrastructure and Operating System for African Farmer Cooperatives.**
 
-Built for the **Moolre Cup Hackathon**, AgroOS shifts the conversation from fragmented agricultural apps to a unified ecosystem. It empowers farmer organizations to manage members, process bulk disbursements, and generate AI-driven credit scores using offline-first Moolre USSD integration.
+AgroOS is a B2B management platform for Ghanaian agricultural organisations. Cooperatives use it to run members, dues, input loans, produce settlement, communications, and AgroCredit scoring; independent **solo farms** use the same platform for workers, tasks, attendance, and payroll (see [`docs/solo-farm-product-spec.md`](docs/solo-farm-product-spec.md)). Farmers reach it from any feature phone over USSD and SMS.
 
-By bridging the gap between unconnected rural farmers and formal financial ecosystems, AgroOS provides enterprise-grade infrastructure tailored for the agricultural value chain
+Payments, SMS, and USSD are integrated through provider-neutral ports; the current adapters target Moolre and Africa's Talking. Product framing lives in [`docs/product-strategy.md`](docs/product-strategy.md).
 
 ---
 
 ## Core Features
 
 * **Member Management (CRM):** Centralized dashboard replacing physical ledgers to track crop, animal, or mixed production profiles and cooperative standing.
-* **Moolre Finance Hub:** Cooperative-defined dues obligations and reminders, farmer-initiated dues payments, and bulk loan disbursements powered by Moolre.
+* **Finance Hub:** Cooperative-defined dues obligations and reminders, farmer-initiated dues payments, and bulk loan disbursements via integrated payment providers.
 * **Cooperative Communications:** SMS broadcasts for dues reminders, meeting notices, and payment confirmations.
 * **AgroCredit AI:** A machine learning engine (Scikit-learn) that synthesizes cooperative data, payment consistency, and historical production output to generate a dynamic **Farmer Trust Score**.
-* **Native USSD Access:** Offline-first interaction allowing farmers to dial a native Moolre Merchant Code to pay dues and check balances without needing internet access or a smartphone.
+* **Native USSD Access:** Offline-first interaction allowing farmers to dial a USSD short code to pay dues and check balances without needing internet access or a smartphone.
 * **Production Tracking:** Unit-aware expected vs. actual records for crop, animal, and mixed producers.
 
 ---
 
 ## Technology Stack
 
-* **Frontend:** Vite, React, custom CSS
-* **Backend API & Webhooks:** Python, FastAPI
-* **Database:** Supabase (PostgreSQL)
-* **Payments, USSD & Messaging Infrastructure:** Moolre APIs
-* **AI / Machine Learning:** Scikit-learn
-* **Deployment:** Vercel (Frontend), Render (Backend)
+| Layer | Technology |
+|---|---|
+| Frontend | Vite, React, custom CSS |
+| Backend API & Webhooks | Python, FastAPI |
+| Database | Supabase (PostgreSQL) |
+| Payments & USSD | Provider adapters (currently Moolre) |
+| AI / Machine Learning | Scikit-learn |
+| Deployment | Vercel (Frontend), Render (Backend) |
+
+---
+
+## Architecture
+
+AgroOS follows a **ports-and-adapters** architecture. Payment and SMS providers are abstract behind port interfaces, with concrete adapters that translate provider-specific APIs into domain-normalized operations. See [`docs/architecture.md`](docs/architecture.md) for the full architecture document, [`docs/architecture/adding-a-provider.md`](docs/architecture/adding-a-provider.md) to integrate a new payment/SMS/USSD provider, and [`docs/architecture/tenancy-decision.md`](docs/architecture/tenancy-decision.md) for the tenant-isolation model.
+
+```
+┌─────────────────────────────────────────────────┐
+│                  Frontend (Vite + React)         │
+└────────────────────┬────────────────────────────┘
+                     │ REST API
+┌────────────────────▼────────────────────────────┐
+│              FastAPI Backend                     │
+│  Routes → Services → Domain → Provider Ports    │
+│                                                 │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
+│  │ Payment  │  │   SMS    │  │   USSD   │      │
+│  │ Provider │  │ Provider │  │ Adapters │      │
+│  │  Port    │  │  Port    │  │          │      │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘      │
+│       │              │             │             │
+│  ┌────▼─────┐  ┌────▼─────┐  ┌────▼─────┐      │
+│  │ Provider │  │ Provider │  │ Gateway  │      │
+│  │ Adapters │  │ Adapters │  │ Adapters │      │
+│  └──────────┘  └──────────┘  └──────────┘      │
+└────────────────────┬────────────────────────────┘
+                     │
+┌────────────────────▼────────────────────────────┐
+│          PostgreSQL (Supabase)                   │
+└─────────────────────────────────────────────────┘
+```
 
 ---
 
 ## Monorepo Structure
 
 ```text
-agroos/
-+-- backend/                   # FastAPI application and API contracts
-|   +-- README.md
-+-- docs/                      # Product strategy and planning notes
-|   +-- product-strategy.md
-+-- frontend/                  # Vite + React web dashboard
-|   +-- README.md
-+-- supabase/                  # Database schema, migrations, and seed data
-|   +-- README.md
-+-- .env.example
-+-- .gitignore
-+-- README.md
-
+agro-os/
+├── backend/                   # FastAPI application and API contracts
+├── docs/                      # Product strategy, architecture, runbooks
+│   ├── architecture.md        # System architecture document
+│   ├── architecture/          # Provider guide, tenancy decision record
+│   └── archive/               # Historical hackathon material (not maintained)
+├── frontend/                  # Vite + React web dashboard
+├── supabase/                  # Database schema, migrations, and seed data
+├── .env.example               # Root environment reference
+└── README.md
 ```
 
 ---
 
-## Moolre Integration Focus
-
-AgroOS is designed around the Moolre products that best fit farmer cooperatives:
-
-* **Payment Collection:** Cooperatives define dues and send reminders; farmers initiate their own payments through mobile money or USSD.
-* **USSD Service:** Give feature-phone farmers an offline-first menu for dues payment, loan checks, announcements, and farm status.
-* **Bulk Disbursement / Transfers:** Send approved input loans, supplier payments, or cooperative payouts to many recipients.
-* **SMS:** Send dues reminders, meeting notices, weather alerts, and payment confirmations.
-* **Payment Webhooks:** Receive real-time payment updates so AgroOS can reconcile transactions and update Trust Scores.
-* **Transaction & Status APIs:** Check wallet/account status, list transactions, and verify payment or transfer outcomes.
-
-Resources:
-
-* [Moolre API Documentation](https://docs.moolre.com/#/quickstart)
-* [Moolre Products Overview](https://moolre.com/#products)
-
----
-
 ## Getting Started
-
-This repository is an active monorepo: the Vite + React dashboard and FastAPI backend are both implemented, including production, communications, transactions, loans, webhooks, and Agro-AI routes backed by a tested backend service.
 
 ### Prerequisites
 
 * Node.js (v18+)
 * Python (3.10+)
 * Supabase CLI (optional, for local DB management)
-* Moolre Sandbox access and API credentials
+* Payment provider sandbox credentials
 
 ### 1. Clone and Configure
 
 1. Copy `backend/.env.example` to `backend/.env` and `frontend/.env.example` to `frontend/.env` for local development.
-2. Read `docs/product-strategy.md` for the product vision and Golden Path demo.
+2. Read `docs/product-strategy.md` for the product vision.
 3. Choose a feature branch before making changes.
 4. For deeper backend setup and API details, see `backend/README.md`.
 
-### Environment files
+### Environment Files
 
-- **`backend/.env`**: runtime env file for the FastAPI backend. `backend/app/config.py` loads `.env` from the backend working directory, so copy from `backend/.env.example`.
-- **`frontend/.env`**: local env file for the Vite app. Copy from `frontend/.env.example` (for example `VITE_API_URL=http://localhost:8000`, `VITE_COOPERATIVE_ID=1`).
-- **Root `.env` / `.env.example`**: shared reference for workspace-level variables. Keep Moolre keys aligned with backend names (for example `MOOLRE_API_URL`, `DEFAULT_SMS_SENDER_ID`). `NEXT_PUBLIC_API_URL` is deprecated and not used by this Vite frontend.
+- **`backend/.env`**: Runtime env file for the FastAPI backend. Copy from `backend/.env.example`.
+- **`frontend/.env`**: Local env file for the Vite app. Copy from `frontend/.env.example` (e.g., `VITE_API_URL=http://localhost:8000`, `VITE_COOPERATIVE_ID=1`).
+- **Root `.env` / `.env.example`**: Shared reference for workspace-level variables.
 
 ### 2. Local Development
 
@@ -113,30 +124,41 @@ npm run build          # Build Vite frontend
 
 Reference docs:
 
-- `docs/` for strategy, demo, and planning documents
-- `docs/moolre-setup.md` for sandbox/live credential setup and local webhook testing
-- `backend/README.md` for backend endpoints, environment variables, linting, and test commands
+| Topic | Document |
+|---|---|
+| Product framing, customers, roadmap | [`docs/product-strategy.md`](docs/product-strategy.md) |
+| System architecture | [`docs/architecture.md`](docs/architecture.md) |
+| Adding a payment / SMS / USSD provider | [`docs/architecture/adding-a-provider.md`](docs/architecture/adding-a-provider.md) |
+| Frontend ↔ backend API contract | [`docs/api-contract.md`](docs/api-contract.md) |
+| Backend endpoints, env vars, tests | [`backend/README.md`](backend/README.md) |
+| Deployment runbook (Render, Vercel, webhooks) | [`docs/deployment.md`](docs/deployment.md) |
+| Payment provider setup | [`docs/moolre-setup.md`](docs/moolre-setup.md) |
+| Billing and subscription lifecycle | [`docs/billing.md`](docs/billing.md) |
+| Security, tenancy, compliance, privacy | [`SECURITY.md`](SECURITY.md), [`docs/architecture/tenancy-decision.md`](docs/architecture/tenancy-decision.md), [`COMPLIANCE.md`](COMPLIANCE.md), [`docs/data-privacy.md`](docs/data-privacy.md) |
+| Solo-farm tier | [`docs/solo-farm-product-spec.md`](docs/solo-farm-product-spec.md) |
+| AgroCredit / Agro-AI | [`docs/scoring-systems.md`](docs/scoring-systems.md), [`docs/agro-ai-governance.md`](docs/agro-ai-governance.md) |
 
-### 3. Team Work Areas
+### 3. Repository Areas
 
-* `frontend/` owns the cooperative admin dashboard.
-* `backend/` owns FastAPI routes, webhook handling, and Trust Score logic.
-* `supabase/` owns schema, migrations, and demo seed data.
-* `docs/` owns product strategy and shared planning notes.
+* `frontend/` — cooperative and solo-farm dashboards plus public marketing pages.
+* `backend/` — FastAPI routes, services, provider adapters, webhooks, USSD, scoring, Alembic migrations.
+* `supabase/` — reference SQL mirroring the ORM; Alembic is authoritative.
+* `docs/` — product, architecture, and operations documentation.
 
 ---
 
-## The AgroCredit AI Engine
+## AgroCredit AI Engine
 
-For the hackathon MVP, AgroCredit includes `agro-ai`: a Scikit-learn Random Forest model trained on deterministic synthetic cooperative data. It uses dues consistency, payment timeliness, production completion and output, cooperative attendance, loan history, outstanding balances, and savings behavior to generate an administrator-friendly credit-worthiness recommendation. The v1 artifact feature names remain unchanged for compatibility; unified output is normalized into those existing inputs.
+AgroCredit includes `agro-ai`: a Scikit-learn Random Forest model that uses dues consistency, payment timeliness, production completion and output, cooperative attendance, loan history, outstanding balances, and savings behavior to generate an administrator-friendly credit-worthiness recommendation. The current model is trained on deterministic synthetic data and is advisory only until it is retrained on real repayment outcomes; see [`docs/agro-ai-governance.md`](docs/agro-ai-governance.md).
 
-Production tracking and scoring support crop, animal, and mixed producers. Cooperative commerce—produce intake, aggregation, buyer sales, and farmer settlement—remains crop-only in this release.
+Production tracking and scoring support crop, animal, and mixed producers.
 
-When a farmer makes a USSD payment via Moolre, a webhook should trigger the FastAPI backend to record the transaction and recalculate their Trust Score in Supabase.
+When a farmer makes a USSD payment, a webhook triggers the FastAPI backend to record the transaction and recalculate their Trust Score in Supabase.
 
 ---
+
 See **[CONTRIBUTING.md](./CONTRIBUTING.md)** for branch naming, PR checklists, test commands, and secrets policy.
 
 1. **Never push directly to `main`.**
-2. Branch naming convention: `feat/feature-name`, `fix/bug-name`, `docs/update-name`, `integrate/system-wiring`.
+2. Branch naming convention: `feat/feature-name`, `fix/bug-name`, `docs/update-name`.
 3. Ensure backend code passes `ruff` linting and frontend code passes `eslint` before opening a Pull Request.

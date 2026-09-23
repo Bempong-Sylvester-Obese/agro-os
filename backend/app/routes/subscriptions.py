@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Any
 import uuid
 
@@ -8,10 +7,15 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database.db import get_db
-from app.models.models import Cooperative, PendingCheckout, User
-from app.services.auth_service import enforce_cooperative_scope, get_current_user
+from app.models.models import AdminAuditLog, Cooperative, PendingCheckout, User
+from app.services import subscription_lifecycle as lifecycle
+from app.services.auth_service import enforce_cooperative_scope, get_current_user, require_roles
 from app.services.plans import get_band, get_plan, resolve_amount
 from app.services.providers.factory import get_payment_provider
+from app.services.subscription_service import (
+    SubscriptionIntentError,
+    create_upgrade_intent,
+)
 
 router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
 
@@ -59,6 +63,7 @@ async def create_pre_checkout(
     reference = f"sub_pre_{uuid.uuid4().hex}"
     checkout = PendingCheckout(
         reference=reference,
+        kind=PendingCheckout.KIND_PRE_CHECKOUT,
         plan_key=plan_key,
         band=band["key"],
         amount=amount,
@@ -105,25 +110,28 @@ async def create_checkout(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Generate a Moolre payment link for subscription upgrade."""
+    """Record a single-use upgrade intent and return the provider payment link.
+
+    The intent (plan, band, amount, cooperative) is what the payment webhook
+    verifies against and activates from; the reference string carries no plan
+    information. Links are non-reusable so one payment maps to one intent.
+    """
     enforce_cooperative_scope(current_user, req.cooperative_id)
 
     coop = db.query(Cooperative).filter(Cooperative.id == req.cooperative_id).first()
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
 
-    plan = get_plan(req.plan_key)
-    band = get_band(req.plan_key, req.band)
-    amount = resolve_amount(req.plan_key, req.band)
-    if not plan or not band or amount is None:
-        raise HTTPException(status_code=400, detail="Invalid paid plan selected")
-    plan_key = plan["key"]
-
-    provider = get_payment_provider()
-    ext_ref = (
-        f"sub_upg_{coop.id}_{plan['key']}_{int(datetime.utcnow().timestamp())}"
-        f"_{band['key']}"
-    )
+    try:
+        intent = create_upgrade_intent(
+            db,
+            cooperative=coop,
+            plan_key=req.plan_key,
+            band_key=req.band,
+            created_by_user_id=current_user.id if current_user else None,
+        )
+    except SubscriptionIntentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     user_email = (
         current_user.email
@@ -131,18 +139,239 @@ async def create_checkout(
         else f"admin@{coop.name.replace(' ', '').lower()}.com"
     )
 
+    provider = get_payment_provider()
     result = await provider.generate_payment_link(
-        amount=amount,
+        amount=intent.amount,
         email=user_email,
-        currency=coop.currency or "GHS",
-        external_ref=ext_ref,
-        reusable=True,
+        currency=intent.currency or "GHS",
+        external_ref=intent.reference,
+        reusable=False,
     )
 
-    if not result.get("success"):
+    payment_url = result.get("payment_url")
+    if not result.get("success") or not payment_url:
+        db.rollback()
         raise HTTPException(status_code=400, detail="Failed to generate payment link")
+    db.commit()
 
     return {
-        "authorization_url": result.get("payment_url"),
-        "reference": result.get("reference"),
+        "intent_id": intent.id,
+        "authorization_url": payment_url,
+        "reference": intent.reference,
+        "plan_key": intent.plan_key,
+        "band": intent.band,
+        "amount": intent.amount,
     }
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle: status, renewal, cancel, resume
+# ---------------------------------------------------------------------------
+
+
+class CancelRequest(BaseModel):
+    cooperative_id: int
+    immediately: bool = False
+
+
+class LifecycleRequest(BaseModel):
+    cooperative_id: int
+
+
+def _scoped_cooperative(db: Session, current_user: User | None, cooperative_id: int) -> Cooperative:
+    enforce_cooperative_scope(current_user, cooperative_id)
+    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
+    if not coop:
+        raise HTTPException(status_code=404, detail="Cooperative not found")
+    return coop
+
+
+@router.get("/status")
+def subscription_status(
+    cooperative_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Current lifecycle state, with time-based transitions applied first."""
+    scoped_id = current_user.cooperative_id if current_user and current_user.cooperative_id else cooperative_id
+    if scoped_id is None:
+        raise HTTPException(status_code=400, detail="cooperative_id is required")
+    coop = _scoped_cooperative(db, current_user, scoped_id)
+    lifecycle.reconcile_and_commit(db, coop)
+    return lifecycle.describe(coop).as_dict()
+
+
+def _intent_to_history_row(intent: PendingCheckout) -> dict[str, Any]:
+    plan = get_plan(intent.plan_key) or {}
+    band = get_band(intent.plan_key, intent.band) if intent.band else None
+    if intent.status == PendingCheckout.STATUS_PENDING:
+        outcome = "pending"
+    elif intent.kind == PendingCheckout.KIND_UPGRADE:
+        outcome = "paid"  # consumed == activated for upgrades/renewals
+    else:
+        outcome = "paid" if intent.status in (PendingCheckout.STATUS_PAID, PendingCheckout.STATUS_CONSUMED) else intent.status
+    return {
+        "id": intent.id,
+        "reference": intent.reference,
+        "kind": intent.kind,
+        "plan_key": intent.plan_key,
+        "plan_name": plan.get("name") or intent.plan_key,
+        "band": intent.band,
+        "band_label": band["label"] if band else None,
+        "amount": intent.amount,
+        "currency": intent.currency or "GHS",
+        "status": intent.status,
+        "outcome": outcome,
+        "provider_transaction_id": intent.provider_transaction_id,
+        "created_at": intent.created_at.isoformat() if intent.created_at else None,
+        "paid_at": intent.paid_at.isoformat() if intent.paid_at else None,
+        "consumed_at": intent.consumed_at.isoformat() if intent.consumed_at else None,
+    }
+
+
+@router.get("/history")
+def subscription_history(
+    cooperative_id: int | None = None,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+) -> dict[str, Any]:
+    """Payment history for the billing panel, from subscription intents.
+
+    Includes the pre-checkout intent that created the account (linked at
+    signup) and every upgrade/renewal intent since. ``outcome`` collapses the
+    intent state machine to ``pending`` / ``paid`` for display; the raw
+    ``status`` is kept for audit.
+    """
+    scoped_id = current_user.cooperative_id if current_user and current_user.cooperative_id else cooperative_id
+    if scoped_id is None:
+        raise HTTPException(status_code=400, detail="cooperative_id is required")
+    coop = _scoped_cooperative(db, current_user, scoped_id)
+    limit = max(1, min(limit, 200))
+    intents = (
+        db.query(PendingCheckout)
+        .filter(PendingCheckout.cooperative_id == coop.id)
+        .order_by(PendingCheckout.created_at.desc(), PendingCheckout.id.desc())
+        .limit(limit)
+        .all()
+    )
+    rows = [_intent_to_history_row(i) for i in intents]
+    total_paid = sum(r["amount"] for r in rows if r["outcome"] == "paid")
+    return {
+        "cooperative_id": coop.id,
+        "items": rows,
+        "total_paid": round(total_paid, 2),
+        "currency": coop.currency or "GHS",
+    }
+
+
+@router.post("/renew")
+async def renew_subscription(
+    req: LifecycleRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+) -> dict[str, Any]:
+    """Create a payment intent that renews the cooperative's current paid plan.
+
+    Renewal is the same verified path as an upgrade: the webhook activates
+    from the intent and extends the current period (or starts a fresh one if
+    it has lapsed). Free-tier and trial cooperatives must pick a plan via
+    ``/checkout`` instead.
+    """
+    coop = _scoped_cooperative(db, current_user, req.cooperative_id)
+    lifecycle.reconcile_and_commit(db, coop)
+    if lifecycle.is_free_plan(coop.subscription_plan) or coop.subscription_status == lifecycle.STATUS_TRIAL:
+        raise HTTPException(status_code=400, detail="No paid plan to renew; choose a plan via checkout")
+
+    try:
+        intent = create_upgrade_intent(
+            db,
+            cooperative=coop,
+            plan_key=coop.subscription_plan,
+            band_key=coop.subscription_band,
+            created_by_user_id=current_user.id if current_user else None,
+        )
+    except SubscriptionIntentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    provider = get_payment_provider()
+    result = await provider.generate_payment_link(
+        amount=intent.amount,
+        email=current_user.email if current_user else f"admin@{coop.name.replace(' ', '').lower()}.com",
+        currency=intent.currency or "GHS",
+        external_ref=intent.reference,
+        reusable=False,
+    )
+    payment_url = result.get("payment_url")
+    if not result.get("success") or not payment_url:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Failed to generate payment link")
+    db.commit()
+    return {
+        "intent_id": intent.id,
+        "authorization_url": payment_url,
+        "reference": intent.reference,
+        "plan_key": intent.plan_key,
+        "band": intent.band,
+        "amount": intent.amount,
+    }
+
+
+@router.post("/cancel")
+def cancel_subscription(
+    req: CancelRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+) -> dict[str, Any]:
+    """Cancel the paid plan.
+
+    By default access continues until the end of the paid period, after which
+    the cooperative drops to the free tier. ``immediately=true`` drops now.
+    """
+    coop = _scoped_cooperative(db, current_user, req.cooperative_id)
+    lifecycle.reconcile_and_commit(db, coop)
+    try:
+        lifecycle.cancel(coop, immediately=req.immediately)
+    except lifecycle.SubscriptionStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if current_user:
+        db.add(
+            AdminAuditLog(
+                cooperative_id=coop.id,
+                actor_id=str(current_user.id),
+                action="subscription.cancelled",
+                resource_type="cooperative",
+                resource_id=str(coop.id),
+                details=f"immediately={req.immediately}",
+            )
+        )
+    db.commit()
+    return lifecycle.describe(coop).as_dict()
+
+
+@router.post("/resume")
+def resume_subscription(
+    req: LifecycleRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+) -> dict[str, Any]:
+    """Undo a pending cancellation while the paid period is still running."""
+    coop = _scoped_cooperative(db, current_user, req.cooperative_id)
+    lifecycle.reconcile_and_commit(db, coop)
+    try:
+        lifecycle.resume(coop)
+    except lifecycle.SubscriptionStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if current_user:
+        db.add(
+            AdminAuditLog(
+                cooperative_id=coop.id,
+                actor_id=str(current_user.id),
+                action="subscription.resumed",
+                resource_type="cooperative",
+                resource_id=str(coop.id),
+                details=None,
+            )
+        )
+    db.commit()
+    return lifecycle.describe(coop).as_dict()

@@ -25,6 +25,7 @@ from app.schemas.schemas import (
     FarmerUpdate,
     TrustScoreResponse,
 )
+from app.services import entitlements
 from app.services.auth_service import (
     enforce_cooperative_scope,
     get_current_user,
@@ -71,18 +72,9 @@ def create_farmer(
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
 
-    from app.services.plans import get_plan_limit
-
-    active_count = db.query(CooperativeMembership).filter(
-        CooperativeMembership.membership_status == MembershipStatus.active,
-        CooperativeMembership.cooperative_id == cooperative_id,
-    ).count()
-    max_members = get_plan_limit(coop.subscription_plan, "max_members")
-    if max_members > 0 and active_count >= max_members:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Member limit of {max_members} reached for the {coop.subscription_plan} plan. Upgrade to add more members."
-        )
+    # Band-aware member cap on the *effective* plan (lapsed plans enforce
+    # the free tier). Raises 403 {"code": "plan_limit_reached", ...}.
+    entitlements.assert_within_limit(db, coop, "max_members")
 
     normalized_phone = normalize_ghana_phone(farmer_in.phone)
     farmer = db.query(Farmer).filter(Farmer.phone == normalized_phone).first()
@@ -131,8 +123,9 @@ def create_farmer(
         animal_type=farmer_in.animal_type,
         animal_scale=farmer_in.animal_scale,
         farmer_code=code,
-        sms_consent=farmer_in.sms_consent,
     )
+    # Consent is an explicit decision captured at onboarding (#247); stamp it.
+    membership.set_sms_consent(farmer_in.sms_consent)
     db.add(membership)
     try:
         db.flush()
@@ -246,10 +239,12 @@ def update_farmer(
         "animal_type",
         "animal_scale",
         "membership_status",
-        "sms_consent",
     ):
         if field in values:
             setattr(membership, field, values[field])
+    consent_changed = False
+    if "sms_consent" in values:
+        consent_changed = membership.set_sms_consent(values["sms_consent"])
 
     focus = membership.production_focus or ProductionFocus.crop
     if focus == ProductionFocus.crop:
@@ -270,6 +265,17 @@ def update_farmer(
                 details="fields=" + ",".join(sorted(updates.model_dump(exclude_none=True))),
             )
         )
+        if consent_changed:
+            db.add(
+                AdminAuditLog(
+                    cooperative_id=membership.cooperative_id,
+                    actor_id=str(current_user.id),
+                    action="member.sms_consent_granted" if membership.sms_consent else "member.sms_consent_withdrawn",
+                    resource_type="membership",
+                    resource_id=str(membership.id),
+                    details="source=dashboard",
+                )
+            )
     db.commit()
     db.refresh(membership)
     return membership

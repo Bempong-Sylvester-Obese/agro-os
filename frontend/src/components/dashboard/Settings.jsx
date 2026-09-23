@@ -2,9 +2,10 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { confirmDemoReset, previewDemoReset } from '../../api/admin'
-import { createSubscriptionCheckout, updateCooperative } from '../../api/cooperatives'
+import { updateCooperative } from '../../api/cooperatives'
 import { formatTransportError } from '../../api/config'
-import { fetchFarmers } from '../../api/farmers'
+import BillingPanel from './BillingPanel'
+import OrganizationPanel from './OrganizationPanel'
 import { SettingsSkeleton } from './DashboardSkeleton'
 import GovernanceSettings from './GovernanceSettings'
 import DashboardModal, { ModalField } from './DashboardModal'
@@ -28,7 +29,7 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
     location: '',
     description: '',
     default_currency: 'GHS',
-    moolre_account_number: ''
+    integration_account_number: ''
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -39,7 +40,6 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
   const [resetError, setResetError] = useState(null)
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [resetting, setResetting] = useState(false)
-  const [memberCount, setMemberCount] = useState(null)
   const resetInputRef = useRef(null)
 
   useEffect(() => {
@@ -49,7 +49,7 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
         location: cooperative.location || '',
         description: cooperative.description || '',
         default_currency: cooperative.currency || cooperative.default_currency || 'GHS',
-        moolre_account_number: cooperative.moolre_account_number || ''
+        integration_account_number: cooperative.wallet_account_id || ''
       })
     }
   }, [cooperative])
@@ -59,30 +59,6 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
     const focusFrame = requestAnimationFrame(() => resetInputRef.current?.focus())
     return () => cancelAnimationFrame(focusFrame)
   }, [resetDialogOpen])
-
-  useEffect(() => {
-    if (!cooperativeId || !cooperative) return
-    const plan = (cooperative.subscription_plan || '').toLowerCase()
-    if (plan === 'starter' || plan === 'growth') {
-      let cancelled = false
-      const loadMemberCount = async () => {
-        const pageSize = 100
-        let count = 0
-        while (true) {
-          const page = await fetchFarmers(cooperativeId, null, count, pageSize)
-          count += page.length
-          if (page.length < pageSize) break
-        }
-        if (!cancelled) setMemberCount(count)
-      }
-      loadMemberCount().catch(() => {
-        if (!cancelled) setMemberCount(null)
-      })
-      return () => {
-        cancelled = true
-      }
-    }
-  }, [cooperativeId, cooperative])
 
   if (loading) return <SettingsSkeleton />
 
@@ -111,10 +87,11 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
     setSuccessMsg(null)
 
     try {
-      const { default_currency, ...rest } = form
+      const { default_currency, integration_account_number, ...rest } = form
       await updateCooperative(cooperative.id, {
         ...rest,
         currency: default_currency,
+        wallet_account_id: integration_account_number,
       })
       setSuccessMsg('Settings updated successfully.')
       if (onRefresh) onRefresh()
@@ -171,27 +148,6 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
   }
 
   const labelStyle = { fontSize: 13, fontWeight: 600 }
-
-  const planNames = { starter: 'Starter', solo: 'Solo Farm', growth: 'Growth', enterprise: 'Enterprise' }
-  const planName = planNames[cooperative?.subscription_plan?.toLowerCase()] || 'Unknown Plan'
-
-  const statusColors = {
-    active: 'green',
-    trial: 'blue',
-    past_due: 'orange',
-    expired: 'red',
-    cancelled: 'gray',
-  }
-  const statusColor = statusColors[cooperative?.subscription_status] || 'gray'
-
-  const planMaxMembers = cooperative?.subscription_plan?.toLowerCase() === 'starter' ? 10
-    : cooperative?.subscription_plan?.toLowerCase() === 'growth' ? 500
-    : null
-
-  const showMemberBar = planMaxMembers && memberCount !== null
-  const memberPct = showMemberBar ? Math.min((memberCount / planMaxMembers) * 100, 100) : 0
-
-  const isExpiring = cooperative?.subscription_status === 'expired' || cooperative?.subscription_status === 'past_due'
 
   return (
     <div style={{ maxWidth: 800 }}>
@@ -261,170 +217,21 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
                   </select>
                 </div>
                 <div style={{ flex: 2 }}>
-                  <label htmlFor="settings-moolre-account" style={labelStyle}>Moolre Account Number</label>
-                  <input id="settings-moolre-account" style={inputStyle} type="text" value={form.moolre_account_number} onChange={e => setForm({...form, moolre_account_number: e.target.value})} placeholder="e.g. 1089700..." required disabled={saving}/>
+                  <label htmlFor="settings-integration-account" style={labelStyle}>Moolre Account Number</label>
+                  <input id="settings-integration-account" style={inputStyle} type="text" value={form.integration_account_number} onChange={e => setForm({...form, integration_account_number: e.target.value})} placeholder="e.g. 1089700..." required disabled={saving}/>
                 </div>
               </div>
             </div>
             <div style={{ height: 1, background: 'var(--border)', margin: '12px 0' }} />
 
-            {/* Platform Subscription */}
-            <div>
-              <h3 className="serif" style={{ fontSize: 16, fontWeight: 700, marginBottom: 12 }}>Platform Subscription</h3>
-              <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 16 }}>Manage your cooperative's plan and billing status.</p>
+            {/* Platform Subscription — catalogue-driven billing portal */}
+            <BillingPanel cooperative={cooperative} cooperativeId={cooperativeId} onRefresh={onRefresh} />
 
-              {isExpiring && (
-                <div role="alert" style={{
-                  padding: '12px 16px', background: '#FFFBEB', border: '1px solid #FBBF24',
-                  borderRadius: 8, fontSize: 13, marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8
-                }}>
-                  <span style={{ fontWeight: 700, color: '#92400E' }}>
-                    {cooperative.subscription_status === 'expired' ? 'Subscription expired.' : 'Payment past due.'}
-                  </span>
-                  <span style={{ color: '#78350F' }}>Some features may be limited. Renew your plan to restore full access.</span>
-                </div>
-              )}
+            <div style={{ height: 1, background: 'var(--border)', margin: '12px 0' }} />
 
-              <div style={{
-                display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 16,
-                background: 'var(--background)', borderRadius: 10, padding: 16
-              }}>
-                <div style={{ flex: '1 1 140px' }}>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4 }}>Current Plan</div>
-                  <div style={{ fontSize: 18, fontWeight: 700 }}>{planName}</div>
-                </div>
-                <div style={{ flex: '1 1 140px' }}>
-                  <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4 }}>Status</div>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{
-                      width: 8, height: 8, borderRadius: '50%', display: 'inline-block',
-                      background: statusColor
-                    }} />
-                    <span style={{ fontSize: 14, fontWeight: 600, textTransform: 'capitalize' }}>
-                      {(cooperative?.subscription_status || 'inactive').replace(/_/g, ' ')}
-                    </span>
-                  </div>
-                </div>
-                {planMaxMembers && (
-                  <div style={{ flex: '1 1 140px' }}>
-                    <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4 }}>Max Members</div>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>{planMaxMembers.toLocaleString()}</div>
-                  </div>
-                )}
-                {cooperative?.subscription_expires_at && (
-                  <div style={{ flex: '1 1 140px' }}>
-                    <div style={{ fontSize: 11, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '.8px', marginBottom: 4 }}>Expires</div>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>
-                      {new Date(cooperative.subscription_expires_at).toLocaleDateString()}
-                    </div>
-                  </div>
-                )}
-              </div>
+            {/* Enterprise organization (#237) */}
+            <OrganizationPanel cooperative={cooperative} cooperativeId={cooperativeId} />
 
-              {showMemberBar && (
-                <div style={{ marginBottom: 16 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-                    <span>Active members: {memberCount} of {planMaxMembers}</span>
-                    <span>{Math.round(memberPct)}%</span>
-                  </div>
-                  <div style={{ height: 8, background: '#E5E7EB', borderRadius: 4, overflow: 'hidden' }}>
-                    <div style={{
-                      height: '100%', width: `${memberPct}%`,
-                      background: memberPct >= 90 ? '#F59E0B' : memberPct >= 70 ? '#3B82F6' : '#10B981',
-                      borderRadius: 4, transition: 'width .3s ease'
-                    }} />
-                  </div>
-                </div>
-              )}
-
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 16 }}>
-                {cooperative?.subscription_plan?.toLowerCase() === 'starter' && (
-                  <button
-                    type="button"
-                    className="btn-lg"
-                    onClick={async () => {
-                      try {
-                        setSaving(true)
-                        const res = await createSubscriptionCheckout(cooperativeId, 'growth')
-                        if (res.authorization_url) window.location.href = res.authorization_url
-                      } catch (err) {
-                        setError(err.message)
-                        setSaving(false)
-                      }
-                    }}
-                    disabled={saving}
-                    style={{ padding: '10px 16px', display: 'inline-flex', alignItems: 'center', gap: 8, background: '#10B981', color: 'white' }}
-                  >
-                    Upgrade to Growth (GHS 299/mo)
-                  </button>
-                )}
-                {cooperative?.subscription_plan?.toLowerCase() === 'growth' && (
-                  <button
-                    type="button"
-                    className="btn-lg"
-                    onClick={async () => {
-                      try {
-                        setSaving(true)
-                        await updateCooperative(cooperativeId, { subscription_plan: 'starter' })
-                        setSuccessMsg('Plan downgraded to Starter.')
-                        if (onRefresh) onRefresh()
-                      } catch (err) {
-                        setError(err.message)
-                      } finally {
-                        setSaving(false)
-                      }
-                    }}
-                    disabled={saving}
-                    style={{ padding: '10px 16px', display: 'inline-flex', alignItems: 'center', gap: 8, background: '#6B7280', color: 'white' }}
-                  >
-                    Downgrade to Starter
-                  </button>
-                )}
-                {cooperative?.subscription_plan?.toLowerCase() === 'solo' && (
-                  <button
-                    type="button"
-                    className="btn-lg"
-                    onClick={() => window.location.href = '/pricing'}
-                    style={{ padding: '10px 16px', display: 'inline-flex', alignItems: 'center', gap: 8, background: '#3B82F6', color: 'white' }}
-                  >
-                    View Plans &amp; Pricing
-                  </button>
-                )}
-                {/* Fallback upgrade / renew for any other state */}
-                {!['starter', 'growth', 'solo'].includes(cooperative?.subscription_plan?.toLowerCase()) && (
-                  <button
-                    type="button"
-                    className="btn-lg"
-                    onClick={async () => {
-                      try {
-                        setSaving(true)
-                        const res = await createSubscriptionCheckout(cooperativeId, 'growth')
-                        if (res.authorization_url) window.location.href = res.authorization_url
-                      } catch (err) {
-                        setError(err.message)
-                        setSaving(false)
-                      }
-                    }}
-                    disabled={saving}
-                    style={{ padding: '10px 16px', display: 'inline-flex', alignItems: 'center', gap: 8, background: '#10B981', color: 'white' }}
-                  >
-                    Upgrade / Renew Plan
-                  </button>
-                )}
-              </div>
-
-              {/* Billing history stub */}
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Billing History</div>
-                <div style={{
-                  border: '1px dashed var(--border)', borderRadius: 8, padding: 20,
-                  textAlign: 'center', color: 'var(--muted)', fontSize: 13
-                }}>
-                  Billing history coming soon.
-                </div>
-              </div>
-            </div>
-            
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
               <button type="submit" className="btn-lg" disabled={saving} style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 8 }}>
                 {saving ? <><Loader2 size={16} className="spin" /> Saving...</> : 'Save Settings'}
@@ -434,117 +241,122 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
         </form>
       </div>
       <GovernanceSettings cooperativeId={cooperativeId} />
-      <section
-        className="admin-card"
-        aria-labelledby="demo-reset-title"
-        style={{ marginTop: 24, border: '1px solid #FCA5A5' }}
-      >
-        <div style={{ padding: '24px 28px' }}>
-          <div id="demo-reset-title" className="serif" style={{ fontWeight: 700, fontSize: 18, color: '#991B1B' }}>
-            Demo data danger zone
-          </div>
-          <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, margin: '8px 0 16px' }}>
-            Permanently remove operational demo records while preserving the demo cooperative and admin users.
-            This action cannot be undone.
-          </p>
 
-          {resetStatus === 'unavailable' ? (
-            <div style={{ padding: 14, background: '#F8FAFC', borderRadius: 8, fontSize: 13, lineHeight: 1.6 }}>
-              Demo reset is not available for this workspace. In production, retain records according to your
-              organization&apos;s data policy and use an approved archive or retention process instead of deleting
-              operational history.
+      {!import.meta.env.PROD && (
+        <>
+          <section
+            className="admin-card"
+            aria-labelledby="demo-reset-title"
+            style={{ marginTop: 24, border: '1px solid #FCA5A5' }}
+          >
+            <div style={{ padding: '24px 28px' }}>
+              <div id="demo-reset-title" className="serif" style={{ fontWeight: 700, fontSize: 18, color: '#991B1B' }}>
+                Demo data danger zone
+              </div>
+              <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6, margin: '8px 0 16px' }}>
+                Permanently remove operational demo records while preserving the demo cooperative and admin users.
+                This action cannot be undone.
+              </p>
+
+              {resetStatus === 'unavailable' ? (
+                <div style={{ padding: 14, background: '#F8FAFC', borderRadius: 8, fontSize: 13, lineHeight: 1.6 }}>
+                  Demo reset is not available for this workspace. In production, retain records according to your
+                  organization&apos;s data policy and use an approved archive or retention process instead of deleting
+                  operational history.
+                </div>
+              ) : (
+                <>
+                  {resetStatus === 'success' && (
+                    <div role="status" style={{ padding: 12, background: '#ECFDF5', color: '#047857', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
+                      Demo data was reset successfully.
+                    </div>
+                  )}
+                  {resetStatus === 'error' && resetError && (
+                    <div role="alert" style={{ padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
+                      {resetError}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleOpenReset}
+                    disabled={resetStatus === 'loading'}
+                    style={{
+                      border: '1px solid #DC2626', background: '#fff', color: '#B91C1C', borderRadius: 8,
+                      padding: '10px 16px', fontWeight: 700, cursor: resetStatus === 'loading' ? 'wait' : 'pointer',
+                      display: 'inline-flex', alignItems: 'center', gap: 8,
+                    }}
+                  >
+                    {resetStatus === 'loading' ? <><Loader2 size={16} className="spin" /> Checking eligibility...</> : 'Review demo reset'}
+                  </button>
+                </>
+              )}
             </div>
-          ) : (
-            <>
-              {resetStatus === 'success' && (
-                <div role="status" style={{ padding: 12, background: '#ECFDF5', color: '#047857', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
-                  Demo data was reset successfully.
-                </div>
-              )}
-              {resetStatus === 'error' && resetError && (
-                <div role="alert" style={{ padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 8, fontSize: 13, marginBottom: 16 }}>
-                  {resetError}
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={handleOpenReset}
-                disabled={resetStatus === 'loading'}
-                style={{
-                  border: '1px solid #DC2626', background: '#fff', color: '#B91C1C', borderRadius: 8,
-                  padding: '10px 16px', fontWeight: 700, cursor: resetStatus === 'loading' ? 'wait' : 'pointer',
-                  display: 'inline-flex', alignItems: 'center', gap: 8,
-                }}
-              >
-                {resetStatus === 'loading' ? <><Loader2 size={16} className="spin" /> Checking eligibility...</> : 'Review demo reset'}
-              </button>
-            </>
-          )}
-        </div>
-      </section>
+          </section>
 
-      {resetDialogOpen && resetPreview && (
-        <DashboardModal
-          title="Confirm demo data reset"
-          subtitle={`These records will be permanently removed. This preview expires in ${resetPreview.expires_in_seconds} seconds.`}
-          onClose={() => setResetDialogOpen(false)}
-          label="Confirm demo data reset"
-          wide
-          closeOnBackdrop={!resetting}
-          closeDisabled={resetting}
-          as="form"
-          bodyProps={{ onSubmit: handleConfirmReset }}
-        >
-          <div className="dashboard-modal-body">
-            <dl className="dashboard-modal-count-list">
-              {Object.entries(RESET_COUNT_LABELS).map(([key, label]) => (
-                <React.Fragment key={key}>
-                  <dt>{label}</dt>
-                  <dd>{resetPreview[key] ?? 0}</dd>
-                </React.Fragment>
-              ))}
-            </dl>
-
-            <ModalField
-              htmlFor="demo-reset-confirmation"
-              label={<>Type <strong>{resetPreview.confirmation_phrase}</strong> to confirm</>}
+          {resetDialogOpen && resetPreview && (
+            <DashboardModal
+              title="Confirm demo data reset"
+              subtitle={`These records will be permanently removed. This preview expires in ${resetPreview.expires_in_seconds} seconds.`}
+              onClose={() => setResetDialogOpen(false)}
+              label="Confirm demo data reset"
+              wide
+              closeOnBackdrop={!resetting}
+              closeDisabled={resetting}
+              as="form"
+              bodyProps={{ onSubmit: handleConfirmReset }}
             >
-              <input
-                ref={resetInputRef}
-                id="demo-reset-confirmation"
-                className="dashboard-modal-input"
-                type="text"
-                value={resetPhrase}
-                onChange={(event) => setResetPhrase(event.target.value)}
-                autoComplete="off"
-                disabled={resetting}
-              />
-            </ModalField>
+              <div className="dashboard-modal-body">
+                <dl className="dashboard-modal-count-list">
+                  {Object.entries(RESET_COUNT_LABELS).map(([key, label]) => (
+                    <React.Fragment key={key}>
+                      <dt>{label}</dt>
+                      <dd>{resetPreview[key] ?? 0}</dd>
+                    </React.Fragment>
+                  ))}
+                </dl>
 
-            {resetError && (
-              <div role="alert" className="dashboard-form-error">{resetError}</div>
-            )}
+                <ModalField
+                  htmlFor="demo-reset-confirmation"
+                  label={<>Type <strong>{resetPreview.confirmation_phrase}</strong> to confirm</>}
+                >
+                  <input
+                    ref={resetInputRef}
+                    id="demo-reset-confirmation"
+                    className="dashboard-modal-input"
+                    type="text"
+                    value={resetPhrase}
+                    onChange={(event) => setResetPhrase(event.target.value)}
+                    autoComplete="off"
+                    disabled={resetting}
+                  />
+                </ModalField>
 
-            <div className="dashboard-modal-actions">
-              <button
-                type="button"
-                className="dashboard-modal-btn-secondary"
-                onClick={() => setResetDialogOpen(false)}
-                disabled={resetting}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="btn-lg"
-                disabled={resetting || resetPhrase !== resetPreview.confirmation_phrase}
-                style={{ background: '#B91C1C' }}
-              >
-                {resetting ? <><Loader2 size={16} className="spin" /> Resetting…</> : 'Reset demo data'}
-              </button>
-            </div>
-          </div>
-        </DashboardModal>
+                {resetError && (
+                  <div role="alert" className="dashboard-form-error">{resetError}</div>
+                )}
+
+                <div className="dashboard-modal-actions">
+                  <button
+                    type="button"
+                    className="dashboard-modal-btn-secondary"
+                    onClick={() => setResetDialogOpen(false)}
+                    disabled={resetting}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-lg"
+                    disabled={resetting || resetPhrase !== resetPreview.confirmation_phrase}
+                    style={{ background: '#B91C1C' }}
+                  >
+                    {resetting ? <><Loader2 size={16} className="spin" /> Resetting…</> : 'Reset demo data'}
+                  </button>
+                </div>
+              </div>
+            </DashboardModal>
+          )}
+        </>
       )}
       <style>{`@keyframes spin { to { transform: rotate(360deg); } } .spin { animation: spin 1s linear infinite; }`}</style>
     </div>

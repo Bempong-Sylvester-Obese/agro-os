@@ -29,10 +29,12 @@ export default function Aggregation({ batches = [], cooperativeId, loading, onRe
         <InlineForm
           title="Open aggregation batch"
           submitLabel="Open batch"
-          initial={{ code: '', crop_type: '' }}
+          initial={{ code: '', crop_type: '', production_kind: 'crop', unit: 'kg' }}
           fields={[
             { name: 'code', label: 'Batch code' },
-            { name: 'crop_type', label: 'Crop' },
+            { name: 'production_kind', label: 'Lot type', type: 'select', options: [{ value: 'crop', label: 'Crop' }, { value: 'animal', label: 'Animal' }] },
+            { name: 'crop_type', label: 'Product' },
+            { name: 'unit', label: 'Unit', type: 'select', options: [{ value: 'kg', label: 'kg' }, { value: 'head', label: 'head' }, { value: 'litre', label: 'litre' }] },
           ]}
           onSubmit={async values => {
             await createAggregation(values)
@@ -55,8 +57,8 @@ export default function Aggregation({ batches = [], cooperativeId, loading, onRe
         ]}
         columns={[
           { label: 'Batch', width: '1.5fr', render: row => <><div className="pt-name">{row.code || row.name || `Batch #${row.id}`}</div><div className="pt-id">#{row.id}</div></> },
-          { label: 'Crop', render: row => row.crop_type || row.crop || '—' },
-          { label: 'Accepted weight', render: row => `${Number(row.total_quantity_kg ?? row.quantity_kg ?? row.accepted_weight_kg ?? 0).toLocaleString()} kg` },
+          { label: 'Product', render: row => `${row.crop_type || row.crop || '—'} · ${row.production_kind || 'crop'}` },
+          { label: 'Accepted quantity', render: row => `${Number(row.total_quantity_kg ?? row.quantity_kg ?? row.accepted_weight_kg ?? 0).toLocaleString()} ${row.unit || 'kg'}` },
           { label: 'Opened', render: row => dateText(row.opened_at || row.created_at) },
           { label: 'Status', render: row => <StatusBadge status={row.status || row.state || 'open'} /> },
           {

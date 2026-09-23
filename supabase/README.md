@@ -39,7 +39,7 @@ example, `SET LOCAL app.current_cooperative_id`) that policies can evaluate.
 | `dues_payments` | `Transaction` (`transaction_type=dues`) | Merged |
 | `transactions` | `Transaction` | Implemented |
 | `loans` | `Loan` | Implemented |
-| `loan_disbursements` | fields on `Loan` | Merged (`disbursed_at`, `moolre_transfer_ref`) |
+| `loan_disbursements` | fields on `Loan` | Merged (`disbursed_at`, `provider_transfer_ref`) |
 | `disbursement_batches` | — | Not started |
 | `harvests` | `Production` | Implemented as `productions` |
 | `trust_scores` | `TrustScore` | Implemented (history snapshots) |
@@ -50,11 +50,11 @@ example, `SET LOCAL app.current_cooperative_id`) that policies can evaluate.
 | `agro_ai_prediction_logs` | `AgroAiPredictionLog` | Implemented |
 | `cooperative_attendances` | `CooperativeAttendance` | Implemented |
 
-## Moolre metadata preserved
+## Payment provider metadata preserved
 
 The `Transaction` model stores:
 
-- `moolre_reference`, `moolre_transfer_ref`
+- `provider_payment_ref`, `provider_transfer_ref` (provider-neutral; populated by the active payment adapter)
 - `payer_phone`, `payee_phone`, `channel`
 - `amount`, `currency`, `status`
 

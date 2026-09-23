@@ -1,6 +1,6 @@
 -- Golden Path demo seed for `supabase db reset` (see backend/app/database/seed.py)
 
-INSERT INTO cooperatives (name, description, location, currency, moolre_account_number)
+INSERT INTO cooperatives (name, description, location, currency, wallet_account_id)
 VALUES (
     'Kuapa Kokoo Demo Cooperative',
     'Hackathon demo cooperative for the Golden Path pitch',

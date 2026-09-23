@@ -1,7 +1,10 @@
 // src/components/dashboard/Members.jsx
 import React, { useCallback, useState } from 'react'
 import { Edit3, UserPlus, Loader2 } from 'lucide-react'
+import { getUserRole } from '../../utils/auth'
+import { can } from '../../utils/roles'
 import { createFarmer, deactivateFarmer, updateFarmer } from '../../api/farmers'
+import UpgradePrompt from './UpgradePrompt'
 import { exportDashboardReport } from '../../api/reports'
 import { MembersSkeleton } from './DashboardSkeleton'
 import DashboardModal, { ModalField } from './DashboardModal'
@@ -126,13 +129,43 @@ function ProductionProfileFields({ form, set, idPrefix }) {
   )
 }
 
+/**
+ * Explicit, per-member SMS consent (#247). Default is *off*: the cooperative
+ * must confirm the member agreed before AgroOS sends them dues reminders,
+ * payment confirmations, announcements or loan notices. Members can also
+ * change this themselves via USSD (main menu → 8. SMS Alerts).
+ */
+function SmsConsentField({ id, checked, onChange, farmer }) {
+  return (
+    <label htmlFor={id} className="member-consent-field">
+      <input id={id} type="checkbox" checked={checked} onChange={onChange} />
+      <span>
+        <strong>Member agreed to receive SMS alerts</strong>
+        <span className="member-consent-hint">
+          Dues reminders, payment confirmations, announcements and loan notices are only sent when this is on.
+          Members can opt out at any time by dialling the USSD code and choosing “SMS Alerts”.
+          {farmer?.sms_opt_out_at && !checked && (
+            <> Opted out {new Date(farmer.sms_opt_out_at).toLocaleDateString()}.</>
+          )}
+          {farmer?.sms_consent_at && checked && (
+            <> Consent recorded {new Date(farmer.sms_consent_at).toLocaleDateString()}.</>
+          )}
+        </span>
+      </span>
+    </label>
+  )
+}
+
 function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
   const [form, setForm] = useState({
-    name: '', phone: '', email: '', location: '', ...emptyProductionProfile,
+    name: '', phone: '', email: '', location: '', sms_consent: false, ...emptyProductionProfile,
   })
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(false)
-  const set = (key) => (e) => setForm(prev => ({ ...prev, [key]: e.target.value }))
+  const set = (key) => (e) => setForm(prev => ({
+    ...prev,
+    [key]: e.target.type === 'checkbox' ? e.target.checked : e.target.value,
+  }))
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -149,11 +182,12 @@ function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
         cooperative_id: cooperativeId,
         email: form.email.trim() || null,
         location: form.location.trim() || null,
+        sms_consent: Boolean(form.sms_consent),
         ...productionProfilePayload(form),
       })
       onSuccess(created)
     } catch (err) {
-      setError(err.message)
+      setError(err)
     } finally {
       setLoading(false)
     }
@@ -172,7 +206,7 @@ function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
       bodyProps={{ onSubmit: handleSubmit }}
     >
       <div className="dashboard-modal-body">
-        {error && <div role="alert" className="dashboard-form-error">{error}</div>}
+        <UpgradePrompt error={error} />
 
         <div className="modal-row">
           <ModalField htmlFor="member-name" label="Full name">
@@ -221,6 +255,8 @@ function AddMemberModal({ cooperativeId, onClose, onSuccess }) {
 
         <ProductionProfileFields form={form} set={set} idPrefix="member" />
 
+        <SmsConsentField id="member-sms-consent" checked={form.sms_consent} onChange={set('sms_consent')} />
+
         <div className="dashboard-modal-actions">
           <button type="button" className="dashboard-modal-btn-secondary" onClick={onClose} disabled={loading}>
             Cancel
@@ -248,10 +284,14 @@ function EditMemberModal({ farmer, onClose, onSuccess }) {
     acreage: farmer.acreage ?? '',
     animal_type: farmer.animal_type || '',
     animal_scale: farmer.animal_scale || '',
+    sms_consent: Boolean(farmer.sms_consent),
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
-  const set = key => event => setForm(previous => ({ ...previous, [key]: event.target.value }))
+  const set = key => event => setForm(previous => ({
+    ...previous,
+    [key]: event.target.type === 'checkbox' ? event.target.checked : event.target.value,
+  }))
 
   const run = async action => {
     setLoading(true)
@@ -263,6 +303,7 @@ function EditMemberModal({ farmer, onClose, onSuccess }) {
           phone: form.phone,
           email: form.email,
           location: form.location,
+          sms_consent: Boolean(form.sms_consent),
           ...productionProfilePayload(form),
         })
       } else if (action === 'suspend') {
@@ -312,6 +353,13 @@ function EditMemberModal({ farmer, onClose, onSuccess }) {
         </div>
 
         <ProductionProfileFields form={form} set={set} idPrefix="edit-member" />
+
+        <SmsConsentField
+          id="edit-member-sms-consent"
+          checked={form.sms_consent}
+          onChange={set('sms_consent')}
+          farmer={farmer}
+        />
 
         <div className="dashboard-modal-actions dashboard-modal-actions--edit">
           <div className="dashboard-modal-side-actions">
@@ -427,18 +475,20 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
         exporting={exporting}
         exportError={exportError}
       >
-        <button
-          className="btn-nav"
-          onClick={() => cooperativeId && setShowModal(true)}
-          disabled={!cooperativeId}
-          title={!cooperativeId ? 'Link a cooperative before adding members' : undefined}
-          style={{
-            fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
-            opacity: cooperativeId ? 1 : 0.5, cursor: cooperativeId ? 'pointer' : 'not-allowed',
-          }}
-        >
-          <UserPlus size={15} /> Add member
-        </button>
+        {can('manageMembers', getUserRole()) && (
+          <button
+            className="btn-nav"
+            onClick={() => cooperativeId && setShowModal(true)}
+            disabled={!cooperativeId}
+            title={!cooperativeId ? 'Link a cooperative before adding members' : undefined}
+            style={{
+              fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+              opacity: cooperativeId ? 1 : 0.5, cursor: cooperativeId ? 'pointer' : 'not-allowed',
+            }}
+          >
+            <UserPlus size={15} /> Add member
+          </button>
+        )}
       </DashboardTableToolbar>
 
       {/* ── Empty state ── */}
@@ -489,7 +539,15 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
                     <div className="pt-name">{farmer.name}</div>
                     <div className="pt-id">#{farmer.id} • Code: {farmer.farmer_code || 'N/A'}</div>
                   </div>
-                  <span className="pt-m" style={{ fontSize: 12 }}>{farmer.phone}</span>
+                  <span className="pt-m" style={{ fontSize: 12 }}>
+                    {farmer.phone}
+                    <span
+                      className={`member-consent-tag ${farmer.sms_consent ? 'is-on' : 'is-off'}`}
+                      title={farmer.sms_consent ? 'Member agreed to receive SMS alerts' : 'No SMS consent — alerts are not sent'}
+                    >
+                      {farmer.sms_consent ? 'SMS on' : 'SMS off'}
+                    </span>
+                  </span>
                   <span className="pt-m">{farmer.location || '—'}</span>
                   <span className="pt-m">
                     <strong>{productionFocusLabel(productionFocus(farmer))}</strong>

@@ -24,7 +24,7 @@ class CooperativeBase(BaseModel):
     description: Optional[str] = None
     location: Optional[str] = None
     currency: str = "GHS"
-    moolre_account_number: Optional[str] = None
+    wallet_account_id: Optional[str] = None
 
 
 class CooperativeCreate(CooperativeBase):
@@ -36,7 +36,7 @@ class CooperativeUpdate(BaseModel):
     description: Optional[str] = None
     location: Optional[str] = None
     currency: Optional[str] = None
-    moolre_account_number: Optional[str] = None
+    wallet_account_id: Optional[str] = None
     organization_type: Optional[str] = None
     subscription_plan: str | None = None
     subscription_status: str | None = None
@@ -73,7 +73,9 @@ class FarmerBase(BaseModel):
     animal_type: Optional[str] = None
     animal_scale: Optional[float] = Field(default=None, ge=0)
     cooperative_id: int
-    sms_consent: bool = True
+    # Explicit SMS consent (#247). Default False: consent must be captured at
+    # onboarding, never implied by membership.
+    sms_consent: bool = False
 
 
 class FarmerCreate(FarmerBase):
@@ -103,6 +105,8 @@ class FarmerResponse(FarmerBase):
     membership_status: MembershipStatus
     trust_score: float
     existing_farmer: bool = False
+    sms_consent_at: Optional[datetime] = None
+    sms_opt_out_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -133,8 +137,8 @@ class TransactionCreate(TransactionBase):
 class TransactionResponse(TransactionBase):
     id: int
     status: TransactionStatus
-    moolre_reference: Optional[str] = None
-    moolre_transfer_ref: Optional[str] = None
+    provider_payment_ref: Optional[str] = None
+    provider_transfer_ref: Optional[str] = None
     loan_id: Optional[int] = None
     settlement_line_id: Optional[int] = None
     disbursement_batch_id: Optional[int] = None
@@ -166,12 +170,12 @@ class DuesCollectRequest(BaseModel):
 
 class DuesCollectResponse(BaseModel):
     transaction_id: int
-    moolre_reference: Optional[str] = None
+    provider_payment_ref: Optional[str] = None
     status: str
     message: str
     verification_required: bool = False
     outcome: Optional[str] = None
-    moolre_code: Optional[str] = None
+    provider_code: Optional[str] = None
     customer_action: str = "none"
     action_expires_at: Optional[datetime] = None
 
@@ -194,7 +198,7 @@ class PaymentLinkResponse(BaseModel):
 class PaymentWebhookEventResponse(BaseModel):
     id: int
     event_type: str
-    moolre_reference: Optional[str] = None
+    provider_payment_ref: Optional[str] = None
     transaction_id: Optional[int] = None
     signature_valid: bool
     processed: bool
@@ -247,7 +251,7 @@ class LoanResponse(BaseModel):
     rejected_by: Optional[str] = None
     rejected_at: Optional[datetime] = None
     notification_status: Optional[str] = None
-    moolre_transfer_ref: Optional[str] = None
+    provider_transfer_ref: Optional[str] = None
     disbursed_at: Optional[datetime] = None
     repaid_at: Optional[datetime] = None
     cancelled_by: Optional[str] = None
@@ -514,7 +518,7 @@ class CommunicationLogResponse(BaseModel):
     cooperative_id: Optional[int] = None
     recipients_count: int
     body: str
-    moolre_ref: Optional[str] = None
+    provider_ref: Optional[str] = None
     sent_by: Optional[str] = None
     status: str
     sent_at: datetime
@@ -530,14 +534,14 @@ class CommunicationLogResponse(BaseModel):
 
 class PaymentInitiateResponse(BaseModel):
     success: bool
-    moolre_reference: Optional[str] = None
+    provider_payment_ref: Optional[str] = None
     message: str
     raw: Optional[dict] = None
 
 
 class TransferInitiateResponse(BaseModel):
     success: bool
-    moolre_transfer_ref: Optional[str] = None
+    provider_transfer_ref: Optional[str] = None
     message: str
     raw: Optional[dict] = None
 

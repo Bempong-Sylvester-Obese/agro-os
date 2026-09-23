@@ -1,5 +1,7 @@
 import React, { useCallback, useMemo, useState } from 'react'
 import { Loader2, Plus } from 'lucide-react'
+import { getUserRole } from '../../utils/auth'
+import { can } from '../../utils/roles'
 import { logProduction } from '../../api/production'
 import { exportDashboardReport } from '../../api/reports'
 import {
@@ -319,9 +321,11 @@ export default function Production({ farmers = [], productions = [], cooperative
         exporting={exporting}
         onExport={handleExport}
       >
-        <button className="btn-nav" onClick={() => setShowModal(true)} style={{ fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, background: 'var(--text)', color: '#fff' }}>
-          <Plus size={15} /> Log production
-        </button>
+        {can('recordProduction', getUserRole()) && (
+          <button className="btn-nav" onClick={() => setShowModal(true)} style={{ fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, background: 'var(--text)', color: '#fff' }}>
+            <Plus size={15} /> Log production
+          </button>
+        )}
       </DashboardTableToolbar>
       {exportError && <div role="alert" className="dashboard-inline-error">{exportError}</div>}
 

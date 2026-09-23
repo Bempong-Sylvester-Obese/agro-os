@@ -19,10 +19,14 @@ describe('plans api', () => {
     expect(plans).toEqual([{ key: 'starter' }])
   })
 
-  it('fetchPlans falls back on transport failure', async () => {
+  it('fetchPlans surfaces transport failures instead of falling back to demo data', async () => {
     apiFetch.mockRejectedValue(new TypeError('network down'))
-    const plans = await fetchPlans()
-    expect(plans.some((p) => p.key === 'growth')).toBe(true)
+    await expect(fetchPlans()).rejects.toThrow('network down')
+  })
+
+  it('fetchPlans surfaces non-OK responses instead of falling back to demo data', async () => {
+    apiFetch.mockResolvedValue({ ok: false, status: 503, json: async () => ({}) })
+    await expect(fetchPlans()).rejects.toThrow('plans fetch failed')
   })
 
   it('createPreCheckout posts the payload', async () => {

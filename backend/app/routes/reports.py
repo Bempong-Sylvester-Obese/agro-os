@@ -271,7 +271,7 @@ def export_loans(
             loan.currency,
             loan.purpose,
             loan.status.value,
-            loan.moolre_transfer_ref,
+            loan.provider_transfer_ref,
             loan.expected_repayment_date,
             loan.created_at,
         ]

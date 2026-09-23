@@ -162,7 +162,7 @@ def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
         _run_stamp(config, engine, schema, "004_user_active")
         _run_upgrade(config, engine, schema)
         assert ScriptDirectory.from_config(config).get_heads() == [
-            "015_worker_integrity"
+            "023_mixed_commerce"
         ]
 
         columns = {
@@ -202,18 +202,18 @@ def test_migrations_adopt_fresh_metadata_and_harden_existing_rows():
             local_worker_id = connection.execute(
                 text(
                     "INSERT INTO workers "
-                    "(cooperative_id, name, phone, wage_rate) "
+                    "(cooperative_id, name, phone, wage_rate, pay_type) "
                     "VALUES (:cooperative_id, 'Local Worker', "
-                    "'0240000001', 20) RETURNING id"
+                    "'0240000001', 20, 'daily') RETURNING id"
                 ),
                 {"cooperative_id": cooperative_id},
             ).scalar_one()
             foreign_worker_id = connection.execute(
                 text(
                     "INSERT INTO workers "
-                    "(cooperative_id, name, phone, wage_rate) "
+                    "(cooperative_id, name, phone, wage_rate, pay_type) "
                     "VALUES (:cooperative_id, 'Foreign Worker', "
-                    "'0240000002', 20) RETURNING id"
+                    "'0240000002', 20, 'daily') RETURNING id"
                 ),
                 {"cooperative_id": second_cooperative_id},
             ).scalar_one()

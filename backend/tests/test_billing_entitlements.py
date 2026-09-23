@@ -47,9 +47,10 @@ def test_subscription_checkout_uses_provider_port(client, cooperative):
     provider.generate_payment_link.assert_awaited_once()
     call = provider.generate_payment_link.await_args.kwargs
     assert call["amount"] == 299.0
-    assert call["external_ref"].startswith(
-        f"sub_upg_{cooperative['id']}_growth_"
-    )
+    assert call["external_ref"].startswith(f"sub_upg_{cooperative['id']}_")
+    assert call["external_ref"] == response.json()["reference"]
+    # One payment must map to exactly one intent.
+    assert call["reusable"] is False
 
 
 def test_cooperative_api_cannot_grant_paid_subscription(client, cooperative):
@@ -87,7 +88,7 @@ def test_subscription_webhook_rejects_amount_mismatch(db, cooperative):
     assert coop.subscription_plan == "starter"
     event = (
         db.query(PaymentWebhookEvent)
-        .filter(PaymentWebhookEvent.moolre_reference == reference)
+        .filter(PaymentWebhookEvent.provider_payment_ref == reference)
         .one()
     )
     assert event.processed is False
@@ -122,7 +123,7 @@ def test_subscription_webhook_replay_does_not_extend_twice(db, cooperative):
     assert (
         db.query(PaymentWebhookEvent)
         .filter(
-            PaymentWebhookEvent.moolre_reference == reference,
+            PaymentWebhookEvent.provider_payment_ref == reference,
             PaymentWebhookEvent.processed.is_(True),
         )
         .count()
@@ -161,3 +162,34 @@ def test_sms_quota_resets_across_year_boundary(
     assert coop.sms_sent_this_month == 1
     assert coop.sms_month_reset.year == now.year
     mock_send.assert_awaited_once()
+
+
+def test_subscription_service_consumes_domain_event_not_provider_payload(db, cooperative):
+    """The subscription flow must work from a PaymentEvent alone — no Moolre JSON."""
+    from app.domain.payment_event import PaymentEvent
+    from app.services.subscription_service import process_subscription_event
+
+    coop = db.get(Cooperative, cooperative["id"])
+    reference = f"sub_upg_{coop.id}_growth_789"
+    event = PaymentEvent(
+        provider="any-provider",
+        event_type="payment.success",
+        external_ref=reference,
+        amount=299.0,
+        status="success",
+        signature_valid=True,
+        metadata={"raw": {"opaque": True}},
+    )
+
+    result = process_subscription_event(db, event)
+    db.refresh(coop)
+
+    assert result["message"] == "Subscription webhook processed"
+    assert coop.subscription_plan == "growth"
+    stored = (
+        db.query(PaymentWebhookEvent)
+        .filter(PaymentWebhookEvent.provider_payment_ref == reference)
+        .one()
+    )
+    assert stored.processed is True
+    assert stored.payload == '{"opaque": true}'

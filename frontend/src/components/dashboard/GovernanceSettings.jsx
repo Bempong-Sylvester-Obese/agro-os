@@ -5,10 +5,34 @@ import {
   updateCooperativeUser,
   inviteCooperativeUser,
 } from '../../api/governance'
+import { getOrganizationType } from '../../utils/auth'
+import { ROLE_DESCRIPTIONS, ROLES, roleLabel, rolesForTrack } from '../../utils/roles'
 
-const emptyInvite = { email: '', role: 'finance_officer' }
+/**
+ * Role picker (#255). Only the roles that belong to this workspace's track —
+ * a cooperative cannot grant farm_manager, a solo farm cannot grant
+ * finance_officer. A stale off-track role is listed so it can be corrected.
+ */
+function RoleOptions({ organizationType, currentRole }) {
+  const allowed = [...rolesForTrack(organizationType)]
+  const extras = currentRole && !allowed.includes(currentRole) ? [currentRole] : []
+  const label = organizationType === 'solo_farm' ? 'Solo farm roles' : 'Cooperative roles'
+  return (
+    <optgroup label={label}>
+      {[...allowed, ...extras].map((role) => (
+        <option key={role} value={role} title={ROLE_DESCRIPTIONS[role]}>{roleLabel(role)}</option>
+      ))}
+    </optgroup>
+  )
+}
+
+function defaultInviteRole(organizationType) {
+  return organizationType === 'solo_farm' ? ROLES.FARM_MANAGER : ROLES.FINANCE_OFFICER
+}
 
 export default function GovernanceSettings({ cooperativeId }) {
+  const organizationType = getOrganizationType()
+  const emptyInvite = { email: '', role: defaultInviteRole(organizationType) }
   const [users, setUsers] = useState([])
   const [invite, setInvite] = useState(emptyInvite)
   const [loading, setLoading] = useState(true)
@@ -43,10 +67,18 @@ export default function GovernanceSettings({ cooperativeId }) {
     setSaving('invite')
     setError('')
     try {
-      await inviteCooperativeUser(invite.email, invite.role)
+      const invited = await inviteCooperativeUser(invite.email, invite.role)
+      const invitedEmail = invite.email
       setInvite(emptyInvite)
-      setError('Invite sent. Share the invite link from the backend logs with the user.')
       await load()
+      const delivery = invited?.delivery
+      if (delivery?.delivered) {
+        setError(`Invite emailed to ${invitedEmail}.`)
+      } else if (delivery?.invite_link) {
+        setError(`Invite created. Email delivery is not configured — share this link with ${invitedEmail}: ${delivery.invite_link}`)
+      } else {
+        setError(delivery?.message || 'Invite sent.')
+      }
     } catch (err) {
       setError(err.message || 'Could not invite this user.')
     } finally {
@@ -73,7 +105,11 @@ export default function GovernanceSettings({ cooperativeId }) {
         <div className="admin-card-head">
           <div>
             <h2 id="team-settings-title" className="admin-card-title serif">Team and access</h2>
-            <p className="activity-subtitle">Manage cooperative administrators and finance officers.</p>
+            <p className="activity-subtitle">
+              {organizationType === 'solo_farm'
+                ? 'Manage farm owners, managers and supervisors.'
+                : 'Manage administrators, finance, field, operations and sales officers.'}
+            </p>
           </div>
           <button type="button" className="admin-card-button" onClick={load} disabled={loading}>
             <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
@@ -100,11 +136,7 @@ export default function GovernanceSettings({ cooperativeId }) {
                       disabled={saving === user.id || !user.is_active}
                       onChange={(event) => changeUser(user.id, { role: event.target.value })}
                     >
-                      <option value="admin">Administrator</option>
-                      <option value="finance_officer">Finance officer</option>
-                      <option value="farm_owner">Farm owner</option>
-                      <option value="farm_manager">Farm manager</option>
-                      <option value="supervisor">Supervisor</option>
+                      <RoleOptions organizationType={organizationType} currentRole={user.role} />
                     </select>
                   </label>
                   <button
@@ -135,12 +167,9 @@ export default function GovernanceSettings({ cooperativeId }) {
                 onChange={(event) => setInvite({ ...invite, role: event.target.value })}
                 aria-label="New user role"
               >
-                <option value="finance_officer">Finance officer</option>
-                <option value="admin">Administrator</option>
-                <option value="farm_owner">Farm owner</option>
-                <option value="farm_manager">Farm manager</option>
-                <option value="supervisor">Supervisor</option>
+                <RoleOptions organizationType={organizationType} />
               </select>
+              <small className="settings-role-hint">{ROLE_DESCRIPTIONS[invite.role]}</small>
               <button type="submit" className="btn-lg" disabled={saving === 'invite'}>
                 {saving === 'invite' ? 'Sending…' : 'Send invite'}
               </button>

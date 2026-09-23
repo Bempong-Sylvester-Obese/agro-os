@@ -1,5 +1,7 @@
 """Fail-closed authentication and cooperative isolation tests."""
 
+from datetime import datetime, timedelta
+
 import pytest
 
 from app.config import get_settings
@@ -18,7 +20,15 @@ def auth_enabled(monkeypatch):
 
 
 def _tenant(db, suffix: str, role: str = "admin"):
-    cooperative = Cooperative(name=f"Cooperative {suffix}", currency="GHS")
+    cooperative = Cooperative(
+        name=f"Cooperative {suffix}",
+        currency="GHS",
+        # Paid plan so AgroCredit / scores feature gates (#233) do not mask RBAC outcomes.
+        subscription_plan="growth",
+        subscription_band="base",
+        subscription_status="active",
+        subscription_expires_at=datetime.utcnow() + timedelta(days=30),
+    )
     db.add(cooperative)
     db.flush()
     user = User(
@@ -207,9 +217,9 @@ def test_required_password_change_blocks_api_until_completed(
         "/auth/register",
         headers=admin_headers,
         json={
-            "email": "manager-12@example.com",
+            "email": "officer-12@example.com",
             "password": "temporary-password",
-            "role": "farm_manager",
+            "role": "finance_officer",
         },
     )
     assert created.status_code == 200
@@ -217,7 +227,7 @@ def test_required_password_change_blocks_api_until_completed(
     login = client.post(
         "/auth/login",
         json={
-            "email": "manager-12@example.com",
+            "email": "officer-12@example.com",
             "password": "temporary-password",
         },
     )
@@ -239,14 +249,14 @@ def test_required_password_change_blocks_api_until_completed(
     assert client.post(
         "/auth/login",
         json={
-            "email": "manager-12@example.com",
+            "email": "officer-12@example.com",
             "password": "temporary-password",
         },
     ).status_code == 401
     relogin = client.post(
         "/auth/login",
         json={
-            "email": "manager-12@example.com",
+            "email": "officer-12@example.com",
             "password": "permanent-password",
         },
     )
@@ -282,3 +292,116 @@ def test_cooperative_staff_records_only_own_attendance(
     assert cross_tenant.status_code == 404
     assert own_member.cooperative_id == own_coop.id
 
+
+
+def test_auth_me_returns_real_profile_not_demo_strings(client, db, auth_enabled):
+    coop, user, _, headers = _tenant(db, "31", role="finance_officer")
+
+    response = client.get("/auth/me", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == user.id
+    assert body["email"] == user.email
+    assert body["role"] == "finance_officer"
+    assert body["cooperative_id"] == coop.id
+    assert body["cooperative_name"] == coop.name
+    assert body["organization_type"] == coop.organization_type
+    assert body["password_change_required"] is False
+    assert "Kuapa" not in response.text
+
+
+def test_auth_me_fails_closed_without_token(client, db, auth_enabled):
+    assert client.get("/auth/me").status_code == 401
+
+
+def test_login_response_carries_cooperative_name(client, db, auth_enabled):
+    coop, user, _, _ = _tenant(db, "32")
+    login = client.post("/auth/login", json={"email": user.email, "password": "password"})
+    assert login.status_code == 200
+    assert login.json()["cooperative_name"] == coop.name
+    assert login.json()["user"]["cooperative_id"] == coop.id
+
+
+def test_role_catalogue_matches_enforced_gates(client):
+    """Every role used by a require_roles(...) gate must be grantable (#244)."""
+    import re
+    from pathlib import Path
+
+    from app.auth.roles import ALL_ROLES, COOP_ROLES, SOLO_ROLES
+
+    used: set[str] = set()
+    for path in (Path(__file__).resolve().parents[1] / "app" / "routes").glob("*.py"):
+        for match in re.finditer(r"require_roles\(([^)]*)\)", path.read_text()):
+            used.update(re.findall(r'"([a-z_]+)"', match.group(1)))
+    assert used, "expected require_roles gates in app/routes"
+    assert used <= ALL_ROLES, f"roles gated but not grantable: {used - ALL_ROLES}"
+    assert COOP_ROLES | SOLO_ROLES == ALL_ROLES
+    assert "admin" in COOP_ROLES and "admin" in SOLO_ROLES
+
+    response = client.get("/auth/roles")
+    assert response.status_code == 200
+    catalogue = {row["key"]: row for row in response.json()["roles"]}
+    assert set(catalogue) == ALL_ROLES
+    assert catalogue["admin"]["tracks"] == ["cooperative", "solo_farm"]
+    assert catalogue["sales_officer"]["tracks"] == ["cooperative"]
+    assert catalogue["supervisor"]["tracks"] == ["solo_farm"]
+
+
+def test_admin_can_invite_and_update_every_api_role(client, db, auth_enabled):
+    from app.auth.roles import COOP_ROLES
+
+    _, admin, _, headers = _tenant(db, "40")
+    for index, role in enumerate(sorted(COOP_ROLES)):
+        invited = client.post(
+            "/auth/invite",
+            headers=headers,
+            json={"email": f"{role}-40-{index}@example.com", "role": role},
+        )
+        assert invited.status_code == 201, (role, invited.text)
+        assert invited.json()["role"] == role
+
+        updated = client.patch(
+            f"/auth/users/{invited.json()['id']}",
+            headers=headers,
+            json={"role": "admin" if role != "admin" else "finance_officer"},
+        )
+        assert updated.status_code == 200, (role, updated.text)
+
+    rejected = client.post(
+        "/auth/invite",
+        headers=headers,
+        json={"email": "nobody-40@example.com", "role": "superuser"},
+    )
+    assert rejected.status_code == 422
+
+    off_track = client.post(
+        "/auth/invite",
+        headers=headers,
+        json={"email": "farm-owner-40@example.com", "role": "farm_owner"},
+    )
+    assert off_track.status_code == 403
+
+
+def test_solo_farm_invite_accepts_only_solo_roles(client, db, auth_enabled):
+    from app.auth.roles import SOLO_ROLES
+
+    coop, _, _, headers = _tenant(db, "41")
+    coop.organization_type = "solo_farm"
+    db.commit()
+
+    for index, role in enumerate(sorted(SOLO_ROLES)):
+        invited = client.post(
+            "/auth/invite",
+            headers=headers,
+            json={"email": f"{role}-41-{index}@example.com", "role": role},
+        )
+        assert invited.status_code == 201, (role, invited.text)
+        assert invited.json()["role"] == role
+
+    rejected = client.post(
+        "/auth/invite",
+        headers=headers,
+        json={"email": "finance-41@example.com", "role": "finance_officer"},
+    )
+    assert rejected.status_code == 403
+    assert "solo farm" in rejected.json()["detail"].lower()

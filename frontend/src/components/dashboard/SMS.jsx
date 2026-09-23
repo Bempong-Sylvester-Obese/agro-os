@@ -1,6 +1,7 @@
 // src/components/dashboard/SMS.jsx
 import { useState, useEffect } from 'react'
 import { fetchSMSLogs, sendBroadcast, sendDuesReminder } from '../../api/communications'
+import UpgradePrompt from './UpgradePrompt'
 import { SMSLogsSkeleton } from './DashboardSkeleton'
 
 export default function SMS({ cooperativeId, memberCount = 0 }) {
@@ -38,7 +39,7 @@ export default function SMS({ cooperativeId, memberCount = 0 }) {
       setLogs(newLogs)
       setTimeout(() => setSendSuccess(false), 3000)
     } catch (err) {
-      setSendError(err.message || 'Failed to send broadcast. Check your Moolre SMS configuration.')
+      setSendError(err.detail ? err : (err.message || 'Failed to send broadcast. Check your SMS provider configuration.'))
     } finally {
       setSending(false)
     }
@@ -110,7 +111,7 @@ export default function SMS({ cooperativeId, memberCount = 0 }) {
               padding: '10px 14px', background: '#FEF2F2', color: '#991B1B',
               borderRadius: 8, marginBottom: 12, fontSize: 13, borderLeft: '3px solid #F87171',
             }}>
-              {sendError}
+              {typeof sendError === 'string' ? sendError : <UpgradePrompt error={sendError} className="" />}
             </div>
           )}
 

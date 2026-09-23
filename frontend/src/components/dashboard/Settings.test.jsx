@@ -3,7 +3,6 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import Settings from './Settings'
 import * as adminApi from '../../api/admin'
-import * as farmersApi from '../../api/farmers'
 
 vi.mock('../../api/admin', () => ({
   previewDemoReset: vi.fn(),
@@ -11,12 +10,16 @@ vi.mock('../../api/admin', () => ({
 }))
 
 vi.mock('../../api/cooperatives', () => ({
-  createSubscriptionCheckout: vi.fn(),
   updateCooperative: vi.fn(),
 }))
 
-vi.mock('../../api/farmers', () => ({
-  fetchFarmers: vi.fn(),
+// Billing has its own tests (BillingPanel.test.jsx); keep Settings tests focused.
+vi.mock('./BillingPanel', () => ({
+  default: () => <div data-testid="billing-panel" />,
+}))
+
+vi.mock('./OrganizationPanel', () => ({
+  default: () => <div data-testid="organization-panel" />,
 }))
 
 const cooperative = {
@@ -24,7 +27,7 @@ const cooperative = {
   name: 'AgroOS Demo Cooperative',
   location: 'Accra',
   currency: 'GHS',
-  moolre_account_number: '1089700',
+  wallet_account_id: '1089700',
 }
 
 const preview = {
@@ -83,30 +86,9 @@ describe('Settings demo reset', () => {
   })
 })
 
-describe('Settings subscription usage', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it('loads all member pages for the Growth usage meter', async () => {
-    farmersApi.fetchFarmers
-      .mockResolvedValueOnce(Array.from({ length: 100 }, (_, id) => ({ id })))
-      .mockResolvedValueOnce(Array.from({ length: 5 }, (_, id) => ({ id: id + 100 })))
-
-    render(
-      <Settings
-        cooperative={{
-          ...cooperative,
-          subscription_plan: 'growth',
-          subscription_status: 'active',
-        }}
-        cooperativeId={1}
-        loading={false}
-      />,
-    )
-
-    expect(await screen.findByText('Active members: 105 of 500')).toBeTruthy()
-    expect(farmersApi.fetchFarmers).toHaveBeenNthCalledWith(1, 1, null, 0, 100)
-    expect(farmersApi.fetchFarmers).toHaveBeenNthCalledWith(2, 1, null, 100, 100)
+describe('Settings billing section', () => {
+  it('renders the catalogue-driven billing panel', () => {
+    const { container } = render(<Settings cooperative={cooperative} cooperativeId={1} loading={false} />)
+    expect(container.querySelector('[data-testid="billing-panel"]')).toBeTruthy()
   })
 })

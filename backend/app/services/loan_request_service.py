@@ -11,6 +11,20 @@ class PendingLoanRequestError(ValueError):
     """Raised when a member already has a request awaiting a decision."""
 
 
+class LoansNotInPlanError(PendingLoanRequestError):
+    """Raised when the member's cooperative plan does not include AgroCredit.
+
+    Subclasses ``PendingLoanRequestError`` so phone channels end the session
+    with the message instead of prompting a retry.
+    """
+
+
+LOANS_NOT_IN_PLAN_MSG = (
+    "Loans are not available for your cooperative's current plan. "
+    "Ask your cooperative leader about upgrading."
+)
+
+
 def create_farmer_loan_request(
     *,
     membership: CooperativeMembership,
@@ -40,6 +54,18 @@ def create_farmer_loan_request(
     )
     if not locked_membership:
         raise ValueError("Cooperative membership is no longer active.")
+
+    # AgroCredit is a Growth-tier feature (#233). Farmer channels resolve the
+    # cooperative from the phone, so the entitlement is checked here rather
+    # than by an HTTP dependency.
+    from app.services import subscription_lifecycle as lifecycle
+    from app.services.plans import has_feature
+
+    cooperative = locked_membership.cooperative
+    if cooperative is not None:
+        lifecycle.reconcile_and_commit(db, cooperative)
+        if not has_feature(lifecycle.effective_plan_key(cooperative), "loans"):
+            raise LoansNotInPlanError(LOANS_NOT_IN_PLAN_MSG)
 
     existing = (
         db.query(Loan)

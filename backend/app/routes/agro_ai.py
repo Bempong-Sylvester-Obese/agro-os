@@ -15,8 +15,11 @@ from app.database.db import get_db
 from app.dependencies.cooperative_scope import resolve_cooperative_scope
 from app.models.models import User
 from app.services.auth_service import get_current_user
+from app.services.entitlements import require_feature
 
-router = APIRouter(tags=["agro-ai"])
+# Trust scores / credit assessments are a Growth-tier feature (403 when the
+# caller's plan lacks "scores"; no-op when auth is disabled).
+router = APIRouter(tags=["agro-ai"], dependencies=[Depends(require_feature("scores"))])
 
 
 class FarmerFeatures(BaseModel):

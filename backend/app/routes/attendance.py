@@ -16,6 +16,7 @@ from app.services.auth_service import (
     get_current_user,
     require_roles,
 )
+from app.services.organization_guards import require_solo_farm
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 
@@ -54,8 +55,7 @@ def log_attendance(
 ):
     enforce_cooperative_scope(current_user, cooperative_id)
     coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
-    if not coop:
-        raise HTTPException(status_code=404, detail="Cooperative not found")
+    require_solo_farm(coop)
     worker = (
         db.query(Worker)
         .filter(

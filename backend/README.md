@@ -221,8 +221,8 @@ Frontend–backend contract and response shapes: [`docs/api-contract.md`](../doc
 | PATCH | `/transactions/{id}/status` | Update transaction status |
 | GET | `/transactions/farmer/{farmer_id}` | Get all transactions for a farmer |
 | POST | `/transactions/dues/collect` | Initiate dues collection via Moolre USSD push |
-| GET | `/transactions/moolre/account-transactions` | Sync transactions from Moolre wallet |
-| GET | `/transactions/moolre/wallet-balance` | Check cooperative Moolre wallet balance |
+| GET | `/transactions/provider/account-transactions` | Sync transactions from the cooperative's provider wallet (legacy alias: `/transactions/moolre/account-transactions`) |
+| GET | `/transactions/provider/wallet-balance` | Check cooperative wallet balance at the provider (legacy alias: `/transactions/moolre/wallet-balance`) |
 
 ### Loans
 | Method | Path | Description |
@@ -258,11 +258,52 @@ settlement still accept crop produce only.
 | POST | `/communications/sms/dues-reminder` | Send dues reminder SMS to all active members |
 | GET | `/communications/logs` | List sent communication logs |
 
+### Subscriptions
+| Method | Path | Description |
+|---|---|---|
+| GET | `/plans` | Plan catalogue (public) |
+| POST | `/subscriptions/pre-checkout` | Public: create a `pre_checkout` payment intent before signup; returns a non-reusable payment link |
+| POST | `/subscriptions/checkout` | Auth: create a single-use `upgrade` intent for the caller's cooperative; returns a non-reusable payment link. The webhook verifies the paid amount against the intent and activates once |
+| GET | `/cooperatives/{id}/usage` | Auth: usage vs plan limits (members/workers/SMS, band-aware) and feature flags of the effective plan |
+| GET | `/subscriptions/status` | Auth: lifecycle view (`trial`/`active`/`past_due`/`expired`/`cancelled`, effective plan, days remaining) after applying time-based transitions |
+| GET | `/subscriptions/history` | Admin: payment history from subscription intents (signup + upgrades/renewals), with `outcome` pending/paid and `total_paid` |
+| POST | `/subscriptions/renew` | Admin: payment intent renewing the plan on record; extends the current period |
+| POST | `/subscriptions/cancel` | Admin: cancel at period end (default) or immediately |
+| POST | `/subscriptions/resume` | Admin: undo a cancellation before the period ends |
+
+Lifecycle rules (trial length, grace period, renewal semantics) are in [`docs/billing.md`](../docs/billing.md).
+
+### Roles
+Staff roles are the `Role` enum in `app/auth/roles.py` (mirrored by `frontend/src/utils/roles.js`). `GET /auth/roles` (public) returns the catalogue; invite/update schemas accept exactly these values. Role matrix: [`docs/api-contract.md`](../docs/api-contract.md#authentication-and-cooperative-roles).
+
+### Staff sessions (#248)
+Access tokens last 60 minutes in production (7 days in development). `POST /auth/login` and `POST /auth/signup` also return a rotating `refresh_token`; the dashboard exchanges it at `POST /auth/refresh` before expiry. Password change/reset and logout revoke live refresh tokens. Invite and reset emails go through the `EmailProvider` port (`EMAIL_PROVIDER=log` or `smtp`).
+
+### Organizations (Enterprise parent)
+All admin-only; `/organizations/{id}/...` is 404 unless `{id}` is the caller's organization.
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/organizations` | Create an organization; the caller's cooperative becomes its first member |
+| GET | `/organizations/me` | Caller's organization and member cooperatives (marks the active scope) |
+| PATCH | `/organizations/{id}` | Update profile fields (`name`, `description`, `billing_email`) |
+| GET | `/organizations/{id}/cooperatives` | List member cooperatives |
+| POST | `/organizations/{id}/cooperatives` | Create a new cooperative inside the organization |
+| POST | `/organizations/{id}/switch` | Change the admin's active cooperative scope; returns a re-issued JWT (audited) |
+| GET | `/organizations/{id}/billing` | Consolidated billing: contract state, per-cooperative effective plan and usage, totals, payment history |
+
+Enterprise contracts are activated by operators, not through the API:
+`python scripts/activate_enterprise.py --org <id> --months 12 --contract <ref>`
+(`--cancel` to end a contract). Member cooperatives inherit the Enterprise plan
+while the contract is live; see [`docs/billing.md`](../docs/billing.md) and
+[`docs/architecture/tenancy-decision.md`](../docs/architecture/tenancy-decision.md).
+
 ### Webhooks
 | Method | Path | Description |
 |---|---|---|
-| POST | `/webhooks/moolre/payment` | Moolre payment confirmation webhook (HMAC verified) |
-| POST | `/webhooks/moolre/ussd` | USSD session handler (5-option farmer menu) |
+| POST | `/webhooks/payment` | Payment confirmation webhook (HMAC verified). Path is `WEBHOOK_CALLBACK_PATH`; legacy alias `/webhooks/moolre/payment` |
+| POST | `/webhooks/ussd` | USSD session handler, Moolre JSON contract (7-option farmer menu). Legacy alias `/webhooks/moolre/ussd` |
+| POST | `/ussd/callback` | USSD session handler, Africa's Talking contract (same menu) |
 
 ### Agro-AI
 | Method | Path | Description |

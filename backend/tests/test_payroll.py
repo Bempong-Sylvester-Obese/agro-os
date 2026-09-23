@@ -93,7 +93,7 @@ def test_disburse_payroll_uses_stable_external_ref(auth_client, test_cooperative
         seen_refs.append(external_ref)
         return {
             "success": True,
-            "moolre_transfer_ref": external_ref,
+            "provider_transfer_ref": external_ref,
             "external_ref": external_ref,
             "message": "ok",
             "raw": {},
@@ -119,7 +119,7 @@ def test_disburse_payroll_uses_stable_external_ref(auth_client, test_cooperative
     payouts = res.json()
     assert payouts[0]["status"] == "paid"
     assert seen_refs == [f"wage-payout-{payout_id}"]
-    assert payouts[0]["moolre_reference"] == f"wage-payout-{payout_id}"
+    assert payouts[0]["provider_payment_ref"] == f"wage-payout-{payout_id}"
 
 
 def test_payroll_excludes_cross_tenant_attendance(
@@ -157,3 +157,22 @@ def test_payroll_excludes_cross_tenant_attendance(
     assert res.status_code == 200
     assert res.json()["total_workers"] == 0
     assert res.json()["total_gross"] == 0
+
+
+def test_payroll_blocked_without_payroll_feature(auth_client, db):
+    from app.models.models import Cooperative
+
+    coop = Cooperative(
+        name="Starter Payroll",
+        currency="GHS",
+        organization_type="solo_farm",
+        subscription_plan="starter",
+    )
+    db.add(coop)
+    db.commit()
+    res = auth_client.get(
+        f"/payroll/summary?cooperative_id={coop.id}&period_start=2026-09-01&period_end=2026-09-30"
+    )
+    assert res.status_code == 403
+    assert res.json()["detail"]["code"] == "feature_not_in_plan"
+    assert res.json()["detail"]["feature"] == "payroll"

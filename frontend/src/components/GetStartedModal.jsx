@@ -1,6 +1,6 @@
 // src/components/GetStartedModal.jsx
 import { useState } from 'react'
-import { signupAdmin, storeAuthToken } from '../api/auth'
+import { signupAdmin, storeAuthSession } from '../api/auth'
 
 const STEPS = ['Account', 'Cooperative', 'Done']
 
@@ -48,7 +48,7 @@ export default function GetStartedModal({ onClose, onSignIn, onAuth }) {
         password: form.password,
         cooperative_name: form.cooperative.trim(),
       })
-      storeAuthToken(result.access_token)
+      storeAuthSession(result)
       setSignedUpUser({
         ...result.user,
         email: result.user?.email || form.email.trim(),

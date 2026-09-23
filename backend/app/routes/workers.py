@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.database.db import get_db
@@ -10,8 +10,23 @@ from app.services.auth_service import (
     get_current_user,
     require_roles,
 )
+from app.services import entitlements
+from app.services.organization_guards import WORKER_SOLO_FARM_ONLY, require_solo_farm
 
 router = APIRouter(prefix="/workers", tags=["workers"])
+
+
+def _validate_linked_user(db: Session, cooperative_id: int, user_id: int | None) -> None:
+    if user_id is None:
+        return
+    linked = db.query(User).filter(User.id == user_id).first()
+    if not linked:
+        raise HTTPException(status_code=404, detail="User not found")
+    if linked.cooperative_id != cooperative_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User belongs to another workspace",
+        )
 
 
 @router.get("/", response_model=list[WorkerResponse])
@@ -62,6 +77,8 @@ def create_worker(
     coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
+    require_solo_farm(coop, detail=WORKER_SOLO_FARM_ONLY)
+    entitlements.assert_within_limit(db, coop, "max_workers")
 
     existing = (
         db.query(Worker)
@@ -70,6 +87,7 @@ def create_worker(
     )
     if existing:
         raise HTTPException(status_code=409, detail="Worker with this phone already exists")
+    _validate_linked_user(db, cooperative_id, data.user_id)
 
     worker = Worker(
         cooperative_id=cooperative_id,
@@ -77,6 +95,9 @@ def create_worker(
         phone=data.phone,
         wage_rate=data.wage_rate,
         role=WorkerRole(data.role) if data.role else WorkerRole.worker,
+        hire_date=data.hire_date,
+        pay_type=data.pay_type,
+        user_id=data.user_id,
     )
     db.add(worker)
     db.commit()
@@ -93,6 +114,10 @@ def update_worker(
     current_user: User | None = Depends(require_roles("admin", "farm_owner", "farm_manager")),
 ):
     enforce_cooperative_scope(current_user, cooperative_id)
+    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
+    if not coop:
+        raise HTTPException(status_code=404, detail="Cooperative not found")
+    require_solo_farm(coop, detail=WORKER_SOLO_FARM_ONLY)
     worker = (
         db.query(Worker)
         .filter(Worker.id == worker_id, Worker.cooperative_id == cooperative_id)
@@ -100,8 +125,11 @@ def update_worker(
     )
     if not worker:
         raise HTTPException(status_code=404, detail="Worker not found")
+    updates = data.model_dump(exclude_none=True)
+    if "user_id" in updates:
+        _validate_linked_user(db, cooperative_id, updates["user_id"])
 
-    for field, value in data.model_dump(exclude_none=True).items():
+    for field, value in updates.items():
         if field == "role" and value:
             value = WorkerRole(value)
         if field == "status" and value:
@@ -121,6 +149,10 @@ def delete_worker(
     current_user: User | None = Depends(require_roles("admin", "farm_owner")),
 ):
     enforce_cooperative_scope(current_user, cooperative_id)
+    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
+    if not coop:
+        raise HTTPException(status_code=404, detail="Cooperative not found")
+    require_solo_farm(coop, detail=WORKER_SOLO_FARM_ONLY)
     worker = (
         db.query(Worker)
         .filter(Worker.id == worker_id, Worker.cooperative_id == cooperative_id)

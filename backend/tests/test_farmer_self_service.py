@@ -1,8 +1,8 @@
 import asyncio
 from datetime import date, timedelta
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+from app.config import Settings
 from app.models.models import (
     CooperativeMembership as Farmer,
 )
@@ -58,7 +58,7 @@ def test_farmer_starts_loan_repayment_from_ussdk(client, farmer, db):
             "success": False,
             "verification_required": True,
             "outcome": "verification_required",
-            "moolre_reference": "repay-self-service",
+            "provider_payment_ref": "repay-self-service",
             "external_ref": "repay-self-service",
             "message": "OTP required",
         },
@@ -85,7 +85,7 @@ def test_farmer_starts_loan_repayment_from_ussdk(client, farmer, db):
 def test_staff_debit_routes_are_disabled_outside_tests(client, farmer, monkeypatch):
     from app.routes import loans, transactions
 
-    production = SimpleNamespace(app_env="production")
+    production = Settings.model_construct(app_env="production")
     monkeypatch.setattr(transactions, "get_settings", lambda: production)
     monkeypatch.setattr(loans, "get_settings", lambda: production)
 
@@ -127,7 +127,7 @@ def test_direct_ussd_menu_starts_farmer_loan_repayment(client, farmer, db):
             "success": False,
             "verification_required": True,
             "outcome": "verification_required",
-            "moolre_reference": "repay-direct-ref",
+            "provider_payment_ref": "repay-direct-ref",
             "external_ref": "repay-direct-ref",
             "message": "OTP required",
         },
@@ -138,7 +138,7 @@ def test_direct_ussd_menu_starts_farmer_loan_repayment(client, farmer, db):
         )
 
     assert started.json()["reply"] is True
-    assert "OTP Moolre sent" in started.json()["message"]
+    assert "OTP" in started.json()["message"]
 
 
 def test_loan_reminder_is_idempotent_and_never_creates_payment(db, farmer):

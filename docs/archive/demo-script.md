@@ -1,5 +1,7 @@
 # Golden Path Demo Script
 
+> **Archived (hackathon, July 2026).** Kept for historical context; not maintained. See [`../product-strategy.md`](../product-strategy.md) for the current product.
+
 This script keeps the hackathon demo focused on one complete story instead of a feature tour.
 
 ## Demo Goal
@@ -182,7 +184,7 @@ Set `VITE_API_URL=http://localhost:8000` in `frontend/.env` for local wiring.
 ### Fallback: USSD without live short code
 
 ```bash
-curl -X POST "$VITE_API_URL/webhooks/moolre/ussd" \
+curl -X POST "$VITE_API_URL/webhooks/ussd" \
   -H "Content-Type: application/json" \
   -d '{"sessionid":"demo-1","phone":"+233552341234","input":"2"}'
 ```

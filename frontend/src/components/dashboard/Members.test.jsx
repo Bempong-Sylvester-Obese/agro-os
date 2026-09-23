@@ -96,6 +96,42 @@ describe('Members administration', () => {
     await waitFor(() => expect(farmersApi.deactivateFarmer).toHaveBeenCalledWith(4))
   })
 
+  it('defaults new members to no SMS consent and sends the explicit choice', async () => {
+    farmersApi.createFarmer.mockResolvedValue({ ...member, id: 6, sms_consent: true })
+    render(<Members farmers={[member]} cooperativeId={2} onMemberAdded={vi.fn()} loading={false} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add member' }))
+    const consent = screen.getByLabelText(/Member agreed to receive SMS alerts/)
+    expect(consent.checked).toBe(false)
+
+    fireEvent.change(screen.getByLabelText('Full name'), { target: { value: 'Kojo Owusu' } })
+    fireEvent.change(screen.getByLabelText('Phone number'), { target: { value: '0240000000' } })
+    fireEvent.click(consent)
+    fireEvent.click(screen.getByRole('button', { name: 'Save member' }))
+
+    await waitFor(() => expect(farmersApi.createFarmer).toHaveBeenCalledWith(expect.objectContaining({
+      sms_consent: true,
+    })))
+  })
+
+  it('shows consent state per member and lets admins withdraw it', async () => {
+    farmersApi.updateFarmer.mockResolvedValue({ ...member, sms_consent: false })
+    const consenting = { ...member, sms_consent: true, sms_consent_at: '2026-07-01T10:00:00Z' }
+    render(<Members farmers={[consenting]} cooperativeId={2} onMemberAdded={vi.fn()} loading={false} />)
+
+    expect(screen.getByText('SMS on')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Ama Mensah' }))
+    const consent = screen.getByLabelText(/Member agreed to receive SMS alerts/)
+    expect(consent.checked).toBe(true)
+    fireEvent.click(consent)
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => expect(farmersApi.updateFarmer).toHaveBeenCalledWith(4, expect.objectContaining({
+      sms_consent: false,
+    })))
+  })
+
   it('announces export failures to the user', async () => {
     exportDashboardReport.mockRejectedValue(new Error('Report service unavailable'))
     render(<Members farmers={[member]} cooperativeId={2} onMemberAdded={vi.fn()} loading={false} />)

@@ -1,6 +1,7 @@
 """Settings and Configuration"""
 import os
 from functools import lru_cache
+from typing import ClassVar
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
@@ -38,6 +39,24 @@ class Settings(BaseSettings):
     rate_limit_sms_per_minute: int = 5
     rate_limit_dues_per_minute: int = 10
 
+    # Staff session lifetime (#248). Access tokens are short-lived; the
+    # frontend refreshes them silently via ``POST /auth/refresh``. Leave
+    # ``access_token_expire_minutes`` at 0 to take the environment default:
+    # 60 minutes in production, 7 days elsewhere (so local dev sessions
+    # survive a laptop lid close). Production refuses anything above 24h.
+    access_token_expire_minutes: int = 0
+    refresh_token_expire_days: int = 14
+    # Outbound staff email (invites, password resets). ``log`` writes the
+    # link to the application log — the documented interim path until an
+    # SMTP/API adapter is configured. ``smtp`` uses the smtp_* settings.
+    email_provider: str = "log"
+    email_from: str = "AgroOS <no-reply@agroos.app>"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_use_tls: bool = True
+
     # Database
     database_url: str = "postgresql://user:password@localhost:5432/agro_os"
 
@@ -48,6 +67,7 @@ class Settings(BaseSettings):
 
     # AgroOS deployment
     agroos_base_url: str = ""
+    webhook_callback_path: str = "/webhooks/payment"
 
     # Moolre API
     moolre_env: str = "sandbox"
@@ -100,10 +120,42 @@ class Settings(BaseSettings):
             self.seed_demo_data = False
         return self
 
+    @property
+    def is_production(self) -> bool:
+        """True for ``APP_ENV`` of ``production``/``prod`` in any casing.
+
+        Every production gate (demo seed/reset, webhook secrets, insecure
+        defaults) must use this rather than comparing ``app_env`` inline so a
+        value like ``Production`` cannot slip past one check and not another.
+        """
+        return self.app_env.strip().lower() in ("production", "prod")
+
+    PRODUCTION_ACCESS_TOKEN_MINUTES: ClassVar[int] = 60
+    DEVELOPMENT_ACCESS_TOKEN_MINUTES: ClassVar[int] = 60 * 24 * 7
+    MAX_PRODUCTION_ACCESS_TOKEN_MINUTES: ClassVar[int] = 60 * 24
+
+    @property
+    def effective_access_token_minutes(self) -> int:
+        """Access-token lifetime actually used when signing JWTs."""
+        if self.access_token_expire_minutes > 0:
+            return self.access_token_expire_minutes
+        if self.is_production:
+            return self.PRODUCTION_ACCESS_TOKEN_MINUTES
+        return self.DEVELOPMENT_ACCESS_TOKEN_MINUTES
+
     @model_validator(mode="after")
     def reject_insecure_production_settings(self) -> "Settings":
-        if self.app_env.lower() not in ("production", "prod"):
+        if not self.is_production:
             return self
+        if self.access_token_expire_minutes > self.MAX_PRODUCTION_ACCESS_TOKEN_MINUTES:
+            raise ValueError(
+                "APP_ENV=production requires ACCESS_TOKEN_EXPIRE_MINUTES <= "
+                f"{self.MAX_PRODUCTION_ACCESS_TOKEN_MINUTES} (24h); use the refresh flow for longer sessions"
+            )
+        if self.email_provider not in ("log", "smtp"):
+            raise ValueError("EMAIL_PROVIDER must be 'log' or 'smtp'")
+        if self.email_provider == "smtp" and not self.smtp_host.strip():
+            raise ValueError("EMAIL_PROVIDER=smtp requires SMTP_HOST")
         if self.secret_key == _DEFAULT_SECRET_KEY or not self.secret_key.strip():
             raise ValueError("APP_ENV=production requires a non-default SECRET_KEY")
         if not self.database_url.strip():

@@ -1,14 +1,32 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { CheckSquare, Square } from 'lucide-react'
-import { API_URL, authHeaders, fetchJson } from '../../api/config'
+import { getUserRole } from '../../utils/auth'
+import { can } from '../../utils/roles'
+import { fetchCooperativeAttendance, recordMeetingAttendance } from '../../api/farmers'
+import { formatTransportError } from '../../api/config'
 import DashboardPagination from './DashboardPagination'
 
 const PAGE_SIZE = 20
 
-export default function CooperativeAttendance({ cooperativeId, farmers = [] }) {
+function emptyMap(farmers, value = false) {
+  const map = {}
+  farmers.forEach((f) => { if (f?.id != null) map[f.id] = value })
+  return map
+}
+
+/**
+ * Meeting attendance for cooperative members (#245).
+ *
+ * Records one `POST /farmers/{id}/attendance` row per member for a named
+ * meeting and lists recent records. Attendance is 15% of the AgroCredit trust
+ * score, so `onRecorded` lets the dashboard refresh member data / scores.
+ */
+export default function CooperativeAttendance({ cooperativeId, farmers = [], onRecorded }) {
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [submitError, setSubmitError] = useState(null)
+  const [notice, setNotice] = useState(null)
   const [page, setPage] = useState(0)
   const [submitting, setSubmitting] = useState(false)
 
@@ -16,122 +34,56 @@ export default function CooperativeAttendance({ cooperativeId, farmers = [] }) {
   const [eventDate, setEventDate] = useState('')
   const [attendanceMap, setAttendanceMap] = useState({})
 
-  useEffect(() => {
+  const loadRecords = useCallback(async () => {
     if (!cooperativeId) return
     setLoading(true)
     setError(null)
-    const fetchRecent = async () => {
-      try {
-        const ids = farmers.map(f => f.id).filter(Boolean)
-        if (ids.length === 0) { setRecords([]); return }
-        const allRecords = await Promise.all(
-          ids.map(id =>
-            fetchJson(
-              `${API_URL}/farmers/${id}/attendance?cooperative_id=${cooperativeId}&limit=5`,
-              { headers: authHeaders() },
-            )
-          ),
-        )
-        const merged = allRecords.flat().sort((a, b) => {
-          const dateA = a.event_date || a.date || ''
-          const dateB = b.event_date || b.date || ''
-          return dateB.localeCompare(dateA)
-        })
-        setRecords(merged)
-      } catch (err) {
-        setError(err)
-      } finally {
-        setLoading(false)
-      }
+    try {
+      setRecords(await fetchCooperativeAttendance(cooperativeId, farmers.map((f) => f.id)))
+    } catch (err) {
+      setError(formatTransportError(err))
+    } finally {
+      setLoading(false)
     }
-    fetchRecent()
   }, [cooperativeId, farmers])
 
+  useEffect(() => { loadRecords() }, [loadRecords])
+
   useEffect(() => {
-    if (farmers.length > 0) {
-      const map = {}
-      farmers.forEach(f => { map[f.id] = false })
-      setAttendanceMap(map)
-    }
+    if (farmers.length > 0) setAttendanceMap(emptyMap(farmers))
   }, [farmers])
 
   const pageCount = Math.ceil(records.length / PAGE_SIZE)
   const paged = records.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)
 
   function toggleFarmer(id) {
-    setAttendanceMap(prev => ({ ...prev, [id]: !prev[id] }))
+    setAttendanceMap((prev) => ({ ...prev, [id]: !prev[id] }))
   }
 
-  function markAllPresent() {
-    const map = {}
-    farmers.forEach(f => { map[f.id] = true })
-    setAttendanceMap(map)
-  }
-
-  function markAllAbsent() {
-    const map = {}
-    farmers.forEach(f => { map[f.id] = false })
-    setAttendanceMap(map)
-  }
+  function markAllPresent() { setAttendanceMap(emptyMap(farmers, true)) }
+  function markAllAbsent() { setAttendanceMap(emptyMap(farmers, false)) }
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!eventDate || !eventName.trim()) return
+    if (!eventDate || !eventName.trim() || farmers.length === 0) return
 
     setSubmitting(true)
-    const checked = Object.entries(attendanceMap)
-      .filter(([, attended]) => attended)
-      .map(([id]) => parseInt(id, 10))
-
+    setSubmitError(null)
+    setNotice(null)
     try {
-      await Promise.all(farmers.map(async (farmer) => {
-        const farmerId = farmer.id
-        if (!checked.includes(farmerId) && !Object.prototype.hasOwnProperty.call(attendanceMap, farmerId)) return
-        const attended = checked.includes(farmerId)
-        await fetchJson(`${API_URL}/farmers/${farmerId}/attendance?cooperative_id=${cooperativeId}`, {
-          method: 'POST',
-          headers: authHeaders(true),
-          body: JSON.stringify({
-            cooperative_id: cooperativeId,
-            farmer_id: farmerId,
-            event_name: eventName.trim(),
-            event_date: eventDate,
-            attended,
-          }),
-        })
-      }))
-
+      const { recorded, present } = await recordMeetingAttendance(cooperativeId, attendanceMap, {
+        eventName: eventName.trim(),
+        eventDate,
+      })
+      setNotice(`Recorded ${eventName.trim()} on ${eventDate}: ${present} of ${recorded} members present. Trust scores will reflect this on the next recalculation.`)
       setEventName('')
       setEventDate('')
-      const map = {}
-      farmers.forEach(f => { map[f.id] = false })
-      setAttendanceMap(map)
-      setLoading(true)
-      try {
-        const ids = farmers.map(f => f.id).filter(Boolean)
-        if (ids.length > 0) {
-          const allRecords = await Promise.all(
-            ids.map(id =>
-              fetchJson(
-                `${API_URL}/farmers/${id}/attendance?cooperative_id=${cooperativeId}&limit=5`,
-                { headers: authHeaders() },
-              )
-            ),
-          )
-          const merged = allRecords.flat().sort((a, b) => {
-            const dateA = a.event_date || a.date || ''
-            const dateB = b.event_date || b.date || ''
-            return dateB.localeCompare(dateA)
-          })
-          setRecords(merged)
-        }
-      } catch (err) {
-        setError(err)
-      } finally {
-        setLoading(false)
-      }
+      setAttendanceMap(emptyMap(farmers))
+      setPage(0)
+      await loadRecords()
+      onRecorded?.({ eventName: eventName.trim(), eventDate, recorded, present })
     } catch (err) {
-      alert(err.message || 'Failed to log attendance')
+      setSubmitError(formatTransportError(err))
     } finally {
       setSubmitting(false)
     }
@@ -147,17 +99,21 @@ export default function CooperativeAttendance({ cooperativeId, farmers = [] }) {
   return (
     <div>
       {error && (
-        <div className="error-banner" role="alert" style={{ marginBottom: 16 }}>
-          Failed to load attendance records
+        <div className="error-banner" role="alert" style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <span>Failed to load attendance records: {error}</span>
+          <button type="button" className="btn-nav" style={{ fontSize: 12, padding: '5px 12px' }} onClick={loadRecords}>Retry</button>
         </div>
       )}
 
+      {can('recordMemberAttendance', getUserRole()) && (
       <div className="section-card" style={{ marginBottom: 24 }}>
         <div className="section-header">
           <h2>Log meeting attendance</h2>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ padding: '0 20px 20px' }}>
+        <form onSubmit={handleSubmit} style={{ padding: '0 20px 20px' }} aria-label="Log meeting attendance">
+          {submitError && <div className="dashboard-form-error" role="alert" style={{ marginBottom: 12 }}>{submitError}</div>}
+          {notice && <div role="status" style={{ marginBottom: 12, padding: '10px 12px', background: '#ECFDF5', color: '#047857', borderRadius: 8, fontSize: 13 }}>{notice}</div>}
           <div style={{ display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
               Event date
@@ -182,7 +138,7 @@ export default function CooperativeAttendance({ cooperativeId, farmers = [] }) {
             </label>
           </div>
 
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
             <button type="button" className="btn-nav" style={{ fontSize: 12, padding: '5px 12px' }} onClick={markAllPresent}>
               Mark all present
             </button>
@@ -232,11 +188,12 @@ export default function CooperativeAttendance({ cooperativeId, farmers = [] }) {
             )}
           </div>
 
-          <button type="submit" className="btn-lg" disabled={submitting || !eventDate || !eventName.trim()}>
+          <button type="submit" className="btn-lg" disabled={submitting || !eventDate || !eventName.trim() || farmers.length === 0}>
             {submitting ? 'Logging…' : 'Log attendance'}
           </button>
         </form>
       </div>
+      )}
 
       <div className="admin-card">
         <div className="section-header">
@@ -247,6 +204,7 @@ export default function CooperativeAttendance({ cooperativeId, farmers = [] }) {
           <div className="skeleton-box" style={{ height: 200, margin: 20 }} />
         ) : (
           <>
+            <div className="table-scroll">
             <table className="data-table">
               <thead>
                 <tr>
@@ -279,6 +237,7 @@ export default function CooperativeAttendance({ cooperativeId, farmers = [] }) {
                 )}
               </tbody>
             </table>
+            </div>
             <DashboardPagination
               page={page}
               pageCount={pageCount}

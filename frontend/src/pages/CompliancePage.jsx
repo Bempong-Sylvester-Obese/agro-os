@@ -13,9 +13,9 @@ const REG_TABLE = [
 const STATUS_TABLE = [
   { item: 'Data privacy policy documented', status: 'done', label: 'Done' },
   { item: 'Payment webhook signature verification', status: 'done', label: 'Done' },
-  { item: 'USSD webhook signature verification', status: 'open', label: 'Open — P0' },
-  { item: 'Role-based access control (production)', status: 'partial', label: 'Designed, not enforced' },
-  { item: 'Supabase row-level security', status: 'open', label: 'Not yet deployed' },
+  { item: 'USSD webhook signature verification', status: 'done', label: 'Done — shared-secret validation' },
+  { item: 'Role-based access control (production)', status: 'done', label: 'Enforced — JWT scoped per cooperative' },
+  { item: 'Tenant isolation model', status: 'done', label: 'Decided — API-only tenancy (no DB RLS)' },
   { item: 'AML / transaction monitoring', status: 'open', label: 'Not started' },
   { item: 'Legal review of policy', status: 'open', label: 'Outstanding' },
 ]
@@ -61,12 +61,11 @@ export default function CompliancePage() {
               marginBottom: 48,
             }}
           >
-            <strong>Draft — hackathon scope (Moolre Startup Cup, July 2026).</strong>{' '}
+            <strong>Pre-production policy — pending legal review.</strong>{' '}
             This page is a non-legal summary for cooperative administrators,
-            partners, and evaluators. It is not legal advice. Before any
-            production deployment or onboarding of real farmer data or
-            funds, this policy requires review by qualified Ghanaian legal
-            counsel and Moolre's compliance team.
+            customers, and partners. It is not legal advice. Before onboarding
+            real farmer data or funds, this policy requires review by qualified
+            Ghanaian legal counsel and our payment provider's compliance team.
           </div>
 
           <h2 className="sec-h2 serif" id="framework">Regulatory framework</h2>

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { getOrganizationType, getUserRole, resolveCooperativeId } from '../utils/auth'
+import { canAccessSection, defaultSectionFor, filterNavGroups } from '../utils/roles'
 import { formatTransportError } from '../api/config'
 import { DASHBOARD_SECTIONS, dashboardPath } from '../constants/routes'
 import { fetchFarmers } from '../api/farmers'
@@ -35,6 +36,7 @@ import Sales from '../components/dashboard/Sales'
 import Settlements from '../components/dashboard/Settlements'
 import DashboardUserMenu from '../components/dashboard/DashboardUserMenu'
 import { SidebarCoopSkeleton } from '../components/dashboard/DashboardSkeleton'
+import OrganizationSwitcher from '../components/dashboard/OrganizationSwitcher'
 import { BarChart3, Users, CreditCard, Star, MessageSquare, Settings, Sprout, Banknote, Tractor, Phone, RefreshCw, ClipboardList, Inbox, Boxes, Store, ShoppingCart, WalletCards, Megaphone } from 'lucide-react'
 
 function getNavGroups(organizationType) {
@@ -303,86 +305,8 @@ export default function DashboardPage({ user, onLogout }) {
   }
 
   const navGroups = getNavGroups(organizationType)
-  const filteredNavGroups = organizationType === 'solo_farm' && userRole === 'supervisor'
-    ? [
-        {
-          label: 'Operations',
-          items: [
-            { key: 'overview', icon: <BarChart3 size={18} />, label: 'Overview' },
-            { key: 'attendance', icon: <Users size={18} />, label: 'Attendance' },
-          ],
-        },
-        {
-          label: 'Governance',
-          items: [
-            { key: 'activity', icon: <ClipboardList size={18} />, label: 'Activity log' },
-          ],
-        },
-      ]
-    : navGroups
-  const coopedNavGroups = organizationType !== 'solo_farm' && userRole === 'finance_officer'
-    ? [
-        {
-          label: 'Operations',
-          items: [
-            { key: 'overview', icon: <BarChart3 size={18} />, label: 'Overview' },
-            { key: 'members', icon: <Users size={18} />, label: 'Members' },
-            { key: 'attendance', icon: <Users size={18} />, label: 'Attendance' },
-            { key: 'production', icon: <Tractor size={18} />, label: 'Production' },
-            { key: 'scores', icon: <Star size={18} />, label: 'Agro-AI scores' },
-          ],
-        },
-        {
-          label: 'Finance',
-          items: [
-            { key: 'payments', icon: <CreditCard size={18} />, label: 'Payments' },
-            { key: 'loans', icon: <Banknote size={18} />, label: 'Loans' },
-          ],
-        },
-        {
-          label: 'Communications',
-          items: [
-            { key: 'sms', icon: <MessageSquare size={18} />, label: 'SMS broadcasts' },
-            { key: 'ussd', icon: <Phone size={18} />, label: 'USSD activity' },
-            { key: 'announcements', icon: <Megaphone size={18} />, label: 'Announcements' },
-          ],
-        },
-        {
-          label: 'Governance',
-          items: [
-            { key: 'activity', icon: <ClipboardList size={18} />, label: 'Activity log' },
-          ],
-        },
-      ]
-    : organizationType !== 'solo_farm' && userRole && ['farm_owner', 'farm_manager', 'supervisor'].includes(userRole)
-    ? [
-        {
-          label: 'Operations',
-          items: [
-            { key: 'overview', icon: <BarChart3 size={18} />, label: 'Overview' },
-            { key: 'members', icon: <Users size={18} />, label: 'Members' },
-            { key: 'attendance', icon: <Users size={18} />, label: 'Attendance' },
-            { key: 'production', icon: <Tractor size={18} />, label: 'Production' },
-            { key: 'scores', icon: <Star size={18} />, label: 'Agro-AI scores' },
-          ],
-        },
-        {
-          label: 'Communications',
-          items: [
-            { key: 'sms', icon: <MessageSquare size={18} />, label: 'SMS broadcasts' },
-            { key: 'ussd', icon: <Phone size={18} />, label: 'USSD activity' },
-            { key: 'announcements', icon: <Megaphone size={18} />, label: 'Announcements' },
-          ],
-        },
-        {
-          label: 'Governance',
-          items: [
-            { key: 'activity', icon: <ClipboardList size={18} />, label: 'Activity log' },
-          ],
-        },
-      ]
-    : null
-  const displayNavGroups = filteredNavGroups || coopedNavGroups || navGroups
+  // Role-based nav gating (#244): mirrors backend require_roles via utils/roles.js.
+  const displayNavGroups = filterNavGroups(navGroups, userRole, organizationType)
   const NAV_ITEMS = displayNavGroups.flatMap((group) => group.items)
 
   if (urlSection && !DASHBOARD_SECTIONS.includes(urlSection)) {
@@ -394,17 +318,8 @@ export default function DashboardPage({ user, onLogout }) {
   if (organizationType !== 'solo_farm' && section === 'workers') {
     return <Navigate to={dashboardPath('members')} replace />
   }
-  if (organizationType === 'solo_farm' && userRole === 'supervisor') {
-    const supervisorSections = ['overview', 'attendance', 'activity', 'settings']
-    if (!supervisorSections.includes(section)) {
-      return <Navigate to={dashboardPath('attendance')} replace />
-    }
-  }
-  if (organizationType !== 'solo_farm' && userRole && ['farm_owner', 'farm_manager', 'supervisor'].includes(userRole)) {
-    const allowedSections = ['overview', 'members', 'attendance', 'production', 'scores', 'sms', 'ussd', 'announcements', 'activity', 'settings']
-    if (!allowedSections.includes(section)) {
-      return <Navigate to={dashboardPath('overview')} replace />
-    }
+  if (!canAccessSection(section, userRole, organizationType)) {
+    return <Navigate to={dashboardPath(defaultSectionFor(userRole, organizationType))} replace />
   }
 
   return (
@@ -423,6 +338,7 @@ export default function DashboardPage({ user, onLogout }) {
             <span className="admin-side-sub-name" title={cooperative?.name}>
               {loading ? <SidebarCoopSkeleton /> : (cooperative?.name ?? 'My Cooperative')}
             </span>
+            <OrganizationSwitcher user={user} activeCooperativeId={cooperativeId} />
           </div>
         </div>
         <label className="admin-mobile-section">
@@ -548,7 +464,7 @@ export default function DashboardPage({ user, onLogout }) {
             <Attendance cooperativeId={cooperativeId} />
           )}
           {section === 'attendance' && organizationType !== 'solo_farm' && (
-            <CooperativeAttendance cooperativeId={cooperativeId} farmers={farmers} />
+            <CooperativeAttendance cooperativeId={cooperativeId} farmers={farmers} onRecorded={handleMemberAdded} />
           )}
           {section === 'announcements' && (
             <Announcements cooperativeId={cooperativeId} userRole={userRole} />

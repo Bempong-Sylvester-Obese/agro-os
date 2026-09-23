@@ -3,11 +3,8 @@
 # ---------------------------------------------------------------------------
 # Column Naming Convention
 # ---------------------------------------------------------------------------
-# Provider-specific columns are prefixed with the provider name (e.g., moolre_*).
-# Provider-neutral columns use generic names (e.g., provider_reference, external_ref).
-#
-# Current provider-specific: moolre_reference, moolre_transfer_ref, moolre_account_number
-# Provider-neutral: provider_reference (use for new providers)
+# All provider-facing columns use provider-neutral names so that adding new
+# payment providers does not require schema changes.
 # ---------------------------------------------------------------------------
 
 import enum
@@ -158,6 +155,11 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     onboarding_role = Column(String, nullable=True)
     cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=True)
+    # Set for organization administrators; grants cooperative switching within
+    # the organization and the consolidated billing view (#237).
+    organization_id = Column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     reset_token = Column(String, nullable=True)
@@ -168,6 +170,77 @@ class User(Base):
 
     # Relationship to cooperative
     cooperative = relationship("Cooperative")
+    organization = relationship("Organization", back_populates="administrators")
+
+
+class StaffRefreshToken(Base):
+    """Opaque, rotating refresh token for staff sessions (#248).
+
+    Only the SHA-256 hash of the token is stored. Each token is single-use:
+    ``POST /auth/refresh`` revokes it and issues a replacement, and a password
+    change/reset revokes every live token for the user.
+    """
+
+    __tablename__ = "staff_refresh_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+    # True only when this token was exchanged at /auth/refresh. Presenting a
+    # rotated token is treated as theft and revokes the rest of the family.
+    # Logout / password change set revoked_at without rotating.
+    rotated = Column(Boolean, default=False, nullable=False)
+
+    user = relationship("User")
+
+
+# ---------------------------------------------------------------------------
+# Organization (Enterprise parent of many cooperatives)
+# ---------------------------------------------------------------------------
+
+
+class Organization(Base):
+    """Parent account that owns several cooperatives (unions, lenders, NGOs).
+
+    Tenancy stays cooperative-scoped: every operational record belongs to one
+    cooperative and every request is scoped to the caller's *active*
+    cooperative. An organization administrator (``users.organization_id``) may
+    switch their active cooperative among the organization's members and see
+    a consolidated billing view; nothing else crosses cooperative boundaries.
+
+    Billing can attach here: while the organization's subscription is live,
+    member cooperatives inherit its plan as their effective plan.
+    """
+
+    __tablename__ = "organizations"
+
+    STATUS_PENDING = "pending"  # created, contract not yet active
+    STATUS_ACTIVE = "active"
+    STATUS_EXPIRED = "expired"
+    STATUS_CANCELLED = "cancelled"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True, nullable=False)
+    description = Column(Text, nullable=True)
+    billing_email = Column(String, nullable=True)
+    subscription_plan = Column(String, default="enterprise", nullable=False, server_default="enterprise")
+    subscription_status = Column(String, default=STATUS_PENDING, nullable=False, server_default=STATUS_PENDING)
+    subscription_expires_at = Column(DateTime, nullable=True)
+    contract_reference = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    cooperatives = relationship("Cooperative", back_populates="organization")
+    administrators = relationship("User", back_populates="organization")
+
+    def subscription_is_live(self, now: datetime | None = None) -> bool:
+        now = now or datetime.utcnow()
+        if self.subscription_status != self.STATUS_ACTIVE:
+            return False
+        return self.subscription_expires_at is None or now < self.subscription_expires_at
 
 
 # ---------------------------------------------------------------------------
@@ -196,15 +269,20 @@ class Cooperative(Base):
     subscription_expires_at = Column(DateTime, nullable=True)
     sms_sent_this_month = Column(Integer, default=0, server_default="0", nullable=False)
     sms_month_reset = Column(DateTime, nullable=True)
-    # Moolre wallet that holds cooperative funds
-    moolre_account_number = Column(String, nullable=True)
+    # Provider wallet that holds cooperative funds
+    wallet_account_id = Column(String, nullable=True)
     # 4-digit code for USSD onboarding
     ussd_code = Column(String(4), unique=True, index=True, nullable=True)
+    # Optional Enterprise parent (#237); NULL for independent cooperatives.
+    organization_id = Column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     memberships = relationship("CooperativeMembership", back_populates="cooperative")
+    organization = relationship("Organization", back_populates="cooperatives")
 
 
 # ---------------------------------------------------------------------------
@@ -260,7 +338,12 @@ class CooperativeMembership(Base):
     trust_score = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    sms_consent = Column(Boolean, default=True, nullable=False)
+    # SMS consent (#247): explicit, timestamped, default *off* for new members.
+    # Every outbound SMS path checks ``sms_consent``; ``set_sms_consent`` keeps
+    # the audit timestamps consistent.
+    sms_consent = Column(Boolean, default=False, server_default="false", nullable=False)
+    sms_consent_at = Column(DateTime, nullable=True)
+    sms_opt_out_at = Column(DateTime, nullable=True)
 
     farmer = relationship("Farmer", back_populates="memberships")
     cooperative = relationship("Cooperative", back_populates="memberships")
@@ -269,6 +352,19 @@ class CooperativeMembership(Base):
     loans = relationship("Loan", back_populates="farmer")
     trust_scores = relationship("TrustScore", back_populates="farmer")
     attendances = relationship("CooperativeAttendance", back_populates="farmer")
+
+    def set_sms_consent(self, value: bool, *, now: datetime | None = None) -> bool:
+        """Record a consent decision with its timestamp. Returns True if it changed."""
+        value = bool(value)
+        moment = now or datetime.utcnow()
+        if value == bool(self.sms_consent) and (self.sms_consent_at or self.sms_opt_out_at):
+            return False
+        self.sms_consent = value
+        if value:
+            self.sms_consent_at = moment
+        else:
+            self.sms_opt_out_at = moment
+        return True
 
     @property
     def name(self):
@@ -309,9 +405,9 @@ class Transaction(Base):
     amount = Column(Float, nullable=False)
     currency = Column(String, default="GHS")
     status = Column(Enum(TransactionStatus), default=TransactionStatus.pending)
-    # Moolre refs
-    moolre_reference = Column(String, unique=True, nullable=True)  # payment ref
-    moolre_transfer_ref = Column(String, unique=True, nullable=True)  # transfer ref
+    # Provider refs
+    provider_payment_ref = Column(String, unique=True, nullable=True)  # payment ref
+    provider_transfer_ref = Column(String, unique=True, nullable=True)  # transfer ref
     loan_id = Column(Integer, ForeignKey("loans.id"), nullable=True, index=True)
     settlement_line_id = Column(
         Integer, ForeignKey("settlement_lines.id"), nullable=True, index=True
@@ -366,7 +462,7 @@ class Loan(Base):
     rejected_by = Column(String, nullable=True)
     rejected_at = Column(DateTime, nullable=True)
     # Disbursement
-    moolre_transfer_ref = Column(String, nullable=True)
+    provider_transfer_ref = Column(String, nullable=True)
     disbursed_at = Column(DateTime, nullable=True)
     # Repayment
     repaid_at = Column(DateTime, nullable=True)
@@ -576,7 +672,7 @@ class CommunicationLog(Base):
     cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=True)
     recipients_count = Column(Integer, default=0)
     body = Column(Text, nullable=False)
-    moolre_ref = Column(String, nullable=True)
+    provider_ref = Column(String, nullable=True)
     sent_by = Column(String, nullable=True)  # admin identifier
     status = Column(String, default="sent")
     sent_at = Column(DateTime, default=datetime.utcnow)
@@ -588,13 +684,13 @@ class CommunicationLog(Base):
 
 
 class PaymentWebhookEvent(Base):
-    """Audit log for incoming Moolre payment webhooks."""
+    """Audit log for incoming payment webhooks."""
 
     __tablename__ = "payment_webhook_events"
 
     id = Column(Integer, primary_key=True, index=True)
     event_type = Column(String, default="payment")
-    moolre_reference = Column(String, nullable=True, index=True)
+    provider_payment_ref = Column(String, nullable=True, index=True)
     transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
     signature_valid = Column(Boolean, default=True)
     payload = Column(Text, nullable=False)
@@ -714,23 +810,58 @@ class DemoBooking(Base):
 
 
 class PendingCheckout(Base):
-    """Subscription checkout created before account creation; reconciled by webhook."""
+    """Single-use subscription payment intent, reconciled by the payment webhook.
+
+    Two kinds share the table:
+
+    * ``pre_checkout`` — created on the public pricing page before an account
+      exists (``sub_pre_*`` references). The webhook marks it ``paid``; signup
+      consumes it and copies plan/band onto the new cooperative.
+    * ``upgrade`` — created by an authenticated admin for an existing
+      cooperative (``sub_upg_*`` references). The webhook verifies the paid
+      amount against the intent, activates the plan **once**, and marks the
+      intent ``consumed``.
+
+    The intent, not the provider reference string, is the source of truth for
+    which plan/band/amount a payment is for.
+    """
 
     __tablename__ = "pending_checkouts"
 
+    KIND_PRE_CHECKOUT = "pre_checkout"
+    KIND_UPGRADE = "upgrade"
+
+    STATUS_PENDING = "pending"
+    STATUS_PAID = "paid"
+    STATUS_CONSUMED = "consumed"
+
     id = Column(Integer, primary_key=True, index=True)
     reference = Column(String, unique=True, nullable=False, index=True)
+    kind = Column(
+        String, default=KIND_PRE_CHECKOUT, server_default=KIND_PRE_CHECKOUT, nullable=False
+    )
+    cooperative_id = Column(
+        Integer, ForeignKey("cooperatives.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    created_by_user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     plan_key = Column(String, nullable=False)
     band = Column(String, nullable=True)
     amount = Column(Float, nullable=False)
     currency = Column(String, default="GHS")
-    organisation = Column(String, nullable=False)
+    organisation = Column(String, nullable=True)
     location = Column(String, nullable=True)
     member_count = Column(Integer, nullable=True)
     role = Column(String, nullable=True)
     organization_type = Column(String, default="cooperative", nullable=False)
-    status = Column(String, default="pending", nullable=False)
+    status = Column(String, default=STATUS_PENDING, nullable=False)
+    provider_transaction_id = Column(String, nullable=True)
+    paid_at = Column(DateTime, nullable=True)
+    consumed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, server_default=func.now(), nullable=False)
+
+    cooperative = relationship("Cooperative", foreign_keys=[cooperative_id])
 
 
 # ---------------------------------------------------------------------------
@@ -750,6 +881,10 @@ class ProduceIntake(Base):
         Integer, ForeignKey("aggregation_batches.id"), nullable=True, index=True
     )
     crop_type = Column(String, nullable=False)
+    production_kind = Column(
+        String, default="crop", server_default="crop", nullable=False
+    )
+    unit = Column(String, default="kg", server_default="kg", nullable=False)
     quantity_kg = Column(Numeric(18, 3), nullable=False)
     net_quantity_kg = Column(Numeric(18, 3), nullable=True)
     quality_grade = Column(String, nullable=True)
@@ -778,6 +913,10 @@ class AggregationBatch(Base):
     cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=False, index=True)
     code = Column(String, nullable=False)
     crop_type = Column(String, nullable=False)
+    production_kind = Column(
+        String, default="crop", server_default="crop", nullable=False
+    )
+    unit = Column(String, default="kg", server_default="kg", nullable=False)
     status = Column(
         Enum(AggregationBatchStatus), default=AggregationBatchStatus.open, nullable=False
     )

@@ -1,5 +1,7 @@
 # Team Assignments
 
+> **Archived (hackathon, July 2026).** Kept for historical context; not maintained. See [`../product-strategy.md`](../product-strategy.md) for the current product.
+
 Use this document to keep ownership clear during the hackathon. Update names once the team confirms who is handling each area.
 
 ## Workstreams

@@ -1,6 +1,7 @@
-import { API_URL, AUTH_FETCH_TIMEOUT_MS, formatTransportError, fetchJson } from './config'
+import { API_URL, AUTH_FETCH_TIMEOUT_MS, authHeaders, formatTransportError, fetchJson } from './config'
 
 export const TOKEN_KEY = 'agro_os_token'
+export const REFRESH_KEY = 'agro_os_refresh'
 const USER_KEY = 'agro_os_user'
 const AVATAR_PREFIX = 'agro_os_avatar_'
 const MAX_AVATAR_BYTES = 500 * 1024
@@ -157,18 +158,54 @@ export async function signup({
 }
 
 export function userFromSignupResponse(data, email) {
-  const cooperativeName = data.cooperative_name || 'My Cooperative'
   const resolvedEmail = data.user?.email || email?.trim() || ''
-  const name = data.user?.name || 'Cooperative Admin'
   return {
     id: data.user?.id ?? data.user_id ?? null,
     email: resolvedEmail,
-    name,
-    initials: name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'CA',
     role: data.user?.role || 'admin',
     cooperative_id: data.cooperative_id ?? data.user?.cooperative_id ?? null,
-    cooperative: cooperativeName,
+    organization_id: data.user?.organization_id ?? null,
+    cooperative: data.cooperative_name ?? null,
     organization_type: data.organization_type || 'cooperative',
+  }
+}
+
+/**
+ * Build the session user from a login/token response. Only values the API
+ * actually returned are used; nothing is invented for display (#251).
+ */
+export function userFromLoginResponse(data, fallbackEmail = '') {
+  const claims = userFromAuthToken(data?.access_token) || {}
+  const apiUser = data?.user || {}
+  return {
+    ...claims,
+    ...apiUser,
+    email: apiUser.email || claims.email || fallbackEmail?.trim() || '',
+    cooperative_id: apiUser.cooperative_id ?? claims.cooperative_id ?? null,
+    organization_id: apiUser.organization_id ?? claims.organization_id ?? null,
+    cooperative: data?.cooperative_name ?? null,
+    organization_type: data?.organization_type || claims.organization_type || 'cooperative',
+  }
+}
+
+/** Authoritative profile for the signed-in user (`GET /auth/me`). */
+export async function fetchCurrentUser() {
+  return fetchJson(`${API_URL}/auth/me`, { headers: authHeaders() })
+}
+
+export function userFromMeResponse(me) {
+  if (!me) return null
+  return {
+    id: me.id ?? null,
+    email: me.email,
+    role: me.role,
+    is_active: me.is_active,
+    onboarding_role: me.onboarding_role ?? null,
+    cooperative_id: me.cooperative_id ?? null,
+    organization_id: me.organization_id ?? null,
+    cooperative: me.cooperative_name ?? null,
+    organization_type: me.organization_type || 'cooperative',
+    password_change_required: Boolean(me.password_change_required),
   }
 }
 
@@ -204,6 +241,70 @@ export function storeAuthToken(token) {
 
 export function getAuthToken() {
   return localStorage.getItem(TOKEN_KEY)
+}
+
+export function storeRefreshToken(token) {
+  if (token) localStorage.setItem(REFRESH_KEY, token)
+  else localStorage.removeItem(REFRESH_KEY)
+}
+
+export function getRefreshToken() {
+  return localStorage.getItem(REFRESH_KEY)
+}
+
+/** Persist access + refresh tokens from a login / signup / refresh / switch payload. */
+export function storeAuthSession(payload) {
+  if (!payload) return
+  if (payload.access_token) storeAuthToken(payload.access_token)
+  if (payload.refresh_token) storeRefreshToken(payload.refresh_token)
+}
+
+let refreshInFlight = null
+
+/**
+ * Exchange the stored refresh token for a new access token (and a rotated
+ * refresh token). Concurrent callers share one request. Uses raw `fetch` so
+ * a 401 here cannot recurse through the dashboard 401 handler.
+ */
+export async function refreshAccessToken() {
+  if (refreshInFlight) return refreshInFlight
+  refreshInFlight = (async () => {
+    const refreshToken = getRefreshToken()
+    if (!refreshToken) throw new Error('No refresh token')
+    const response = await fetch(`${API_URL}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    })
+    if (!response.ok) {
+      storeRefreshToken(null)
+      throw new Error('Refresh failed')
+    }
+    const data = await response.json()
+    storeAuthSession(data)
+    return data.access_token
+  })().finally(() => {
+    refreshInFlight = null
+  })
+  return refreshInFlight
+}
+
+/** Best-effort revoke of the stored refresh token (logout). */
+export async function logoutSession() {
+  const refreshToken = getRefreshToken()
+  if (!refreshToken && !getAuthToken()) return
+  try {
+    await fetch(`${API_URL}/auth/logout`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(getAuthToken() ? { Authorization: `Bearer ${getAuthToken()}` } : {}),
+      },
+      body: JSON.stringify({ refresh_token: refreshToken || null }),
+    })
+  } catch {
+    // Offline logout still clears local state.
+  }
 }
 
 export function isAuthTokenUsable(token = getAuthToken()) {
@@ -245,6 +346,7 @@ export function clearAuthUser() {
 
 export function clearAuthSession() {
   clearAuthToken()
+  storeRefreshToken(null)
   clearAuthUser()
 }
 
@@ -254,20 +356,26 @@ function decodeJwtPayloadSegment(segment) {
   return atob(padded)
 }
 
+/**
+ * Minimal session user from JWT claims only. This is a *bootstrap* value used
+ * until `GET /auth/me` answers; it carries no display strings (no fake name or
+ * cooperative), so nothing fabricated can reach the UI (#251).
+ */
 export function userFromAuthToken(token) {
   try {
+    if (!token) return null
     const segment = token.split('.')[1]
     if (!segment) return null
     const payload = JSON.parse(decodeJwtPayloadSegment(segment))
     const email = payload.sub
     if (!email) return null
     return {
+      id: payload.user_id ?? null,
       email,
-      name: 'Cooperative Admin',
-      initials: 'CA',
-      role: 'admin',
+      role: payload.role ?? null,
       cooperative_id: payload.cooperative_id ?? null,
-      cooperative: 'Kuapa Kokoo Demo Cooperative',
+      organization_id: payload.organization_id ?? null,
+      cooperative: null,
       organization_type: payload.organization_type || 'cooperative',
     }
   } catch {

@@ -154,7 +154,23 @@ def test_crop_intake_rejects_animal_only_member(client, cooperative):
         },
     )
 
-    assert response.status_code == 201, response.text
+    assert response.status_code == 422
+    assert "animal" in response.json()["detail"].lower()
+
+    ok = client.post(
+        "/intakes/",
+        json={
+            "cooperative_id": cooperative["id"],
+            "membership_id": member["id"],
+            "crop_type": "Cattle",
+            "production_kind": "animal",
+            "unit": "head",
+            "quantity_kg": "4.000",
+        },
+    )
+    assert ok.status_code == 201, ok.text
+    assert ok.json()["production_kind"] == "animal"
+    assert ok.json()["unit"] == "head"
 
 
 def test_states_verified_funds_gate_and_exact_arithmetic(
@@ -342,12 +358,12 @@ def test_payout_is_durable_idempotent_and_retries_failed_only(
         if len(calls) == 1:
             return {
                 "success": False,
-                "moolre_transfer_ref": kwargs["external_ref"],
+                "provider_transfer_ref": kwargs["external_ref"],
                 "message": "temporary failure",
             }
         return {
             "success": True,
-            "moolre_transfer_ref": kwargs["external_ref"],
+            "provider_transfer_ref": kwargs["external_ref"],
             "message": "accepted",
         }
 
@@ -391,10 +407,111 @@ def test_payout_is_durable_idempotent_and_retries_failed_only(
         .all()
     )
     assert len(transactions) == 3
-    assert len({tx.moolre_transfer_ref for tx in transactions}) == 3
+    assert len({tx.provider_transfer_ref for tx in transactions}) == 3
     reconciled = client.post(
         f"/settlements/{settlement['id']}/reconcile",
         params={"cooperative_id": cooperative["id"]},
     )
     assert reconciled.status_code == 200, reconciled.text
     assert reconciled.json()["settlement"]["status"] == "completed"
+
+
+def test_animal_lot_settles_through_the_same_pipeline(client, cooperative):
+    member = client.post(
+        "/farmers/",
+        json={
+            "name": "Kojo Herds",
+            "phone": "+233551000077",
+            "cooperative_id": cooperative["id"],
+            "production_focus": "mixed",
+            "animal_type": "Goats",
+            "animal_scale": 20,
+            "crop_type": "Maize",
+        },
+    ).json()
+    intake = client.post(
+        "/intakes/",
+        json={
+            "cooperative_id": cooperative["id"],
+            "membership_id": member["id"],
+            "crop_type": "Goats",
+            "production_kind": "animal",
+            "unit": "head",
+            "quantity_kg": "10.000",
+        },
+    )
+    assert intake.status_code == 201, intake.text
+    accepted = client.post(
+        f"/intakes/{intake.json()['id']}/accept",
+        params={"cooperative_id": cooperative["id"]},
+        json={"net_quantity_kg": "10.000", "quality_grade": "A"},
+    )
+    assert accepted.status_code == 200, accepted.text
+
+    crop_batch = client.post(
+        "/aggregation-batches/",
+        json={
+            "cooperative_id": cooperative["id"],
+            "code": "MAIZE-001",
+            "crop_type": "Maize",
+        },
+    ).json()
+    mismatch = client.post(
+        f"/aggregation-batches/{crop_batch['id']}/intakes",
+        params={"cooperative_id": cooperative["id"]},
+        json={"intake_ids": [intake.json()["id"]]},
+    )
+    assert mismatch.status_code == 422
+
+    batch = client.post(
+        "/aggregation-batches/",
+        json={
+            "cooperative_id": cooperative["id"],
+            "code": "GOATS-001",
+            "crop_type": "Goats",
+            "production_kind": "animal",
+            "unit": "head",
+        },
+    ).json()
+    assert batch["production_kind"] == "animal"
+    assert client.post(
+        f"/aggregation-batches/{batch['id']}/intakes",
+        params={"cooperative_id": cooperative["id"]},
+        json={"intake_ids": [intake.json()["id"]]},
+    ).status_code == 200
+    assert client.post(
+        f"/aggregation-batches/{batch['id']}/close",
+        params={"cooperative_id": cooperative["id"]},
+    ).status_code == 200
+    buyer = client.post(
+        "/buyers/",
+        json={"cooperative_id": cooperative["id"], "name": "Ho Livestock"},
+    ).json()
+    sale = client.post(
+        "/sales/",
+        json={
+            "cooperative_id": cooperative["id"],
+            "aggregation_batch_id": batch["id"],
+            "buyer_id": buyer["id"],
+            "quantity_kg": "10.000",
+            "unit_price": "150.00",
+        },
+    )
+    assert sale.status_code == 201, sale.text
+    assert client.post(
+        f"/sales/{sale.json()['id']}/confirm",
+        params={"cooperative_id": cooperative["id"]},
+    ).status_code == 200
+    receipt = client.post(
+        f"/sales/{sale.json()['id']}/receipts",
+        params={"cooperative_id": cooperative["id"]},
+        json={"amount": "1500.00", "reference": f"LIVESTOCK-{sale.json()['id']}"},
+    )
+    assert receipt.status_code == 201, receipt.text
+    assert client.post(
+        f"/sales/{sale.json()['id']}/receipts/{receipt.json()['id']}/verify",
+        params={"cooperative_id": cooperative["id"]},
+    ).status_code == 200
+    settlement = _calculate(client, cooperative["id"], sale.json()["id"])
+    assert Decimal(settlement["gross_total"]) == Decimal("1500.00")
+    assert Decimal(str(settlement["lines"][0]["quantity_kg"])) == Decimal("10.000")

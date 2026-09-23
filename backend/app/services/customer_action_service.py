@@ -39,11 +39,11 @@ async def reconcile_stale_customer_actions(
     query = (
         db.query(
             Transaction.id,
-            Transaction.moolre_reference,
+            Transaction.provider_payment_ref,
             Transaction.customer_action,
             Transaction.amount,
             Farmer.cooperative_id,
-            Cooperative.moolre_account_number,
+            Cooperative.wallet_account_id,
         )
         .join(Farmer, Transaction.farmer_id == Farmer.id)
         .join(Cooperative, Farmer.cooperative_id == Cooperative.id)
@@ -66,7 +66,7 @@ async def reconcile_stale_customer_actions(
     provider = get_payment_provider()
     outcomes: dict[int, str] = {}
     for action in stale_actions:
-        if not action.moolre_reference:
+        if not action.provider_payment_ref:
             logger.warning(
                 "Cannot reconcile stale transaction %s without a provider reference",
                 action.id,
@@ -75,9 +75,9 @@ async def reconcile_stale_customer_actions(
             continue
         try:
             result = await provider.payment_status(
-                external_ref=action.moolre_reference,
+                external_ref=action.provider_payment_ref,
                 account_number=provider.resolve_account_number(
-                    action.moolre_account_number
+                    action.wallet_account_id
                 ),
             )
         except Exception:
@@ -255,7 +255,7 @@ async def resume_dues_customer_action(
         amount=transaction.amount,
         channel=transaction.channel or "13",
         description=transaction.description,
-        external_ref=transaction.moolre_reference,
+        external_ref=transaction.provider_payment_ref,
         otp_code=otp_code,
         db=db,
         initiation_channel=transaction.initiation_channel,

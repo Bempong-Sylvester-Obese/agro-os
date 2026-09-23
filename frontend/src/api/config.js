@@ -1,9 +1,9 @@
 /**
  * API client configuration.
  *
- * Policy: prefer live backend data when the API is reachable. Demo fallback applies
- * only to transport-level failures (network errors, timeouts). HTTP 4xx/5xx from
- * a reachable backend are surfaced to callers as ApiError.
+ * Policy: the dashboard renders live backend data only. There is no static demo
+ * dataset; transport failures (network errors, timeouts) and HTTP 4xx/5xx are
+ * surfaced to callers as errors so the UI shows a real error state (#251).
  */
 import { clearAuthSession, getAuthToken } from './auth'
 
@@ -14,8 +14,6 @@ export const FETCH_TIMEOUT_MS = 45000
 export const AUTH_FETCH_TIMEOUT_MS = 90000
 /** Moolre disburse/collect can take 60s+ (validate + transfer + status). */
 export const MUTATION_TIMEOUT_MS = 120000
-/** Production builds never silently substitute demo data. */
-export const LIVE_API_ONLY = import.meta.env.PROD && import.meta.env.VITE_ALLOW_DEMO_FALLBACK !== 'true'
 export const DEFAULT_COOP_ID = import.meta.env.VITE_COOPERATIVE_ID
 
 export function authHeaders(json = false) {
@@ -39,20 +37,67 @@ export function handleUnauthorized() {
   }, 1000)
 }
 
-async function handleAuthResponse(response) {
-  if (response.status === 401) {
-    handleUnauthorized()
-    return response
+function isAuthLifecycleUrl(url) {
+  return /\/auth\/(refresh|login|signup|logout|password-reset-request|password-reset-confirm|accept-invite)(\?|$)/.test(
+    typeof url === 'string' ? url : '',
+  )
+}
+
+async function trySilentRefresh(url) {
+  if (isAuthLifecycleUrl(url)) return false
+  try {
+    const { refreshAccessToken } = await import('./auth')
+    await refreshAccessToken()
+    return true
+  } catch {
+    return false
   }
-  return response
 }
 
 export class ApiError extends Error {
-  constructor(message, status) {
+  constructor(message, status, detail = null) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    // Structured `detail` from the API when present, e.g. entitlement errors:
+    // { code: 'plan_limit_reached', limit_key, limit, used, plan, message }
+    this.detail = detail
   }
+}
+
+/** Entitlement error codes returned with HTTP 403 by the plan gates. */
+export const ENTITLEMENT_CODES = new Set([
+  'plan_limit_reached',
+  'sms_quota_exceeded',
+  'feature_not_in_plan',
+])
+
+/**
+ * Turn a FastAPI `detail` (string or structured object) into a user-facing
+ * message. Entitlement details carry their own `message`.
+ */
+export function detailToMessage(detail, fallback = 'Request failed') {
+  if (typeof detail === 'string' && detail) return detail
+  if (detail && typeof detail === 'object') {
+    if (typeof detail.message === 'string') return detail.message
+    if (typeof detail.msg === 'string') return detail.msg
+    return JSON.stringify(detail)
+  }
+  return fallback
+}
+
+/** True when an error was raised by a plan entitlement gate (upgrade prompt). */
+export function isEntitlementError(err) {
+  return Boolean(err?.detail && ENTITLEMENT_CODES.has(err.detail.code))
+}
+
+/**
+ * Build an ApiError from a non-OK response whose body has already been read
+ * as JSON (or failed to parse). Keeps the structured detail on `err.detail`.
+ */
+export function apiErrorFromBody(body, status, fallback) {
+  const detail = body?.detail
+  return new ApiError(detailToMessage(detail, fallback), status, typeof detail === 'object' ? detail : null)
 }
 
 export function isTransportFailure(err) {
@@ -73,10 +118,6 @@ export function formatTransportError(err) {
   return err?.message || 'Network request failed'
 }
 
-export function apiResult(source, data) {
-  return { ...data, source: source === 'api' ? 'api' : 'demo' }
-}
-
 export function createFetchSignal(timeoutMs = FETCH_TIMEOUT_MS) {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
@@ -88,14 +129,16 @@ export function createFetchSignal(timeoutMs = FETCH_TIMEOUT_MS) {
 
 export async function parseResponseError(response) {
   let detail = response.statusText || `Request failed (${response.status})`
+  let structured = null
   try {
     const text = await response.text()
     if (text) {
       try {
         const body = JSON.parse(text)
-        if (typeof body.detail === 'string') detail = body.detail
-        else if (body.detail != null) detail = JSON.stringify(body.detail)
-        else detail = text
+        if (body.detail != null) {
+          detail = detailToMessage(body.detail, detail)
+          if (typeof body.detail === 'object') structured = body.detail
+        } else detail = text
       } catch {
         detail = text
       }
@@ -103,7 +146,7 @@ export async function parseResponseError(response) {
   } catch {
     // Keep statusText fallback.
   }
-  return new ApiError(detail, response.status)
+  return new ApiError(detail, response.status, structured)
 }
 
 export async function apiFetch(url, options = {}) {
@@ -112,8 +155,14 @@ export async function apiFetch(url, options = {}) {
     ? { signal: options.signal, clear: () => {} }
     : createFetchSignal()
   try {
-    const response = await fetch(url, { ...options, signal })
-    await handleAuthResponse(response)
+    let response = await fetch(url, { ...options, signal })
+    if (response.status === 401 && await trySilentRefresh(url)) {
+      const headers = { ...(options.headers || {}), ...authHeaders() }
+      response = await fetch(url, { ...options, headers, signal })
+    }
+    if (response.status === 401 && !isAuthLifecycleUrl(url)) {
+      handleUnauthorized()
+    }
     return response
   } finally {
     clear()
@@ -127,14 +176,3 @@ export async function fetchJson(url, options = {}) {
   return response.json()
 }
 
-/**
- * Run a live fetch; return demo payload only on transport-level failure.
- */
-export async function withDemoFallback(fetchLive, getDemo, { fallback = !LIVE_API_ONLY } = {}) {
-  try {
-    return await fetchLive()
-  } catch (err) {
-    if (!fallback || !isTransportFailure(err)) throw err
-    return getDemo()
-  }
-}

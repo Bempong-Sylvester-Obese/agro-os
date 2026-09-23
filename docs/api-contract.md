@@ -23,9 +23,13 @@ When the database is seeded, Agro-AI assessments are built from DB farmer record
 | UI | Method | Path | Response |
 |----|--------|------|----------|
 | Member list | GET | `/farmers/` | `FarmerResponse[]` |
-| Add member | POST | `/farmers/` | `FarmerResponse` |
+| Add member | POST | `/farmers/` | `FarmerResponse`. `sms_consent` defaults to `false`; send `true` only when the member explicitly agreed |
+| Edit member / SMS consent | PUT | `/farmers/{id}` | `FarmerResponse`. Changing `sms_consent` stamps `sms_consent_at` / `sms_opt_out_at` and writes an admin audit row (`member.sms_consent_granted` / `member.sms_consent_withdrawn`) |
 | Agro-AI scores | GET | `/api/farmers` | Assessment objects (see below) |
 | Credit summary | GET | `/api/agro-ai/credit-summary` | Summary object |
+| Attendance → recent records | GET | `/farmers/{id}/attendance?limit=5` | `AttendanceResponse[]` per member; the dashboard merges one call per member (`fetchCooperativeAttendance`) |
+| Attendance → log meeting | POST | `/farmers/{id}/attendance` | `{farmer_id, event_name, event_date, attended}` — one row per member per meeting (`recordMeetingAttendance`). Roles: admin, finance_officer (coop); farm roles on solo farms |
+| Scores → recalculate | POST | `/farmers/{id}/recalculate-trust-score` | Admin. Attendance over the last 12 months is 15% of the score (neutral 50 with no records) |
 
 **FarmerResponse** (abbreviated):
 
@@ -41,11 +45,16 @@ When the database is seeded, Agro-AI assessments are built from DB farmer record
   "animal_scale": 12,
   "cooperative_id": 1,
   "membership_status": "active",
+  "sms_consent": true,
+  "sms_consent_at": "2026-06-01T00:00:00",
+  "sms_opt_out_at": null,
   "trust_score": 58.0,
   "created_at": "2026-06-01T00:00:00",
   "updated_at": "2026-06-01T00:00:00"
 }
 ```
+
+`sms_consent` gates every member-addressed SMS (dues reminders, payment confirmations, loan notices, announcements, settlement statements). When it is `false` the send is not attempted and a `CommunicationLog` row with `status: "skipped_no_consent"` is recorded instead. Members can toggle it themselves from the USSD main menu (**8. SMS Alerts**). See [`docs/data-privacy.md`](data-privacy.md) §5.1.
 
 **Agro-AI assessment** (abbreviated):
 
@@ -66,7 +75,8 @@ When the database is seeded, Agro-AI assessments are built from DB farmer record
 | UI | Method | Path | Response |
 |----|--------|------|----------|
 | Payment history | GET | `/transactions/` | `TransactionResponse[]` |
-| Wallet balance | GET | `/transactions/moolre/wallet-balance` | Moolre wallet object |
+| Wallet balance | GET | `/transactions/provider/wallet-balance` | Provider wallet object (`/transactions/moolre/wallet-balance` is a legacy alias) |
+| Wallet transactions | GET | `/transactions/provider/account-transactions` | Provider transaction list (`/transactions/moolre/account-transactions` is a legacy alias) |
 | Webhook audit | GET | `/transactions/webhook-events` | `PaymentWebhookEventResponse[]` |
 | Reconcile payment | POST | `/transactions/{transaction_id}/reconcile` | Reconciliation result |
 
@@ -102,8 +112,9 @@ within the record's own unit; quantities with different units are not summed.
 | UI | Method | Path |
 |----|--------|------|
 | USSD log | GET | `/webhooks/ussd/logs` |
-| USSD handler (Moolre) | POST | `/webhooks/moolre/ussd` |
-| Payment webhook (Moolre) | POST | `/webhooks/moolre/payment` |
+| USSD handler (Moolre JSON contract) | POST | `/webhooks/ussd` (legacy alias: `/webhooks/moolre/ussd`) |
+| Payment webhook | POST | `/webhooks/payment` (legacy alias: `/webhooks/moolre/payment`) |
+| USSD handler (Africa's Talking) | POST | `/ussd/callback` |
 | USSDK loan request | POST | `/ussdk/loan-request` |
 | USSDK pending payment | POST | `/ussdk/pending-payment` |
 | USSDK dues payment | POST | `/ussdk/pay-dues` |
@@ -125,13 +136,79 @@ an interrupted farmer session, not a staff-started collection flow.
 
 Optional env: `VITE_COOPERATIVE_ID`.
 
+### Subscriptions and billing
+
+| UI | Method | Path | Notes |
+|----|--------|------|-------|
+| Pricing page | GET | `/plans` | Plan catalogue (public) |
+| Pricing page checkout | POST | `/subscriptions/pre-checkout` | Public. Creates a `pre_checkout` intent (`sub_pre_*`) and returns `{checkout_id, reference, authorization_url, amount}` |
+| Settings → change plan | POST | `/subscriptions/checkout` | Auth. Body `{cooperative_id, plan_key, band?}`. Creates a single-use `upgrade` intent for the caller's cooperative and returns `{intent_id, reference, authorization_url, plan_key, band, amount}` |
+| Settings → usage bars | GET | `/cooperatives/{id}/usage` | Auth. Usage vs band-aware limits (`members`, `workers`, `sms`) and `features` map for the effective plan; see `docs/billing.md` |
+| Settings → billing panel | GET | `/subscriptions/status` | Auth. Applies pending time-based transitions and returns the lifecycle view (`status`, `effective_plan_key`, `paid_access`, `in_grace`, `days_remaining`, ...) |
+| Settings → payment history | GET | `/subscriptions/history` | Admin. Intents for the cooperative (signup pre-checkout + upgrades/renewals), newest first: `{items: [{plan_name, band_label, amount, currency, kind, status, outcome: pending\|paid, provider_transaction_id, created_at, paid_at}], total_paid, currency}` |
+| Settings → renew | POST | `/subscriptions/renew` | Admin. Single-use intent for the plan/band already on record; 400 on free tier or trial |
+| Settings → cancel | POST | `/subscriptions/cancel` | Admin. `{cooperative_id, immediately?: bool}`. Default keeps access until period end |
+| Settings → resume | POST | `/subscriptions/resume` | Admin. Undo a cancellation before the period ends (409 otherwise) |
+
+### Organizations (Enterprise)
+
+All routes require `admin`. `/organizations/{id}/...` returns 404 unless `{id}`
+is the caller's own `organization_id` (same rule as cooperative scope). The JWT
+and `/auth/login` user payload carry `organization_id` (nullable).
+
+| UI | Method | Path | Notes |
+|----|--------|------|-------|
+| Settings → Organization → create | POST | `/organizations` | `{name, description?, billing_email?}`. Caller's cooperative becomes the first member and the caller becomes organization admin. 409 if either already belongs to an organization |
+| Settings → Organization, sidebar switcher | GET | `/organizations/me` | Organization row plus `cooperatives: [{id, name, location, organization_type, is_active_scope}]` |
+| Settings → Organization → edit | PATCH | `/organizations/{id}` | Profile fields only (`name`, `description`, `billing_email`). Subscription fields are operator-managed |
+| Settings → Organization | GET | `/organizations/{id}/cooperatives` | Member cooperatives |
+| Settings → Organization → add cooperative | POST | `/organizations/{id}/cooperatives` | `{name, location?, organization_type?}`. New cooperative starts on the free plan and inherits Enterprise while the contract is live |
+| Sidebar switcher / table row → Switch | POST | `/organizations/{id}/switch` | `{cooperative_id}`. Updates the admin's active cooperative and returns a fresh `Token` (`access_token`, `token_type`) with the new scope. Audited as `organization.scope_switched` |
+| Settings → Organization → billing | GET | `/organizations/{id}/billing` | `{organization, cooperatives: [{..., effective_plan_key, inherits_organization_plan, members, workers, sms}], totals: {cooperatives, members, workers, sms_this_month, paid, currency}, history}` |
+
+**Payment intents.** Every paid flow records a `PendingCheckout` intent
+(plan, band, amount, cooperative) *before* a payment link is issued, and the
+link is non-reusable. The payment webhook resolves the provider's
+`externalref` to that intent and:
+
+- refuses activation when the paid amount differs from the intent amount
+  (recorded as an unprocessed `PaymentWebhookEvent`, "subscription amount mismatch");
+- activates the plan/band exactly once (`pending → consumed`); duplicate
+  deliveries return "already processed" and do not extend the expiry again;
+- never infers the plan from the amount or from the reference string for
+  intent-backed payments. References issued before intents existed
+  (`sub_upg_<coop>_<plan>_<ts>_<band>`) are still accepted via a legacy path.
+
+`pre_checkout` intents move `pending → paid` on webhook and `paid → consumed`
+when signup redeems them with `checkout_ref`.
+
+**Lifecycle.** Free signups start a 14-day Growth trial (`subscription_status =
+trial`, plan stays `starter`); paid periods are 30 days with a 7-day grace
+period (`past_due`) before `expired`. Limits and feature gates always use the
+*effective* plan from `subscription_lifecycle.effective_plan_key`, never the
+raw `subscription_plan` column. Routes that need a live paid plan use
+`Depends(require_active_subscription(...))`, which returns `402
+{"code": "subscription_required"}`. States, transitions, and renewal semantics
+are documented in [`docs/billing.md`](billing.md).
+
+**Entitlement errors.** Member caps, SMS quotas, and feature gates respond
+`403` with a structured `detail` — `{"code": "plan_limit_reached" |
+"sms_quota_exceeded" | "feature_not_in_plan", "message", "plan", ...}` —
+rather than a plain string. Clients should read `detail.message` for display
+and `detail.code` to decide whether to show an upgrade prompt
+(`frontend/src/components/dashboard/UpgradePrompt.jsx`).
+
 ### Cooperative commerce
 
 Commerce records are cooperative-scoped and follow explicit state transitions.
-Unlike production tracking and scoring, this release's intake, aggregation,
-buyer-sale, and settlement workflow remains crop-only:
+Intake, aggregation, buyer-sale, and settlement now accept crop and animal
+lots. `crop_type` is the product name (Cocoa, Goats, Milk). `production_kind`
+is `crop` or `animal`; `unit` is `kg`, `head`, or `litre`. A member on a
+`crop` or `animal` profile may only deliver that kind; `mixed` members may
+deliver both. A batch only accepts intakes that match its product, kind, and
+unit. Settlement still multiplies accepted quantity by unit price:
 
-- Produce intake: record, accept or reject, then assign accepted weight to one
+- Produce intake: record, accept or reject, then assign accepted quantity to one
   open aggregation batch.
 - Aggregation: close a batch before recording its buyer sale.
 - Buyer sale: confirm the commercial terms, record buyer-payment evidence, and
@@ -170,42 +247,116 @@ crop columns.
 | UI | Method | Path |
 |----|--------|------|
 | Login | POST | `/auth/login` |
+| Silent refresh | POST | `/auth/refresh` |
+| Logout | POST | `/auth/logout` |
+| Session hydrate (app load) | GET | `/auth/me` |
 | Signup | POST | `/auth/signup` |
 | Add cooperative user | POST | `/auth/register` |
+| Invite team member | POST | `/auth/invite` |
+| Accept invite | POST | `/auth/accept-invite` |
+| Request password reset | POST | `/auth/password-reset-request` |
+| Confirm password reset | POST | `/auth/password-reset-confirm` |
 
-When `AUTH_ENABLED=true`, every route except signup/login, health probes, and
-the exact Moolre/USSDK callback paths requires `Authorization: Bearer <token>`.
+`POST /auth/login` (and signup / refresh / org switch) returns
+`{access_token, refresh_token, token_type, expires_in, user, cooperative_name,
+organization_type, password_change_required}`. Access tokens last 60 minutes
+in production (7 days in development unless `ACCESS_TOKEN_EXPIRE_MINUTES` is
+set; production refuses >24h). The dashboard stores the opaque
+`refresh_token` and exchanges it at `POST /auth/refresh` (rotation: the
+presented token is revoked; replaying it revokes the user's whole family).
+`POST /auth/logout` revokes the presented refresh token.
+
+Invite and reset links are delivered through the `EmailProvider` port
+(`EMAIL_PROVIDER=log` writes the link to the backend log and returns it to
+the inviting admin; `smtp` sends it). Reset links use `/login?reset=…`;
+invite links use `/login?invite=…`.
+
+`GET /auth/me` returns the same `user` fields plus `cooperative_name`,
+`organization_type`, and `password_change_required` for the token's user
+(401 without a valid token).
+
+**Session hydration (#251).** The frontend never invents display strings. On
+load it bootstraps from the stored user or, failing that, from JWT claims only
+(`sub`, `user_id`, `role`, `cooperative_id`, `organization_id`,
+`organization_type` — no name or cooperative), then replaces that with
+`GET /auth/me`. A transport failure keeps the bootstrap session and the
+dashboard shows its own error state; a reachable backend rejecting the token
+clears the session.
+
+When `AUTH_ENABLED=true`, every route except signup/login/refresh/logout,
+password-reset and accept-invite, health probes, the public role catalogue,
+and the exact Moolre/USSDK callback paths requires `Authorization: Bearer <token>`.
 Tokens contain `cooperative_id` and `role`; authenticated query/body scope is
 always replaced by the token's cooperative.
 
-`admin` can manage members, production, cooperative settings, finance, loans,
-and communications. `finance_officer` can manage finance, loans, and
-communications but receives `403` for admin-only resources.
+**Roles (#244).** The role model is `backend/app/auth/roles.py` (`Role` enum),
+mirrored by `frontend/src/utils/roles.js`. Invite/update schemas accept exactly
+these values and `GET /auth/roles` (public) returns the catalogue with labels,
+capabilities, and tracks. Reads are open to every authenticated staff account
+within its cooperative; the table lists what each role may **mutate**.
 
-Default demo credentials: `admin@agroos.demo` / `demo1234`.
+| Role | Track | May mutate |
+|---|---|---|
+| `admin` | both | Everything: team, billing, settings, members, production, finance, commerce, communications |
+| `finance_officer` | cooperative | Payments, loans, settlements, buyers and sales, SMS, announcements, audit log read |
+| `field_officer` | cooperative | Produce intake, aggregation batches |
+| `operations_officer` | cooperative | Produce intake, aggregation batches |
+| `sales_officer` | cooperative | Buyers, buyer sales |
+| `farm_owner` | solo farm | Workers (incl. delete), tasks, attendance, payroll runs and disbursement, farm production |
+| `farm_manager` | solo farm | Workers, tasks, attendance, payroll runs, farm production |
+| `supervisor` | solo farm | Worker attendance only |
+
+Anything outside a role's column returns `403 Insufficient permissions`. The
+dashboard hides nav sections and action buttons the role cannot use
+(`filterNavGroups` / `can()` in `utils/roles.js`), so a finance officer no
+longer sees "Add member" or the commerce intake screens; a URL for a hidden
+section redirects to the role's default section.
+
+Demo credentials (`admin@agroos.demo` / `demo1234`) exist only when the Golden
+Path seed has run (see below). The backend refuses to start with
+`AUTH_ENABLED=true` and the default `ADMIN_PASSWORD`, so they can never be live
+in production.
 
 ## Error conventions
 
 FastAPI returns `{ "detail": "message" }` for 4xx/5xx responses.
 
-## Demo fallback policy
+## Client data policy (no demo fallback)
 
-The frontend **always prefers live API data** when the backend is reachable, but **never fails closed** on transport outages — including in production.
+The frontend has **no client-side demo data**. Every dashboard read helper in
+`frontend/src/api/*.js` goes through `apiFetch` / `fetchJson` in
+`frontend/src/api/config.js` and either returns live API data or throws:
 
-Dashboard read helpers (`frontend/src/api/*.js`, shared config in `frontend/src/api/config.js`) use a 10s timeout via `withDemoFallback`. **Only transport-level failures** (network errors, timeouts) return static demo data from `frontend/src/data/payments.js` and set `source: 'demo'`. HTTP responses from a reachable backend — including `401`, `403`, validation `422`, and other 4xx/5xx — are surfaced to callers as `ApiError` and are **not** replaced with demo data.
+- Transport failures (network errors, `FETCH_TIMEOUT_MS` timeouts) propagate as
+  the original error; `formatTransportError` renders them as a retryable message.
+- Non-OK responses from a reachable backend (`401`, `403`, `422`, 5xx) propagate
+  as `ApiError` with the server's `detail`. A `401` also clears the stored token.
 
-The dashboard topbar and per-tab badges show **Live API** vs **Demo data** so operators know which source is active.
+Nothing is substituted for a failed request, in any environment, so a screen
+showing data is always showing what the API returned. Login likewise only
+succeeds against `POST /auth/login`; there are no local demo accounts.
 
-Login is separate: the login page tries `POST /auth/login` first, then falls back to local demo accounts in `frontend/src/data/users.js` when auth is unavailable at the transport layer.
+## Demo data in production
 
-There is no `VITE_REQUIRE_API` or production-only strict mode — transport outages should degrade gracefully to demo data, not blank screens or blocking errors.
+Demo machinery is gated server-side on `Settings.is_production`
+(`APP_ENV` of `production`/`prod`, any casing):
+
+| Surface | Behaviour outside production | Behaviour in production |
+|---|---|---|
+| Golden Path seed (`seed_golden_path`) | Runs on startup when `SEED_DEMO_DATA=true` | Never runs; `SEED_DEMO_DATA=true` fails startup validation |
+| `GET /admin/demo-reset/preview`, `POST /admin/demo-reset/confirm` | Admin of the demo cooperative only, two-step confirmation | `404` |
+| Settings "Reset demo data" panel | Shown to the demo cooperative admin | Hidden (backend returns `404`) |
+| `backend/scripts/purge_demo_data.py` | Runs; `--dry-run` previews | Refuses (exit 2) unless `--allow-production`; `--dry-run` still allowed |
+| Staff transaction status edits (`PATCH /transactions/{id}/status`) | Allowed outside production | `404` |
+| Legacy staff-initiated loan create/repay fixtures | `APP_ENV=test` only | `403` (farmers act via USSD) |
 
 ## Golden Path seed data
 
-On backend startup in development, `seed_golden_path()` inserts:
+When `SEED_DEMO_DATA=true` (development/staging only), `seed_golden_path()`
+inserts on startup:
 
 - Cooperative: **Kuapa Kokoo Demo Cooperative**
 - Farmer: **Abena Mensah** (pending dues transaction for webhook demo)
 - Supporting crop, animal, and mixed members plus production and attendance records
 
-Set `SEED_DEMO_DATA=true` to force seeding in other environments.
+Seeding is also disabled automatically when running on Render.

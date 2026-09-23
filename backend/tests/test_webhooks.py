@@ -2,8 +2,9 @@
 
 import json
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+
+from app.config import Settings
 
 
 def _make_payment_payload(external_ref: str, status: int = 1, amount: str = "50.00") -> dict:
@@ -77,14 +78,14 @@ def test_webhook_payment_success(client, farmer):
             "farmer_id": farmer["id"],
             "transaction_type": "dues",
             "amount": 50.0,
-            "moolre_reference": "WEBHOOK-TEST-001",
+            "provider_payment_ref": "WEBHOOK-TEST-001",
         },
     )
-    # Set its moolre_reference manually via status — our test needs the reference stored
-    # (the transaction factory doesn't set moolre_reference; patch directly via DB instead)
+    # Set its provider_payment_ref manually via status — our test needs the reference stored
+    # (the transaction factory doesn't set provider_payment_ref; patch directly via DB instead)
     tx_id = tx_resp.json()["id"]
 
-    # Manually set the moolre_reference in DB (simulate what dues/collect does)
+    # Manually set the provider_payment_ref in DB (simulate what dues/collect does)
     from app.models.models import Transaction as TxModel
 
     # Use the DB fixture indirectly via conftest — access via dependency
@@ -131,7 +132,7 @@ def test_webhook_rejects_amount_mismatch_without_completing_transaction(db, farm
         transaction_type=TransactionType.dues,
         amount=50,
         status=TransactionStatus.pending,
-        moolre_reference="amount-mismatch-ref",
+        provider_payment_ref="amount-mismatch-ref",
     )
     db.add(tx)
     db.commit()
@@ -174,7 +175,7 @@ def test_repayment_webhook_finalizes_linked_loan(db, farmer):
         transaction_type=TransactionType.repayment,
         amount=75,
         status=TransactionStatus.pending,
-        moolre_reference="repayment-webhook-ref",
+        provider_payment_ref="repayment-webhook-ref",
         customer_action="approval",
     )
     db.add(tx)
@@ -205,7 +206,7 @@ def test_replayed_success_webhook_does_not_repeat_side_effects(db, farmer):
         transaction_type=TransactionType.dues,
         amount=50,
         status=TransactionStatus.pending,
-        moolre_reference="duplicate-success-ref",
+        provider_payment_ref="duplicate-success-ref",
     )
     db.add(tx)
     db.commit()
@@ -261,7 +262,7 @@ def test_replayed_subscription_webhook_extends_once(db, cooperative):
     assert (
         db.query(PaymentWebhookEvent)
         .filter(
-            PaymentWebhookEvent.moolre_reference == external_ref,
+            PaymentWebhookEvent.provider_payment_ref == external_ref,
             PaymentWebhookEvent.processed.is_(True),
         )
         .count()
@@ -337,7 +338,7 @@ def test_ussd_pending_payment_reconciles_stale_initiation(
         transaction_type=TransactionType.dues,
         amount=30,
         status=TransactionStatus.pending,
-        moolre_reference="moolre-ussd-stale-ref",
+        provider_payment_ref="moolre-ussd-stale-ref",
         customer_action="initiating",
         action_expires_at=datetime.utcnow() - timedelta(seconds=1),
         initiation_channel="moolre_ussd",
@@ -407,12 +408,12 @@ def test_ussd_callback_fails_closed_without_production_secret(client, monkeypatc
 
 
 def test_native_ussd_callback_requires_configured_secret(client, monkeypatch):
-    from app.routes import ussd as ussd_module
+    from app.adapters import at_adapter as at_adapter_module
 
     monkeypatch.setattr(
-        ussd_module,
+        at_adapter_module,
         "get_settings",
-        lambda: SimpleNamespace(
+        lambda: Settings.model_construct(
             app_env="test",
             ussd_callback_secret="native-ussd-secret",
         ),
@@ -435,12 +436,12 @@ def test_native_ussd_callback_fails_closed_without_production_secret(
     client,
     monkeypatch,
 ):
-    from app.routes import ussd as ussd_module
+    from app.adapters import at_adapter as at_adapter_module
 
     monkeypatch.setattr(
-        ussd_module,
+        at_adapter_module,
         "get_settings",
-        lambda: SimpleNamespace(app_env="production", ussd_callback_secret=""),
+        lambda: Settings.model_construct(app_env="production", ussd_callback_secret=""),
     )
 
     response = client.post(
@@ -478,7 +479,7 @@ def test_ussd_announcements_are_returned_and_session_is_closed(
     client, farmer, db, monkeypatch
 ):
     from app.models.models import Announcement
-    from app.routes import webhooks as webhooks_module
+    from app.services.providers import factory as factory_module
 
     announcement = Announcement(
         cooperative_id=farmer["cooperative_id"],
@@ -489,7 +490,7 @@ def test_ussd_announcements_are_returned_and_session_is_closed(
     db.commit()
     sms = AsyncMock()
     sms.send_sms.return_value = {"success": True}
-    monkeypatch.setattr(webhooks_module, "get_sms_provider", lambda: sms)
+    monkeypatch.setattr(factory_module, "get_sms_provider", lambda: sms)
 
     client.post("/webhooks/moolre/ussd", json=_ussd_new("announcements", farmer["phone"]))
     response = client.post(
@@ -501,7 +502,9 @@ def test_ussd_announcements_are_returned_and_session_is_closed(
     assert response.json()["reply"] is False
     assert "Meeting" in response.json()["message"]
     sms.send_sms.assert_awaited_once()
-    assert webhooks_module._get_ussd_state(
+    assert sms.send_sms.await_count >= 1
+    from app.services import ussd_application as ussd_app_module
+    assert ussd_app_module.get_ussd_state(
         db, "announcements", farmer["phone"]
     ) is None
 
@@ -535,6 +538,7 @@ def test_direct_ussd_requires_cooperative_selection_for_multi_membership(client,
             "name": farmer["name"],
             "phone": farmer["phone"],
             "cooperative_id": second_coop["id"],
+            "sms_consent": True,
         },
     )
 
@@ -572,8 +576,8 @@ def test_direct_ussd_resumes_dashboard_payment_without_logging_otp(client, farme
         "success": False,
         "verification_required": True,
         "outcome": "verification_required",
-        "moolre_code": "TP14",
-        "moolre_reference": "dashboard-otp-ref",
+        "provider_code": "TP14",
+        "provider_payment_ref": "dashboard-otp-ref",
         "external_ref": "dashboard-otp-ref",
         "message": "OTP required",
     }
@@ -581,8 +585,8 @@ def test_direct_ussd_resumes_dashboard_payment_without_logging_otp(client, farme
         "success": True,
         "verification_required": False,
         "outcome": "push_sent",
-        "moolre_code": "TR099",
-        "moolre_reference": "dashboard-otp-ref",
+        "provider_code": "TR099",
+        "provider_payment_ref": "dashboard-otp-ref",
         "external_ref": "dashboard-otp-ref",
         "message": "Payment request sent",
     }
@@ -628,7 +632,7 @@ def test_direct_ussd_resumes_dashboard_payment_without_logging_otp(client, farme
     )
 
 
-def test_ussd_farmer_can_submit_loan_request(client, farmer, db):
+def test_ussd_farmer_can_submit_loan_request(client, farmer, db, growth_plan):
     from app.models.models import Loan
 
     client.post("/webhooks/moolre/ussd", json=_ussd_new("loan-1", farmer["phone"]))
@@ -708,7 +712,7 @@ def test_ussd_unregistered_phone_cannot_request_loan(client):
     assert "not registered" in response.json()["message"].lower()
 
 
-def test_ussd_rejects_second_pending_loan_request(client, farmer):
+def test_ussd_rejects_second_pending_loan_request(client, farmer, growth_plan):
     for session_id in ("loan-first", "loan-second"):
         client.post(
             "/webhooks/moolre/ussd",

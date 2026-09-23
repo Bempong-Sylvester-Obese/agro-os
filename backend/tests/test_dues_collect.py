@@ -12,8 +12,8 @@ def _tp14_result(ext_ref: str) -> dict:
     return {
         "success": False,
         "outcome": "verification_required",
-        "moolre_code": "TP14",
-        "moolre_reference": ext_ref,
+        "provider_code": "TP14",
+        "provider_payment_ref": ext_ref,
         "external_ref": ext_ref,
         "message": "Please complete the verification process sent to you via SMS and try again.",
         "raw": {"status": 1, "code": "TP14", "message": "Please complete the verification process sent to you via SMS and try again."},
@@ -24,8 +24,8 @@ def _tr099_result(ext_ref: str) -> dict:
     return {
         "success": True,
         "outcome": "push_sent",
-        "moolre_code": "TR099",
-        "moolre_reference": ext_ref,
+        "provider_code": "TR099",
+        "provider_payment_ref": ext_ref,
         "external_ref": ext_ref,
         "message": "Payment request sent",
         "raw": {"status": 1, "code": "TR099", "message": "Payment request sent"},
@@ -36,8 +36,8 @@ def _failed_result(ext_ref: str) -> dict:
     return {
         "success": False,
         "outcome": "failed",
-        "moolre_code": "TP01",
-        "moolre_reference": ext_ref,
+        "provider_code": "TP01",
+        "provider_payment_ref": ext_ref,
         "external_ref": ext_ref,
         "message": "Insufficient balance",
         "raw": {"status": 0, "code": "TP01", "message": "Insufficient balance"},
@@ -47,7 +47,7 @@ def _failed_result(ext_ref: str) -> dict:
 def test_collect_dues_uses_cooperative_account(client, farmer, cooperative):
     client.put(
         f"/cooperatives/{cooperative['id']}",
-        json={"moolre_account_number": "COOP-DUES-777"},
+        json={"wallet_account_id": "COOP-DUES-777"},
     )
 
     with patch(
@@ -98,9 +98,9 @@ def test_collect_dues_tp14_verification_required(client, farmer):
     data = resp.json()
     assert data["status"] == "verification_required"
     assert data["outcome"] == "verification_required"
-    assert data["moolre_code"] == "TP14"
+    assert data["provider_code"] == "TP14"
     assert data["transaction_id"]
-    assert data["moolre_reference"]
+    assert data["provider_payment_ref"]
     assert data["customer_action"] == "otp"
     assert data["action_expires_at"]
 
@@ -125,7 +125,7 @@ def test_collect_dues_tr099_pending(client, farmer):
     data = resp.json()
     assert data["status"] == "pending"
     assert data["outcome"] == "push_sent"
-    assert data["moolre_code"] == "TR099"
+    assert data["provider_code"] == "TR099"
     assert data["customer_action"] == "approval"
 
 
@@ -193,7 +193,7 @@ def test_expired_customer_action_becomes_terminal_on_dashboard_read(
         transaction_type=TransactionType.dues,
         amount=20,
         status=TransactionStatus.pending,
-        moolre_reference="expired-action-ref",
+        provider_payment_ref="expired-action-ref",
         customer_action="otp",
         action_expires_at=datetime.utcnow() - timedelta(seconds=1),
     )
@@ -240,7 +240,7 @@ def test_farmer_resumes_dashboard_dues_otp_from_ussdk(client, farmer, db):
             json={"farmer_id": farmer["id"], "amount": 15.0},
         )
         tx_id = collect_resp.json()["transaction_id"]
-        ext_ref = collect_resp.json()["moolre_reference"]
+        ext_ref = collect_resp.json()["provider_payment_ref"]
 
         mock_pay.return_value = _tr099_result(ext_ref)
         mock_pay.reset_mock()
@@ -396,13 +396,13 @@ def test_initiate_payment_tp14_not_success():
 
     assert result["outcome"] == "verification_required"
     assert result["success"] is False
-    assert result["moolre_code"] == "TP14"
+    assert result["provider_code"] == "TP14"
 
 
 def test_initiate_payment_tp14_field_name_echo_not_used_as_reference():
     """Regression test: Moolre's TP14 response can echo a field name (e.g. 'otpcode')
     in the 'data' field instead of a real reference. That must never be stored as
-    moolre_reference — it isn't unique across requests and previously caused an
+    provider_payment_ref — it isn't unique across requests and previously caused an
     IntegrityError on the second OTP attempt when reused across transactions."""
     import asyncio
 
@@ -425,8 +425,8 @@ def test_initiate_payment_tp14_field_name_echo_not_used_as_reference():
 
     assert result["verification_required"] is True
     # Must fall back to the real external_ref, never the echoed field name.
-    assert result["moolre_reference"] == "otp-echo-ref"
-    assert result["moolre_reference"] != "otpcode"
+    assert result["provider_payment_ref"] == "otp-echo-ref"
+    assert result["provider_payment_ref"] != "otpcode"
 
 
 def test_initiate_payment_includes_otpcode_in_payload():

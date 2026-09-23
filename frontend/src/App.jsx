@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { clearAuthSession, getAuthToken, getAuthUser, isAuthTokenUsable, storeAuthUser, userFromAuthToken } from './api/auth'
+import { clearAuthSession, fetchCurrentUser, getAuthToken, getAuthUser, getRefreshToken, isAuthTokenUsable, logoutSession, refreshAccessToken, storeAuthUser, userFromAuthToken, userFromMeResponse } from './api/auth'
+import { isTransportFailure } from './api/config'
 import Navbar from './components/Navbar'
 import { pageKeyFromPath } from './constants/routes'
 import HomePage from './pages/HomePage'
@@ -97,29 +98,61 @@ function AppRouter() {
   const [authReady, setAuthReady] = useState(false)
 
   useEffect(() => {
-    const token = getAuthToken()
-    const storedUser = getAuthUser()
+    let cancelled = false
 
-    if (!isAuthTokenUsable(token)) {
-      if (storedUser) clearAuthSession()
-      else if (token) clearAuthSession()
-      setAuthReady(true)
-      return
-    }
+    async function boot() {
+      let token = getAuthToken()
+      const storedUser = getAuthUser()
 
-    if (storedUser) {
-      setUser(storedUser)
-    } else {
-      const fromToken = userFromAuthToken(token)
-      if (fromToken) {
-        storeAuthUser(fromToken)
-        setUser(fromToken)
-      } else {
+      if (!isAuthTokenUsable(token) && getRefreshToken()) {
+        try {
+          token = await refreshAccessToken()
+        } catch {
+          if (!cancelled) {
+            clearAuthSession()
+            setAuthReady(true)
+          }
+          return
+        }
+      }
+
+      if (!isAuthTokenUsable(token)) {
+        if (storedUser || token) clearAuthSession()
+        if (!cancelled) setAuthReady(true)
+        return
+      }
+
+      const bootstrap = storedUser || userFromAuthToken(token)
+      if (!bootstrap) {
         clearAuthSession()
+        if (!cancelled) setAuthReady(true)
+        return
+      }
+      if (!storedUser) storeAuthUser(bootstrap)
+      if (!cancelled) {
+        setUser(bootstrap)
+        setAuthReady(true)
+      }
+
+      try {
+        const me = await fetchCurrentUser()
+        if (cancelled) return
+        const hydrated = { ...bootstrap, ...userFromMeResponse(me) }
+        storeAuthUser(hydrated)
+        setUser(hydrated)
+      } catch (err) {
+        if (cancelled) return
+        if (isTransportFailure(err)) return
+        if (err?.status === 401 || err?.status === 404 || err?.status >= 500) return
+        clearAuthSession()
+        setUser(null)
       }
     }
 
-    setAuthReady(true)
+    boot()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   function handleAuth(u) {
@@ -131,10 +164,12 @@ function AppRouter() {
   }
 
   function handleLogout() {
-    clearAuthSession()
-    setUser(null)
-    navigate('/')
-    window.scrollTo({ top: 0, behavior: 'instant' })
+    logoutSession().finally(() => {
+      clearAuthSession()
+      setUser(null)
+      navigate('/')
+      window.scrollTo({ top: 0, behavior: 'instant' })
+    })
   }
 
   return <AppShell user={user} authReady={authReady} onAuth={handleAuth} onLogout={handleLogout} />

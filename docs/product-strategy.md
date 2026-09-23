@@ -1,126 +1,133 @@
 # AgroOS Product Strategy
 
-Prepared for the Moolre Cup Hackathon team.
+> **Status:** Living document for the B2B product. The original hackathon
+> framing (Moolre Startup Cup, July 2026) is archived under
+> [`docs/archive/`](archive/). Provider names below are illustrative: the
+> platform integrates payments, SMS, and USSD through provider-neutral ports
+> (see [`architecture/adding-a-provider.md`](architecture/adding-a-provider.md)).
 
 ## Vision
 
-AgroOS is the digital operating system for African farmer cooperatives. Instead of building a single-purpose payment app, the product unifies member management, Moolre-powered financial flows, production tracking, communication, and creditworthiness scoring into one cooperative admin platform.
+AgroOS is the operating system for agricultural organisations in Ghana and,
+over time, the wider region. It replaces paper ledgers, spreadsheets, and
+manual mobile-money reconciliation with one platform that runs an
+organisation's members or workers, money, production, communication, and
+credit history, and that farmers can reach from a feature phone.
 
-## Target Users
+## Who We Sell To
 
-The first users are cooperative administrators who manage large groups of farmers and currently rely on paper ledgers, spreadsheets, and manual payment reconciliation.
+AgroOS is sold business-to-business to the organisation, not to individual
+farmers. Two organisation types are supported by the same codebase and are
+distinguished by `organization_type`:
 
-Example cooperative segments:
+| | Cooperative (primary) | Solo Farm (secondary tier) |
+|---|---|---|
+| Customer | Cooperative societies registered under Act 1148: cocoa, cashew, shea, livestock, poultry, mixed producer groups | Independent farm owners employing wage labour |
+| Buyer persona | Secretary / manager, finance officer, executive committee | Farm owner or manager |
+| Core loop | Dues → trust score → input loans → produce settlement | Tasks → attendance → payroll |
+| Farmer-side channel | USSD self-service (pay dues, request/repay loan, balances, announcements) | USSD for workers (attendance/payslips, planned) |
+| Plans | `starter` (free), `growth`, `enterprise` — member-count bands | `solo` — worker-count bands |
+| Spec | This document | [`solo-farm-product-spec.md`](solo-farm-product-spec.md) |
 
-- Large cocoa cooperatives handling high-volume member records and payouts.
-- Livestock, poultry, and mixed-producer groups managing loans, output, and dues.
-- Certified producer groups that need traceability, compliance records, and direct market visibility.
+Larger customers (unions, apex bodies, aggregators) that operate several
+cooperatives are served by an organisation layer with consolidated billing
+([#237](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/237)).
+
+## Value Proposition
+
+For a cooperative's leadership:
+
+1. **Collections without cash handling.** Dues obligations are defined once;
+   farmers pay from their own phone via USSD and mobile money, and the ledger
+   updates from the provider webhook, not from a clerk's notebook.
+2. **Credit decisions from data the cooperative already has.** AgroCredit turns
+   dues consistency, production records, attendance, and loan history into a
+   transparent Trust Score that informs input-loan approvals.
+3. **Transparent produce settlement.** Intake, aggregation, buyer sales, fee
+   itemisation, and dual-approved payouts replace the spreadsheet handoff
+   between collection centres and finance.
+4. **Reach every member.** SMS and USSD work on the phones farmers actually
+   own; nothing requires a smartphone or data bundle.
+5. **Audit-ready records.** Every financial action is attributable to a user
+   and role, with cross-cooperative isolation enforced by the API.
 
 ## Core Modules
 
-- Member Management: farmer profiles, location, crop/animal/mixed focus, production scale, cooperative standing, and membership status.
-- Finance Hub: cooperative-defined dues obligations and reminders, farmer-initiated payments, loan disbursement, and transaction tracking.
-- Communication: SMS announcements for dues reminders, meetings, weather alerts, and payment notifications.
-- Production Tracking: unit-aware expected and actual output for crop and animal activities.
-- AgroCredit: trust score generation from alternative cooperative data.
-- USSD Access: feature-phone access for farmers without smartphones or reliable internet.
+| Module | What it does | Status |
+|---|---|---|
+| Member management | Farmer profiles, crop/animal/mixed production focus, membership standing, roles | Shipped |
+| Finance hub | Dues obligations and reminders, farmer-initiated payments, loan request → approval → disbursement → repayment, provider wallet reconciliation | Shipped |
+| Communications | SMS broadcasts and event-driven notifications with per-member consent | Shipped; consent tracking in [#247](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/247) |
+| Production tracking | Unit-aware expected vs. actual output for crop, animal, and mixed producers | Shipped |
+| AgroCredit | Trust Score (rules-based) and Agro-AI recommendation (ML) | Shipped; model trained on synthetic data until real labels exist (see [`agro-ai-governance.md`](agro-ai-governance.md)) |
+| USSD access | Farmer self-service menu, identical across gateways | Shipped |
+| Commerce & settlement | Intake, aggregation, buyer sales, dual-approved settlements, retryable payouts | Shipped for crops; animal/mixed in [#249](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/249) |
+| Governance | Multi-role staff, invitations, attendance at meetings | Shipped; role model formalised in [#244](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/244) |
+| Solo-farm operations | Workers, tasks, attendance, payroll | Shipped (MVP) |
+| Billing | Plan catalogue, checkout, entitlements, subscription lifecycle | In progress: [#233](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/233)–[#237](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/237) |
 
-## Moolre Product Mapping
+## Business Model
 
-Moolre's platform includes payment collection, USSD payments, bulk disbursement, SMS, WhatsApp, storefront, sales, and API services. AgroOS should focus on the services that directly support farmer cooperative operations:
+Subscription pricing per organisation, billed monthly in GHS, with bands that
+scale on the dimension the customer already thinks in (members for
+cooperatives, workers for solo farms). The catalogue lives in
+`backend/app/services/plans.py` and drives both the public pricing page and
+server-side entitlements, so a limit shown to a customer is the limit that is
+enforced.
 
-- Payment Collection: cooperative dues, member contributions, and other receivables.
-- USSD Service: offline farmer access through merchant codes and menu-based interactions.
-- Bulk Disbursement / Transfers: input loans, supplier payments, and cooperative payouts.
-- SMS: reminders, announcements, confirmations, and repayment notifications.
-- API Service: backend integration for payment initiation, payment status, transfer initiation, transfer status, transaction listing, and payment webhooks.
+Principles:
 
-References:
+- No per-transaction take on farmer money. Provider fees are passed through
+  transparently; AgroOS earns from the subscription.
+- A free `starter` tier exists so a cooperative can digitise its member
+  register before committing.
+- Limits are enforced at the API (member count, worker count, SMS quota,
+  feature flags), never only in the UI.
 
-- [Moolre API Documentation](https://docs.moolre.com/#/quickstart)
-- [Moolre Products Overview](https://moolre.com/#products)
+## Farmer Experience Principles
 
-## AgroCredit Trust Score
+- **Feature-phone first.** Every farmer-facing flow must be completable over
+  USSD and SMS; the dashboard is for staff.
+- **The farmer initiates their own payments.** Staff define obligations; they
+  cannot debit a farmer.
+- **One menu everywhere.** The USSD menu is defined once in
+  `UssdApplicationService`; gateway adapters only translate transport, so a
+  farmer sees the same options regardless of network or aggregator.
+- **Explainable credit.** The Trust Score is rules-based and inspectable; the
+  ML recommendation is advisory and labelled as such.
 
-The first MVP should use a transparent scoring formula before introducing a trained ML model. This keeps the hackathon demo deterministic and easy to explain.
+## AgroCredit Roadmap
 
-Primary inputs:
+1. **Now:** rules-based Trust Score on real cooperative records; Agro-AI Random
+   Forest trained on deterministic synthetic data, surfaced as an advisory
+   recommendation with an explicit synthetic-data disclaimer.
+2. **Next:** collect real repayment outcomes from live cooperatives as labels;
+   evaluate against held-out cooperatives; publish model cards.
+3. **Later:** retrain on real labels, calibrate per crop/region, and expose
+   score history to farmers over USSD.
 
-- Dues payment consistency: high importance because it reflects financial discipline.
-- Historical production completion and output: high importance because they indicate production capacity and repayment potential.
-- Cooperative attendance: medium importance because it signals engagement and access to training.
+Governance, evaluation criteria, and the promotion path are in
+[`agro-ai-governance.md`](agro-ai-governance.md) and
+[`agro-ai-evaluation.md`](agro-ai-evaluation.md).
 
-## USSD Menu Concept
+## Compliance and Data Protection
 
-```text
-Welcome to AgroOS (Kuapa Kokoo)
-1. Check Loan Balance
-2. Pay Cooperative Dues (Moolre)
-3. Request Input Loan
-4. View Latest Announcements
-5. Complete Pending Payment
-6. Repay Loan
-Select option: _
-```
+AgroOS processes farmer PII (names, phone numbers, transactions, credit
+scores, SMS content). Current posture and open items are tracked in
+[`COMPLIANCE.md`](../COMPLIANCE.md), [`SECURITY.md`](../SECURITY.md), and
+[`data-privacy.md`](data-privacy.md). Before onboarding a first paying
+cooperative with real farmer data:
 
-## Golden Path Demo
+- [ ] Register with Ghana's Data Protection Commission under Act 843
+- [ ] Appoint and publish a Data Protection Officer contact
+- [ ] Legal review of `data-privacy.md` and `COMPLIANCE.md` by Ghanaian counsel
+- [ ] Per-member SMS consent recorded and honoured ([#247](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/247))
 
-1. A farmer receives an SMS reminder that monthly cooperative dues are required.
-2. The farmer dials the USSD code and pays dues through Moolre.
-3. Moolre sends a payment webhook to the FastAPI backend.
-4. The backend records the transaction and recalculates the farmer's Trust Score.
-5. The dashboard shows the new payment; the recalculated Trust Score is
-   available through the backend API.
+## Related Documents
 
-## Cooperative Commerce and Farmer Settlement
-
-AgroOS replaces the spreadsheet handoff between collection centres, finance
-officers, and cooperative leadership:
-
-This commerce workflow remains crop-only in the current release. Unified animal
-and mixed production records contribute to member operations and scoring, but
-animal intake, aggregation, buyer sales, and settlement are not yet supported.
-
-1. Staff weigh, grade, and accept each farmer delivery.
-2. Accepted deliveries are grouped into a traceable aggregation batch.
-3. The cooperative records the buyer, sale quantity, and agreed price.
-4. One staff member records receipt of buyer funds and a different authorized
-   officer verifies it.
-5. AgroOS snapshots each farmer's gross entitlement and clearly itemizes
-   cooperative fees, transport or quality adjustments, and optional loan
-   recovery.
-6. An independently approved settlement creates farmer payouts through
-   Moolre. Failed lines can be retried without paying successful lines twice.
-
-Loan disbursements and produce-sale settlements are distinct workflows.
-Likewise, a cooperative defines dues obligations, while the farmer initiates
-the actual dues payment from their own USSD session.
-6. The farmer submits a fertilizer/input loan request through USSD.
-7. A cooperative leader approves or rejects the request in the dashboard.
-8. An approved payout is sent back to the farmer through Moolre.
-
-## MVP Principle
-
-Build the smallest complete system that tells the end-to-end story. A simulated Moolre webhook and rules-based Trust Score are acceptable for the first version if real sandbox access or ML training takes too long.
-
----
-
-## Compliance and Data Privacy
-
-AgroOS processes personally identifiable information (PII) belonging to
-farmers, including names, phone numbers, financial transactions, credit
-scores, and SMS message content.
-
-### Current Status (Hackathon)
-- A data privacy policy covering PII categories, access scope, demo data
-  rules, SMS consent, and retention windows has been documented at
-  [docs/data-privacy.md](data-privacy.md)
-- Only synthetic demo data may be used in the current build
-
-### Pre-Production Dependencies
-- [ ] Implement RBAC before onboarding real farmers
-- [ ] Register with Ghana's Data Protection Commission (DPC) under Act 843
-- [ ] Appoint a Data Protection Officer (DPO) and publish contact details
-- [ ] Legal review of docs/data-privacy.md by qualified Ghanaian counsel
-
-> See [docs/data-privacy.md](data-privacy.md) for the full policy.
+- [`architecture.md`](architecture.md) — system architecture
+- [`architecture/adding-a-provider.md`](architecture/adding-a-provider.md) — provider port/adapter guide
+- [`architecture/tenancy-decision.md`](architecture/tenancy-decision.md) — tenant isolation decision and threat model
+- [`api-contract.md`](api-contract.md) — frontend/backend contract
+- [`deployment.md`](deployment.md) — deployment runbook
+- [`solo-farm-product-spec.md`](solo-farm-product-spec.md) — solo-farm tier

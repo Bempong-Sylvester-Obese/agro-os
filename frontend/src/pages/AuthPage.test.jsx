@@ -17,7 +17,8 @@ vi.mock('../api/auth', () => ({
   requestPasswordReset: vi.fn(),
   signup: authMocks.signup,
   storeAuthToken: vi.fn(),
-  userFromAuthToken: vi.fn(() => null),
+  storeAuthSession: vi.fn(),
+  userFromLoginResponse: vi.fn((data) => ({ ...(data?.user || {}), cooperative: data?.cooperative_name ?? null })),
   userFromSignupResponse: vi.fn(() => ({})),
   warmAuthBackend: authMocks.warmAuthBackend,
 }))

@@ -1,18 +1,19 @@
 """Tests for /ussdk/loan-balance and /ussdk/pay-dues"""
 
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+
+from app.config import Settings
 
 
 def _tp14_result(ext_ref: str) -> dict:
     return {
         "success": False,
         "outcome": "verification_required",
-        "moolre_code": "TP14",
-        "moolre_reference": ext_ref,
+        "provider_code": "TP14",
+        "provider_payment_ref": ext_ref,
         "external_ref": ext_ref,
         "message": (
             "Please complete the verification process sent to you via SMS "
@@ -25,8 +26,8 @@ def _tr099_result(ext_ref: str) -> dict:
     return {
         "success": True,
         "outcome": "push_sent",
-        "moolre_code": "TR099",
-        "moolre_reference": ext_ref,
+        "provider_code": "TR099",
+        "provider_payment_ref": ext_ref,
         "external_ref": ext_ref,
         "message": "Payment request sent",
     }
@@ -45,8 +46,8 @@ def _hook_payload(msisdn: str, values: dict | None = None) -> dict:
 @pytest.mark.parametrize("app_env", ["production", "Production", "prod"])
 def test_ussdk_hooks_fail_closed_without_production_secret(client, app_env):
     with patch(
-        "app.routes.ussdk_hooks.get_settings",
-        return_value=SimpleNamespace(
+        "app.adapters.ussdk_adapter.get_settings",
+        return_value=Settings.model_construct(
             ussdk_hook_secret="",
             app_env=app_env,
         ),
@@ -132,7 +133,7 @@ def test_pending_payment_reconciles_stale_processing_action(
         transaction_type=TransactionType.dues,
         amount=25,
         status=TransactionStatus.pending,
-        moolre_reference="ussdk-stale-ref",
+        provider_payment_ref="ussdk-stale-ref",
         customer_action="processing_otp",
         action_expires_at=datetime.utcnow() - timedelta(seconds=1),
         initiation_channel="ussdk",
@@ -183,7 +184,7 @@ def test_loan_balance_registered_farmer_no_loans(client, farmer):
     assert body["balance"] == 0
 
 
-def test_farmer_can_request_loan_from_ussdk(client, farmer, db):
+def test_farmer_can_request_loan_from_ussdk(client, farmer, db, growth_plan):
     from app.models.models import Loan
 
     resp = client.post(
@@ -226,6 +227,7 @@ def test_ussdk_loan_request_handles_unregistered_and_multiple_memberships(
             "name": farmer["name"],
             "phone": farmer["phone"],
             "cooperative_id": second_coop["id"],
+            "sms_consent": True,
         },
     )
     choose = client.post(
@@ -239,7 +241,7 @@ def test_ussdk_loan_request_handles_unregistered_and_multiple_memberships(
     assert len(choose.json()["cooperatives"]) == 2
 
 
-def test_ussdk_loan_request_validates_input_and_pending_request(client, farmer):
+def test_ussdk_loan_request_validates_input_and_pending_request(client, farmer, growth_plan):
     invalid = client.post(
         "/ussdk/loan-request",
         json=_hook_payload(farmer["phone"], {"amount": "0", "purpose": ""}),
@@ -269,6 +271,7 @@ def test_multiple_memberships_require_cooperative_selection(client, farmer):
             "name": farmer["name"],
             "phone": farmer["phone"],
             "cooperative_id": second_coop["id"],
+            "sms_consent": True,
         },
     ).json()
 
@@ -303,6 +306,7 @@ def test_rejects_membership_selection_owned_by_another_phone(client, farmer):
             "name": "Different Farmer",
             "phone": "0249999999",
             "cooperative_id": other_coop["id"],
+            "sms_consent": True,
         },
     ).json()
 
@@ -455,6 +459,7 @@ def test_announcements_require_selection_and_use_selected_cooperative(
             "name": farmer["name"],
             "phone": farmer["phone"],
             "cooperative_id": second_coop["id"],
+            "sms_consent": True,
         },
     ).json()
     db.add_all(

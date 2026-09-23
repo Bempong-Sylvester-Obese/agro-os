@@ -29,11 +29,48 @@ def _default_sms_provider():
     return get_sms_provider()
 
 
+NO_CONSENT_STATUS = "skipped_no_consent"
+NO_CONSENT_MESSAGE = "Member has not consented to SMS; message not sent."
+
+
+def has_sms_consent(membership) -> bool:
+    """True when a membership may receive SMS (#247). Missing object → False."""
+    return bool(membership is not None and getattr(membership, "sms_consent", False))
+
+
 class CommunicationsService:
-    """Send SMS messages and log all communication."""
+    """Send SMS messages and log all communication.
+
+    Every member-addressed send path checks ``sms_consent`` on the membership
+    *before* calling the provider (#247). Opted-out members produce a
+    ``skipped_no_consent`` CommunicationLog row with zero recipients so the
+    decision is auditable, and the method returns ``{"success": False,
+    "skipped": True}``.
+    """
 
     def __init__(self, sms_provider: SmsProvider | None = None) -> None:
         self.sms = sms_provider or _default_sms_provider()
+
+    def _skip_no_consent(
+        self,
+        *,
+        db: Session,
+        cooperative_id: int | None,
+        body: str,
+        sent_by: str | None = None,
+        provider_ref: str | None = None,
+    ) -> dict:
+        log = self._log(
+            db=db,
+            message_type=MessageType.sms,
+            cooperative_id=cooperative_id,
+            recipients_count=0,
+            body=body,
+            provider_ref=provider_ref,
+            sent_by=sent_by,
+            status=NO_CONSENT_STATUS,
+        )
+        return {"success": False, "skipped": True, "message": NO_CONSENT_MESSAGE, "log_id": log.id}
 
     # ------------------------------------------------------------------
     # Public methods
@@ -57,6 +94,8 @@ class CommunicationsService:
             f"Dear {farmer.name}, your cooperative dues of GHS {amount:.2f} are due by {due_date}. "
             f"Dial {ussd_code} and choose Pay Dues. - AgroOS"
         )
+        if not has_sms_consent(farmer):
+            return self._skip_no_consent(db=db, cooperative_id=farmer.cooperative_id, body=message, sent_by=sent_by)
 
         result = await self.sms.send_sms(
             recipient=farmer.phone,
@@ -69,7 +108,7 @@ class CommunicationsService:
             cooperative_id=farmer.cooperative_id,
             recipients_count=1,
             body=message,
-            moolre_ref=result.get("raw", {}).get("data"),
+            provider_ref=result.get("raw", {}).get("data"),
             sent_by=sent_by,
             status="sent" if result["success"] else "failed",
         )
@@ -92,6 +131,8 @@ class CommunicationsService:
             f"AgroOS: Payment of GHS {amount:.2f} received. Ref: {reference}. "
             f"Your Trust Score has been updated. Thank you!"
         )
+        if not has_sms_consent(farmer):
+            return self._skip_no_consent(db=db, cooperative_id=farmer.cooperative_id, body=message, provider_ref=reference)
         result = await self.sms.send_sms(
             recipient=farmer.phone,
             message=message,
@@ -102,7 +143,7 @@ class CommunicationsService:
             cooperative_id=farmer.cooperative_id,
             recipients_count=1,
             body=message,
-            moolre_ref=reference,
+            provider_ref=reference,
             status="sent" if result["success"] else "failed",
         )
         return {"success": result["success"], "log_id": log.id}
@@ -121,6 +162,8 @@ class CommunicationsService:
             f"AgroOS: Your loan request #{loan.id} for GHS {loan.amount:.2f} "
             f"was not approved. Reason: {reason}"
         )
+        if not has_sms_consent(farmer):
+            return self._skip_no_consent(db=db, cooperative_id=farmer.cooperative_id, body=message[:160], sent_by=sent_by)
         result = await self.sms.send_sms(
             recipient=farmer.phone,
             message=message[:160],
@@ -131,7 +174,7 @@ class CommunicationsService:
             cooperative_id=farmer.cooperative_id,
             recipients_count=1,
             body=message[:160],
-            moolre_ref=result.get("raw", {}).get("data"),
+            provider_ref=result.get("raw", {}).get("data"),
             sent_by=sent_by,
             status="sent" if result["success"] else "failed",
         )
@@ -188,6 +231,13 @@ class CommunicationsService:
             f"AgroOS: Loan #{loan.id} repayment of GHS {loan.amount:.2f} is due "
             f"{due_date}. Dial {ussd_code} and choose Repay Loan. Never share your OTP."
         )
+        if not has_sms_consent(farmer):
+            reminder.status = NO_CONSENT_STATUS
+            reminder.error = NO_CONSENT_MESSAGE
+            self._skip_no_consent(db=db, cooperative_id=farmer.cooperative_id, body=message, sent_by=sent_by)
+            db.commit()
+            db.refresh(reminder)
+            return reminder
         reminder.attempts += 1
         result = await self.sms.send_sms(
             recipient=farmer.phone,
@@ -204,7 +254,7 @@ class CommunicationsService:
             cooperative_id=farmer.cooperative_id,
             recipients_count=1,
             body=message,
-            moolre_ref=reminder.provider_reference,
+            provider_ref=reminder.provider_reference,
             sent_by=sent_by,
             status=reminder.status,
         )
@@ -229,6 +279,8 @@ class CommunicationsService:
             f"Dial {ussd_code} and choose Complete Pending Payment. "
             "Never share your OTP with cooperative staff."
         )
+        if not has_sms_consent(farmer):
+            return self._skip_no_consent(db=db, cooperative_id=farmer.cooperative_id, body=message, sent_by=sent_by, provider_ref=reference)
         result = await self.sms.send_sms(
             recipient=farmer.phone,
             message=message,
@@ -239,7 +291,7 @@ class CommunicationsService:
             cooperative_id=farmer.cooperative_id,
             recipients_count=1,
             body=message,
-            moolre_ref=reference,
+            provider_ref=reference,
             sent_by=sent_by,
             status="sent" if result["success"] else "failed",
         )
@@ -261,6 +313,8 @@ class CommunicationsService:
             f"{line.deductions_total:.2f}, paid GHS {line.net_amount:.2f}. "
             f"Ref: {line.payout_reference}"
         )[:160]
+        if not has_sms_consent(farmer):
+            return self._skip_no_consent(db=db, cooperative_id=settlement.cooperative_id, body=message, sent_by=sent_by)
         result = await self.sms.send_sms(
             recipient=farmer.phone,
             message=message,
@@ -271,7 +325,7 @@ class CommunicationsService:
             cooperative_id=settlement.cooperative_id,
             recipients_count=1,
             body=message,
-            moolre_ref=result.get("moolre_ref"),
+            provider_ref=result.get("provider_ref"),
             sent_by=sent_by,
             status="sent" if result["success"] else "failed",
         )
@@ -317,7 +371,7 @@ class CommunicationsService:
             recipients_count=len(farmers),
             body=message,
             sent_by=sent_by,
-            moolre_ref=result.get("moolre_ref"),
+            provider_ref=result.get("provider_ref"),
             status="sent" if result["success"] else "partial_fail",
         )
 
@@ -375,7 +429,7 @@ class CommunicationsService:
             recipients_count=len(farmers),
             body=f"Dues reminder: GHS {amount:.2f} due by {due_date}",
             sent_by=sent_by,
-            moolre_ref=result.get("moolre_ref"),
+            provider_ref=result.get("provider_ref"),
             status="sent" if result["success"] else "partial_fail",
         )
 
@@ -405,7 +459,7 @@ class CommunicationsService:
                 cooperative_id=cooperative_id,
                 recipients_count=1,
                 body=message,
-                moolre_ref=result.get("raw", {}).get("data"),
+                provider_ref=result.get("raw", {}).get("data"),
                 status="sent" if result["success"] else "failed",
             )
         return result
@@ -421,7 +475,7 @@ class CommunicationsService:
         cooperative_id: int | None,
         recipients_count: int,
         body: str,
-        moolre_ref: str | None = None,
+        provider_ref: str | None = None,
         sent_by: str | None = None,
         status: str = "sent",
     ) -> CommunicationLog:
@@ -431,7 +485,7 @@ class CommunicationsService:
             cooperative_id=cooperative_id,
             recipients_count=recipients_count,
             body=body,
-            moolre_ref=moolre_ref,
+            provider_ref=provider_ref,
             sent_by=sent_by,
             status=status,
             sent_at=datetime.utcnow(),

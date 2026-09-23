@@ -111,7 +111,7 @@ async def test_create_account_normalizes_callback_base(monkeypatch) -> None:
         payload = service._post.await_args.args[1]
         assert (
             payload["callback"]
-            == "https://api.agroos.example/webhooks/moolre/payment"
+            == "https://api.agroos.example/webhooks/payment"
         )
     finally:
         get_settings.cache_clear()

@@ -209,7 +209,7 @@ export default function Loans({ farmers = [], loans = [], cooperativeId, loading
     [farmers],
   )
   const searchableText = useCallback(
-    loan => `${farmerName(loan)} ${loan.id} ${loan.purpose || ''} ${loan.moolre_transfer_ref || ''}`,
+    loan => `${farmerName(loan)} ${loan.id} ${loan.purpose || ''} ${loan.provider_transfer_ref || ''}`,
     [farmerName],
   )
   const statusValue = useCallback(loan => loan.status, [])
