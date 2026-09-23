@@ -881,6 +881,10 @@ class ProduceIntake(Base):
         Integer, ForeignKey("aggregation_batches.id"), nullable=True, index=True
     )
     crop_type = Column(String, nullable=False)
+    production_kind = Column(
+        String, default="crop", server_default="crop", nullable=False
+    )
+    unit = Column(String, default="kg", server_default="kg", nullable=False)
     quantity_kg = Column(Numeric(18, 3), nullable=False)
     net_quantity_kg = Column(Numeric(18, 3), nullable=True)
     quality_grade = Column(String, nullable=True)
@@ -909,6 +913,10 @@ class AggregationBatch(Base):
     cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=False, index=True)
     code = Column(String, nullable=False)
     crop_type = Column(String, nullable=False)
+    production_kind = Column(
+        String, default="crop", server_default="crop", nullable=False
+    )
+    unit = Column(String, default="kg", server_default="kg", nullable=False)
     status = Column(
         Enum(AggregationBatchStatus), default=AggregationBatchStatus.open, nullable=False
     )

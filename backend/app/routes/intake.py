@@ -13,6 +13,7 @@ from app.models.models import (
     CooperativeMembership,
     IntakeStatus,
     ProduceIntake,
+    ProductionFocus,
     User,
 )
 from app.schemas.market import IntakeCreate, IntakeResponse, IntakeReview
@@ -52,10 +53,23 @@ def create_intake(
     )
     if not membership:
         raise HTTPException(status_code=404, detail="Membership not found")
+    kind = payload.production_kind
+    focus = membership.production_focus
+    focus_value = focus.value if hasattr(focus, "value") else (focus or ProductionFocus.crop.value)
+    if focus_value != ProductionFocus.mixed.value and focus_value != kind:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"This member is on a {focus_value} profile and cannot deliver {kind} produce. "
+                "Use a mixed profile for both crop and animal lots."
+            ),
+        )
     intake = ProduceIntake(
         cooperative_id=cooperative_id,
         membership_id=payload.membership_id,
         crop_type=payload.crop_type.strip(),
+        production_kind=kind,
+        unit=payload.unit.strip() or ("head" if kind == "animal" else "kg"),
         quantity_kg=payload.quantity_kg,
         quality_grade=payload.quality_grade,
         collection_point=payload.collection_point,
