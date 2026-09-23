@@ -1953,6 +1953,21 @@ html.page-dashboard .admin-shell {
 .settings-invite-form h3 { display: flex; align-items: center; gap: 6px; grid-column: 1 / -1; font-size: 13px; }
 .settings-invite-form .btn-lg { min-height: 38px; padding: 0 16px; font-size: 12px; }
 .settings-invite-form .settings-role-hint { grid-column: 1 / -1; color: var(--muted); font-size: 11px; line-height: 1.4; }
+/* Per-member SMS consent (#247) */
+.member-consent-field {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: rgba(26,71,49,0.03);
+  font-size: 13px; cursor: pointer;
+}
+.member-consent-field input[type="checkbox"] { margin-top: 3px; width: 16px; height: 16px; accent-color: var(--g); }
+.member-consent-field strong { display: block; font-weight: 600; }
+.member-consent-hint { display: block; margin-top: 2px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.member-consent-tag {
+  display: inline-flex; margin-left: 8px; padding: 1px 7px; border-radius: 100px;
+  font-size: 10px; font-weight: 600; letter-spacing: .02em; vertical-align: middle;
+}
+.member-consent-tag.is-on { background: rgba(82,183,136,.15); color: #1A4731; }
+.member-consent-tag.is-off { background: rgba(120,120,120,.14); color: #555; }
 .integration-health-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 20px 22px; }
 .integration-health-item {
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center;

@@ -538,6 +538,7 @@ def test_direct_ussd_requires_cooperative_selection_for_multi_membership(client,
             "name": farmer["name"],
             "phone": farmer["phone"],
             "cooperative_id": second_coop["id"],
+            "sms_consent": True,
         },
     )
 

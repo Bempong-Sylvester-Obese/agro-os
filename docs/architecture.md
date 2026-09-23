@@ -242,6 +242,7 @@ method, so parity there means "same service method, same result dict", which
 | 5. Complete Pending Payment (OTP) | yes | yes | `/ussdk/pending-payment` |
 | 6. Repay Loan | yes | yes | `/ussdk/loan-repayment` |
 | 7. Link Phone (coop code + farmer ID) | yes | yes | n/a |
+| 8. SMS Alerts (opt in / opt out, #247) | yes | yes | n/a |
 
 ---
 

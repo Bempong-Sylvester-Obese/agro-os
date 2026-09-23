@@ -23,7 +23,8 @@ When the database is seeded, Agro-AI assessments are built from DB farmer record
 | UI | Method | Path | Response |
 |----|--------|------|----------|
 | Member list | GET | `/farmers/` | `FarmerResponse[]` |
-| Add member | POST | `/farmers/` | `FarmerResponse` |
+| Add member | POST | `/farmers/` | `FarmerResponse`. `sms_consent` defaults to `false`; send `true` only when the member explicitly agreed |
+| Edit member / SMS consent | PUT | `/farmers/{id}` | `FarmerResponse`. Changing `sms_consent` stamps `sms_consent_at` / `sms_opt_out_at` and writes an admin audit row (`member.sms_consent_granted` / `member.sms_consent_withdrawn`) |
 | Agro-AI scores | GET | `/api/farmers` | Assessment objects (see below) |
 | Credit summary | GET | `/api/agro-ai/credit-summary` | Summary object |
 | Attendance → recent records | GET | `/farmers/{id}/attendance?limit=5` | `AttendanceResponse[]` per member; the dashboard merges one call per member (`fetchCooperativeAttendance`) |
@@ -44,11 +45,16 @@ When the database is seeded, Agro-AI assessments are built from DB farmer record
   "animal_scale": 12,
   "cooperative_id": 1,
   "membership_status": "active",
+  "sms_consent": true,
+  "sms_consent_at": "2026-06-01T00:00:00",
+  "sms_opt_out_at": null,
   "trust_score": 58.0,
   "created_at": "2026-06-01T00:00:00",
   "updated_at": "2026-06-01T00:00:00"
 }
 ```
+
+`sms_consent` gates every member-addressed SMS (dues reminders, payment confirmations, loan notices, announcements, settlement statements). When it is `false` the send is not attempted and a `CommunicationLog` row with `status: "skipped_no_consent"` is recorded instead. Members can toggle it themselves from the USSD main menu (**8. SMS Alerts**). See [`docs/data-privacy.md`](data-privacy.md) §5.1.
 
 **Agro-AI assessment** (abbreviated):
 

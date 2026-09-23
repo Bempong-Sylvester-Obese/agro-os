@@ -123,6 +123,38 @@ Before any SMS is sent to a farmer, that farmer must have:
 Implied consent from cooperative membership is not sufficient for financial
 alerts or credit-related messages.
 
+**How the platform enforces this** (implemented under
+[#247](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/247)):
+
+- Consent is stored per membership on `cooperative_memberships.sms_consent`
+  and **defaults to off**. A member is only opted in when the cooperative
+  explicitly records that the member agreed (the "Member agreed to receive SMS
+  alerts" checkbox when adding or editing a member, or `sms_consent: true` on
+  `POST /farmers/` / `PUT /farmers/{id}`).
+- Every change is timestamped: `sms_consent_at` records when consent was last
+  granted and `sms_opt_out_at` when it was last withdrawn. Dashboard changes
+  are written to the admin audit log as `member.sms_consent_granted` /
+  `member.sms_consent_withdrawn` with `source=dashboard`; USSD changes use the
+  actor `ussd:<msisdn>` and `source=ussd`.
+- Members can opt out or back in themselves without cooperative involvement
+  from the USSD main menu (**8. SMS Alerts**) on either gateway.
+- All member-addressed send paths check consent before contacting the SMS
+  provider: dues reminders, payment confirmations, payment-action notices,
+  loan rejections, loan repayment reminders, settlement statements,
+  announcements and cooperative broadcasts. When a member has not consented,
+  no provider call is made and a `CommunicationLog` row is written with
+  `status = skipped_no_consent` and `recipients_count = 0`, so the decision is
+  auditable. The reminder job counts these as skipped rather than failed.
+- `send_single_sms` (ad-hoc operator messages to an arbitrary number) does
+  not carry a membership and therefore cannot check membership consent; it
+  must only be used for operationally necessary messages the recipient has
+  requested.
+- **Legacy rows.** Memberships created before migration
+  `020_membership_consent_audit` kept the value they had (previously the
+  column defaulted to on) and carry no `sms_consent_at` timestamp.
+  Cooperatives should review those members and record consent explicitly;
+  the dashboard shows an "SMS on / SMS off" tag per member to make this visible.
+
 ### 5.2 Sender ID
 All outbound SMS must use the sender ID approved by the SMS provider and
 registered with Ghana's National Communications Authority (NCA) for the

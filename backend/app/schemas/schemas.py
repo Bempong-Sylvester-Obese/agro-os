@@ -73,7 +73,9 @@ class FarmerBase(BaseModel):
     animal_type: Optional[str] = None
     animal_scale: Optional[float] = Field(default=None, ge=0)
     cooperative_id: int
-    sms_consent: bool = True
+    # Explicit SMS consent (#247). Default False: consent must be captured at
+    # onboarding, never implied by membership.
+    sms_consent: bool = False
 
 
 class FarmerCreate(FarmerBase):
@@ -103,6 +105,8 @@ class FarmerResponse(FarmerBase):
     membership_status: MembershipStatus
     trust_score: float
     existing_farmer: bool = False
+    sms_consent_at: Optional[datetime] = None
+    sms_opt_out_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 

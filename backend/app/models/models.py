@@ -314,7 +314,12 @@ class CooperativeMembership(Base):
     trust_score = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    sms_consent = Column(Boolean, default=True, nullable=False)
+    # SMS consent (#247): explicit, timestamped, default *off* for new members.
+    # Every outbound SMS path checks ``sms_consent``; ``set_sms_consent`` keeps
+    # the audit timestamps consistent.
+    sms_consent = Column(Boolean, default=False, server_default="false", nullable=False)
+    sms_consent_at = Column(DateTime, nullable=True)
+    sms_opt_out_at = Column(DateTime, nullable=True)
 
     farmer = relationship("Farmer", back_populates="memberships")
     cooperative = relationship("Cooperative", back_populates="memberships")
@@ -323,6 +328,19 @@ class CooperativeMembership(Base):
     loans = relationship("Loan", back_populates="farmer")
     trust_scores = relationship("TrustScore", back_populates="farmer")
     attendances = relationship("CooperativeAttendance", back_populates="farmer")
+
+    def set_sms_consent(self, value: bool, *, now: datetime | None = None) -> bool:
+        """Record a consent decision with its timestamp. Returns True if it changed."""
+        value = bool(value)
+        moment = now or datetime.utcnow()
+        if value == bool(self.sms_consent) and (self.sms_consent_at or self.sms_opt_out_at):
+            return False
+        self.sms_consent = value
+        if value:
+            self.sms_consent_at = moment
+        else:
+            self.sms_opt_out_at = moment
+        return True
 
     @property
     def name(self):

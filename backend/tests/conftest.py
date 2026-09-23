@@ -184,6 +184,7 @@ def farmer(client, cooperative):
             "name": "Kofi Mensah",
             "phone": "+233551000001",
             "cooperative_id": cooperative["id"],
+            "sms_consent": True,  # consenting member; consent defaults to False (#247)
             "location": "Ashanti Region",
             "crop_type": "Cocoa",
             "acreage": 5.0,

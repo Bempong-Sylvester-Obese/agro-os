@@ -57,6 +57,8 @@ async def run(today: date | None = None) -> dict[str, int]:
                 )
                 if reminder.status == "sent":
                     sent += 1
+                elif reminder.status == "skipped_no_consent":
+                    skipped += 1
                 else:
                     failed += 1
             except Exception:
