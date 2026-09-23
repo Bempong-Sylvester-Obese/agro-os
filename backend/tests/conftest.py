@@ -199,24 +199,33 @@ def auth_client(client):
     return client
 
 
-@pytest.fixture()
-def test_cooperative(db):
+def _solo_farm(db, name: str):
+    from datetime import datetime, timedelta
+
     from app.models.models import Cooperative
 
-    coop = Cooperative(name="Test Coop", currency="GHS", organization_type="solo_farm")
+    coop = Cooperative(
+        name=name,
+        currency="GHS",
+        organization_type="solo_farm",
+        subscription_plan="solo",
+        subscription_band="w20",
+        subscription_status="active",
+        subscription_expires_at=datetime.utcnow() + timedelta(days=30),
+    )
     db.add(coop)
     db.commit()
     return coop
+
+
+@pytest.fixture()
+def test_cooperative(db):
+    return _solo_farm(db, "Test Coop")
 
 
 @pytest.fixture()
 def another_cooperative(db):
-    from app.models.models import Cooperative
-
-    coop = Cooperative(name="Another Coop", currency="GHS", organization_type="solo_farm")
-    db.add(coop)
-    db.commit()
-    return coop
+    return _solo_farm(db, "Another Coop")
 
 
 @pytest.fixture()

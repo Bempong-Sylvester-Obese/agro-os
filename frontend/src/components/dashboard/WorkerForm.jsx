@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { createWorker, updateWorker } from '../../api/workers'
+import UpgradePrompt from './UpgradePrompt'
 
 const WAGE_SUFFIX = {
   daily: 'GHS per day',
@@ -41,14 +42,14 @@ export default function WorkerForm({ cooperativeId, worker, onSaved, onCancel })
         await createWorker(cooperativeId, payload)
       }
       onSaved()
-    } catch (e) { setError(e.message) }
+    } catch (e) { setError(e) }
     finally { setSaving(false) }
   }
 
   return (
     <div className="modal-content">
       <h2>{isEdit ? 'Edit worker' : 'Add worker'}</h2>
-      {error && <div className="error-banner">{error}</div>}
+      <UpgradePrompt error={error} className="error-banner" />
       <form onSubmit={handleSubmit}>
         <div className="form-group">
           <label htmlFor="worker-name">Name</label>

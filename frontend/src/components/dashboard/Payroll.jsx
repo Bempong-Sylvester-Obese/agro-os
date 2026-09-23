@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { CheckCircle, XCircle, Clock, AlertTriangle } from 'lucide-react'
 import { fetchPayrollSummary, approvePayroll, disbursePayroll, fetchPayrollHistory } from '../../api/payroll'
+import UpgradePrompt from './UpgradePrompt'
 import DashboardTableToolbar from './DashboardTableToolbar'
 import DashboardPagination from './DashboardPagination'
 
@@ -110,7 +111,7 @@ export default function Payroll({ cooperativeId }) {
           </DashboardTableToolbar>
 
           {loading && <div className="skeleton-box" style={{ height: 300 }} />}
-          {error && <div className="error-banner">Failed to load payroll summary</div>}
+          <UpgradePrompt error={error} className="error-banner" />
           {!loading && !error && summary && (
             <>
               <table className="data-table">

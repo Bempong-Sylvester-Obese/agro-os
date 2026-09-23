@@ -143,6 +143,63 @@ def test_create_worker_rejects_foreign_user(auth_client, test_cooperative, anoth
     assert res.status_code == 403
 
 
+def test_worker_cap_follows_solo_band(auth_client, db):
+    from datetime import datetime, timedelta
+
+    from app.models.models import Cooperative
+    from app.models.worker import Worker, WorkerStatus
+
+    coop = Cooperative(
+        name="Capped Farm",
+        currency="GHS",
+        organization_type="solo_farm",
+        subscription_plan="solo",
+        subscription_band="w20",
+        subscription_status="active",
+        subscription_expires_at=datetime.utcnow() + timedelta(days=30),
+    )
+    db.add(coop)
+    db.flush()
+    for i in range(20):
+        db.add(
+            Worker(
+                cooperative_id=coop.id,
+                name=f"Worker {i}",
+                phone=f"024200{i:04d}",
+                status=WorkerStatus.active,
+            )
+        )
+    db.commit()
+    res = auth_client.post(
+        f"/workers/?cooperative_id={coop.id}",
+        json={"name": "One more", "phone": "0242009999"},
+    )
+    assert res.status_code == 403
+    detail = res.json()["detail"]
+    assert detail["code"] == "plan_limit_reached"
+    assert detail["limit_key"] == "max_workers"
+    assert detail["limit"] == 20
+
+
+def test_worker_create_blocked_without_worker_module(auth_client, db):
+    from app.models.models import Cooperative
+
+    coop = Cooperative(
+        name="Starter Farm",
+        currency="GHS",
+        organization_type="solo_farm",
+        subscription_plan="starter",
+    )
+    db.add(coop)
+    db.commit()
+    res = auth_client.post(
+        f"/workers/?cooperative_id={coop.id}",
+        json={"name": "No Plan", "phone": "0242008888"},
+    )
+    assert res.status_code == 403
+    assert res.json()["detail"]["code"] == "feature_not_in_plan"
+
+
 def test_worker_cross_coop_not_found(auth_client, test_cooperative, another_cooperative):
     created = auth_client.post(
         f"/workers/?cooperative_id={test_cooperative.id}",
