@@ -5,6 +5,7 @@ import { confirmDemoReset, previewDemoReset } from '../../api/admin'
 import { updateCooperative } from '../../api/cooperatives'
 import { formatTransportError } from '../../api/config'
 import BillingPanel from './BillingPanel'
+import OrganizationPanel from './OrganizationPanel'
 import { SettingsSkeleton } from './DashboardSkeleton'
 import GovernanceSettings from './GovernanceSettings'
 import DashboardModal, { ModalField } from './DashboardModal'
@@ -225,7 +226,12 @@ export default function Settings({ cooperative, cooperativeId, loading, onRefres
 
             {/* Platform Subscription — catalogue-driven billing portal */}
             <BillingPanel cooperative={cooperative} cooperativeId={cooperativeId} onRefresh={onRefresh} />
-            
+
+            <div style={{ height: 1, background: 'var(--border)', margin: '12px 0' }} />
+
+            {/* Enterprise organization (#237) */}
+            <OrganizationPanel cooperative={cooperative} cooperativeId={cooperativeId} />
+
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
               <button type="submit" className="btn-lg" disabled={saving} style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: 8 }}>
                 {saving ? <><Loader2 size={16} className="spin" /> Saving...</> : 'Save Settings'}

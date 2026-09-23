@@ -35,6 +35,7 @@ import Sales from '../components/dashboard/Sales'
 import Settlements from '../components/dashboard/Settlements'
 import DashboardUserMenu from '../components/dashboard/DashboardUserMenu'
 import { SidebarCoopSkeleton } from '../components/dashboard/DashboardSkeleton'
+import OrganizationSwitcher from '../components/dashboard/OrganizationSwitcher'
 import { BarChart3, Users, CreditCard, Star, MessageSquare, Settings, Sprout, Banknote, Tractor, Phone, RefreshCw, ClipboardList, Inbox, Boxes, Store, ShoppingCart, WalletCards, Megaphone } from 'lucide-react'
 
 function getNavGroups(organizationType) {
@@ -423,6 +424,7 @@ export default function DashboardPage({ user, onLogout }) {
             <span className="admin-side-sub-name" title={cooperative?.name}>
               {loading ? <SidebarCoopSkeleton /> : (cooperative?.name ?? 'My Cooperative')}
             </span>
+            <OrganizationSwitcher user={user} activeCooperativeId={cooperativeId} />
           </div>
         </div>
         <label className="admin-mobile-section">

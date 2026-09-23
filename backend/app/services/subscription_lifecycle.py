@@ -129,9 +129,25 @@ def reconcile(cooperative: Cooperative, now: datetime | None = None) -> str | No
     return None
 
 
+def organization_plan_key(cooperative: Cooperative, now: datetime | None = None) -> str | None:
+    """Plan inherited from a live Enterprise parent organization, if any (#237).
+
+    Billing attaches to the parent: while the organization's contracted
+    subscription is active, every member cooperative is entitled to the
+    organization's plan regardless of its own ``subscription_*`` columns.
+    """
+    organization = getattr(cooperative, "organization", None)
+    if organization is None or not organization.subscription_is_live(now or _now()):
+        return None
+    return organization.subscription_plan or None
+
+
 def effective_plan_key(cooperative: Cooperative, now: datetime | None = None) -> str:
     """Plan whose limits and features apply right now (call :func:`reconcile` first)."""
     now = now or _now()
+    inherited = organization_plan_key(cooperative, now)
+    if inherited:
+        return inherited
     status = cooperative.subscription_status or STATUS_ACTIVE
     plan = cooperative.subscription_plan or FREE_PLAN
     expires = cooperative.subscription_expires_at

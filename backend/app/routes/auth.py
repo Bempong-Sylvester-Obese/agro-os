@@ -316,6 +316,7 @@ def login(user_in: UserLogin, db: Session = Depends(get_db)):
             "sub": user.email,
             "user_id": user.id,
             "cooperative_id": user.cooperative_id,
+            "organization_id": user.organization_id,
             "role": user.role,
             "organization_type": user.cooperative.organization_type if user.cooperative else None,
         },

@@ -113,6 +113,13 @@ What that means in practice:
    cooperative-consistency constraints keep memberships, loans, and
    transactions within one cooperative.
 
+5. **Organizations do not widen scope.** Enterprise organizations group
+   cooperatives for billing only. An organization admin still holds a single
+   cooperative scope; changing it is an explicit, audited
+   `POST /organizations/{id}/switch` that re-issues the JWT, and
+   `/organizations/{id}/*` is 404 for any organization other than the caller's.
+   Covered by `backend/tests/test_organizations.py`.
+
 The SQL under `supabase/migrations/*_rls_policies.sql` is reference material
 only: it is not applied by Alembic, it targets Supabase Auth roles AgroOS does
 not use, and the backend's owner-level connection would bypass it regardless.

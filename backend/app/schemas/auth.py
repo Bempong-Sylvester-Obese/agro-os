@@ -19,6 +19,7 @@ class UserResponse(BaseModel):
     is_active: bool = True
     onboarding_role: str | None = None
     cooperative_id: int | None = None
+    organization_id: int | None = None
 
     class Config:
         from_attributes = True

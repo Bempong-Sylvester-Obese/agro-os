@@ -167,6 +167,7 @@ export function userFromSignupResponse(data, email) {
     initials: name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'CA',
     role: data.user?.role || 'admin',
     cooperative_id: data.cooperative_id ?? data.user?.cooperative_id ?? null,
+    organization_id: data.user?.organization_id ?? null,
     cooperative: cooperativeName,
     organization_type: data.organization_type || 'cooperative',
   }
@@ -267,6 +268,7 @@ export function userFromAuthToken(token) {
       initials: 'CA',
       role: 'admin',
       cooperative_id: payload.cooperative_id ?? null,
+      organization_id: payload.organization_id ?? null,
       cooperative: 'Kuapa Kokoo Demo Cooperative',
       organization_type: payload.organization_type || 'cooperative',
     }

@@ -69,6 +69,43 @@ prerequisites are listed under *Future work*.
   (or `enforce_cooperative_scope`) and gain a cross-tenant test in
   `backend/tests/test_auth_rbac.py`.
 
+## Organizations (Enterprise parent tenant)
+
+Issue #237 adds an optional parent above cooperatives for Enterprise
+customers (unions, federations, aggregators). The tenancy unit does **not**
+change; an organization is a grouping and billing entity only.
+
+- Schema: `organizations` table; nullable `cooperatives.organization_id` and
+  `users.organization_id` (both `ON DELETE SET NULL`). Migration
+  `019_organizations`.
+- **Scope stays cooperative-scoped.** Every tenant-data route still resolves
+  scope from the JWT's `cooperative_id`; an organization admin holds exactly one
+  active cooperative scope at a time. There is no "read across the whole
+  organization" query path for member or financial data.
+- **Switching scope is an explicit, audited action.** `POST
+  /organizations/{id}/switch` validates the target cooperative belongs to the
+  admin's organization, updates `users.cooperative_id`, writes an
+  `organization.scope_switched` audit row, and re-issues the JWT. Previously
+  issued tokens keep their old scope until they expire.
+- **Organization routes are organization-scoped.** `/organizations/{id}/...`
+  returns 404 when `{id}` is not the caller's `organization_id`, mirroring the
+  cooperative rule; a caller with no organization also gets 404 (no
+  enumeration). Only `admin` users can create or manage an organization.
+- **Consolidated billing is an aggregate, not a data leak.** `GET
+  /organizations/{id}/billing` returns per-cooperative plan/usage counters and
+  the organization's payment intents; it never returns member rows.
+- **Plan inheritance.** While the organization's contract is live
+  (`subscription_status = active` and not expired) every member cooperative's
+  effective plan is Enterprise; otherwise each falls back to its own plan.
+  Contract activation is an operator action (`backend/scripts/activate_enterprise.py`),
+  never an API call, so subscription fields on `organizations` are immutable
+  through the API.
+
+Threat additions: T10 — an organization admin switching into a cooperative
+outside their organization (blocked by the membership check in `/switch`, tested
+in `backend/tests/test_organizations.py`); T11 — a cooperative admin who is not
+an organization member calling `/organizations/{id}/*` (404).
+
 ## Future work (prerequisites for enabling database RLS)
 
 1. A restricted, non-owner runtime role for the backend connection.

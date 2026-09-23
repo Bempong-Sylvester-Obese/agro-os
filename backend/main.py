@@ -33,6 +33,7 @@ from app.routes import (
     intake,
     loans,
     marketing,
+    organizations,
     payroll,
     plans,
     production,
@@ -214,6 +215,7 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(cooperatives.router)
 app.include_router(subscriptions.router)
+app.include_router(organizations.router)
 app.include_router(farmers.router)
 app.include_router(intake.router)
 app.include_router(aggregation.router)

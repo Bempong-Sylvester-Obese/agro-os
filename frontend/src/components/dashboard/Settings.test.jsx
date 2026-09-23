@@ -18,6 +18,10 @@ vi.mock('./BillingPanel', () => ({
   default: () => <div data-testid="billing-panel" />,
 }))
 
+vi.mock('./OrganizationPanel', () => ({
+  default: () => <div data-testid="organization-panel" />,
+}))
+
 const cooperative = {
   id: 1,
   name: 'AgroOS Demo Cooperative',

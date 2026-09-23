@@ -141,6 +141,22 @@ Optional env: `VITE_COOPERATIVE_ID`.
 | Settings → cancel | POST | `/subscriptions/cancel` | Admin. `{cooperative_id, immediately?: bool}`. Default keeps access until period end |
 | Settings → resume | POST | `/subscriptions/resume` | Admin. Undo a cancellation before the period ends (409 otherwise) |
 
+### Organizations (Enterprise)
+
+All routes require `admin`. `/organizations/{id}/...` returns 404 unless `{id}`
+is the caller's own `organization_id` (same rule as cooperative scope). The JWT
+and `/auth/login` user payload carry `organization_id` (nullable).
+
+| UI | Method | Path | Notes |
+|----|--------|------|-------|
+| Settings → Organization → create | POST | `/organizations` | `{name, description?, billing_email?}`. Caller's cooperative becomes the first member and the caller becomes organization admin. 409 if either already belongs to an organization |
+| Settings → Organization, sidebar switcher | GET | `/organizations/me` | Organization row plus `cooperatives: [{id, name, location, organization_type, is_active_scope}]` |
+| Settings → Organization → edit | PATCH | `/organizations/{id}` | Profile fields only (`name`, `description`, `billing_email`). Subscription fields are operator-managed |
+| Settings → Organization | GET | `/organizations/{id}/cooperatives` | Member cooperatives |
+| Settings → Organization → add cooperative | POST | `/organizations/{id}/cooperatives` | `{name, location?, organization_type?}`. New cooperative starts on the free plan and inherits Enterprise while the contract is live |
+| Sidebar switcher / table row → Switch | POST | `/organizations/{id}/switch` | `{cooperative_id}`. Updates the admin's active cooperative and returns a fresh `Token` (`access_token`, `token_type`) with the new scope. Audited as `organization.scope_switched` |
+| Settings → Organization → billing | GET | `/organizations/{id}/billing` | `{organization, cooperatives: [{..., effective_plan_key, inherits_organization_plan, members, workers, sms}], totals: {cooperatives, members, workers, sms_this_month, paid, currency}, history}` |
+
 **Payment intents.** Every paid flow records a `PendingCheckout` intent
 (plan, band, amount, cooperative) *before* a payment link is issued, and the
 link is non-reusable. The payment webhook resolves the provider's

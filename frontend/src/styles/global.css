@@ -593,6 +593,7 @@ button:focus-visible,
 .admin-side-sub  { min-width: 0; margin-top: 12px; padding-left: 40px; display: flex; flex-direction: column; gap: 2px; }
 .admin-side-sub-label { font-size: 8px; line-height: 1.2; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: rgba(255,255,255,.38); }
 .admin-side-sub-name { overflow: hidden; color: rgba(255,255,255,.72); font-size: 11px; font-weight: 600; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.admin-side-org { margin-top: 8px; display: flex; flex-direction: column; }
 .admin-nav       { padding: 16px 12px; flex: 1; }
 .admin-nav-lbl   { font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.3); padding: 0 8px; margin: 14px 0 5px; }
 .admin-nav-item  { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 7px; cursor: pointer; font-size: 12px; font-weight: 500; color: rgba(255,255,255,.6); margin-bottom: 2px; transition: all .12s; border: none; background: none; width: 100%; text-align: left; font-family: 'DM Sans', sans-serif; }
