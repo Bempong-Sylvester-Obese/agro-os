@@ -25,6 +25,8 @@ class IntakeCreate(BaseModel):
     cooperative_id: int | None = None
     membership_id: int
     crop_type: str = Field(min_length=1, max_length=100)
+    production_kind: str = Field(default="crop", pattern="^(crop|animal)$")
+    unit: str = Field(default="kg", min_length=1, max_length=20)
     quantity_kg: Decimal = Field(gt=0, decimal_places=3)
     quality_grade: str | None = Field(default=None, max_length=30)
     collection_point: str | None = Field(default=None, max_length=200)
@@ -38,6 +40,8 @@ class IntakeResponse(OrmSchema):
     membership_id: int
     aggregation_batch_id: int | None
     crop_type: str
+    production_kind: str = "crop"
+    unit: str = "kg"
     quantity_kg: Decimal
     net_quantity_kg: Decimal | None
     quality_grade: str | None
@@ -62,6 +66,8 @@ class BatchCreate(BaseModel):
     cooperative_id: int | None = None
     code: str = Field(min_length=1, max_length=80)
     crop_type: str = Field(min_length=1, max_length=100)
+    production_kind: str = Field(default="crop", pattern="^(crop|animal)$")
+    unit: str = Field(default="kg", min_length=1, max_length=20)
 
 
 class BatchIntakes(BaseModel):
@@ -73,6 +79,8 @@ class BatchResponse(OrmSchema):
     cooperative_id: int
     code: str
     crop_type: str
+    production_kind: str = "crop"
+    unit: str = "kg"
     status: AggregationBatchStatus
     total_quantity_kg: Decimal
     created_by: str

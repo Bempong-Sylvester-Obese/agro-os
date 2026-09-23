@@ -201,10 +201,14 @@ and `detail.code` to decide whether to show an upgrade prompt
 ### Cooperative commerce
 
 Commerce records are cooperative-scoped and follow explicit state transitions.
-Unlike production tracking and scoring, this release's intake, aggregation,
-buyer-sale, and settlement workflow remains crop-only:
+Intake, aggregation, buyer-sale, and settlement now accept crop and animal
+lots. `crop_type` is the product name (Cocoa, Goats, Milk). `production_kind`
+is `crop` or `animal`; `unit` is `kg`, `head`, or `litre`. A member on a
+`crop` or `animal` profile may only deliver that kind; `mixed` members may
+deliver both. A batch only accepts intakes that match its product, kind, and
+unit. Settlement still multiplies accepted quantity by unit price:
 
-- Produce intake: record, accept or reject, then assign accepted weight to one
+- Produce intake: record, accept or reject, then assign accepted quantity to one
   open aggregation batch.
 - Aggregation: close a batch before recording its buyer sale.
 - Buyer sale: confirm the commercial terms, record buyer-payment evidence, and

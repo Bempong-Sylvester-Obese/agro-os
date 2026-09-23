@@ -61,6 +61,8 @@ def create_batch(
         cooperative_id=cooperative_id,
         code=payload.code.strip(),
         crop_type=payload.crop_type.strip(),
+        production_kind=payload.production_kind,
+        unit=payload.unit.strip() or ("head" if payload.production_kind == "animal" else "kg"),
         created_by=_actor(current_user),
     )
     db.add(batch)
@@ -127,10 +129,18 @@ def add_intakes(
                 status_code=409,
                 detail=f"Intake {intake.id} is not available",
             )
-        if intake.crop_type.casefold() != batch.crop_type.casefold():
+        intake_kind = getattr(intake, "production_kind", None) or "crop"
+        batch_kind = getattr(batch, "production_kind", None) or "crop"
+        intake_unit = getattr(intake, "unit", None) or "kg"
+        batch_unit = getattr(batch, "unit", None) or "kg"
+        if (
+            intake.crop_type.casefold() != batch.crop_type.casefold()
+            or intake_kind != batch_kind
+            or intake_unit.casefold() != batch_unit.casefold()
+        ):
             raise HTTPException(
                 status_code=422,
-                detail=f"Intake {intake.id} crop does not match batch",
+                detail=f"Intake {intake.id} product does not match batch",
             )
         intake.aggregation_batch_id = batch.id
         intake.status = IntakeStatus.batched

@@ -17,9 +17,14 @@ export default function Intake({ records = [], farmers = [], batches = [], coope
   const [reviewing, setReviewing] = useState(null)
   const farmerOptions = farmers.map(farmer => ({ value: farmer.id, label: farmer.name }))
   const openBatches = batches.filter(batch => !['closed', 'sold'].includes(String(batch.status || batch.state).toLowerCase()))
-  const batchOptions = openBatches.map(batch => ({
+  const matchingBatches = (row) => openBatches.filter(batch =>
+    String(batch.crop_type || '').toLowerCase() === String(row.crop_type || '').toLowerCase()
+    && String(batch.production_kind || 'crop') === String(row.production_kind || 'crop')
+    && String(batch.unit || 'kg').toLowerCase() === String(row.unit || 'kg').toLowerCase()
+  )
+  const batchOptionsFor = (row) => matchingBatches(row).map(batch => ({
     value: batch.id,
-    label: batch.code || batch.name || `Batch #${batch.id}`,
+    label: `${batch.code || batch.name || `Batch #${batch.id}`} (${batch.unit || 'kg'})`,
   }))
 
   async function act(key, operation) {
@@ -43,16 +48,22 @@ export default function Intake({ records = [], farmers = [], batches = [], coope
         <InlineForm
           title="Record produce intake"
           submitLabel="Record intake"
-          initial={{ membership_id: '', crop_type: '', quantity_kg: '', quality_grade: '', collection_point: '' }}
+          initial={{ membership_id: '', production_kind: 'crop', crop_type: '', unit: 'kg', quantity_kg: '', quality_grade: '', collection_point: '' }}
           fields={[
             { name: 'membership_id', label: 'Farmer', type: 'select', options: farmerOptions },
-            { name: 'crop_type', label: 'Crop' },
-            { name: 'quantity_kg', label: 'Weight (kg)', type: 'number', min: '0.01', step: '0.01' },
+            { name: 'production_kind', label: 'Lot type', type: 'select', options: [{ value: 'crop', label: 'Crop' }, { value: 'animal', label: 'Animal' }] },
+            { name: 'crop_type', label: 'Product' },
+            { name: 'unit', label: 'Unit', type: 'select', options: [{ value: 'kg', label: 'kg' }, { value: 'head', label: 'head' }, { value: 'litre', label: 'litre' }] },
+            { name: 'quantity_kg', label: 'Quantity', type: 'number', min: '0.01', step: '0.01' },
             { name: 'quality_grade', label: 'Grade', required: false },
             { name: 'collection_point', label: 'Collection point', required: false },
           ]}
           onSubmit={async values => {
-            await createIntake({ ...values, membership_id: Number(values.membership_id), quantity_kg: Number(values.quantity_kg) })
+            await createIntake({
+              ...values,
+              membership_id: Number(values.membership_id),
+              quantity_kg: Number(values.quantity_kg),
+            })
             setShowForm(false)
             await onRefresh?.()
           }}
@@ -75,7 +86,7 @@ export default function Intake({ records = [], farmers = [], batches = [], coope
               ? [
                   {
                     name: 'net_quantity_kg',
-                    label: 'Accepted net weight (kg)',
+                    label: `Accepted net quantity (${reviewing.row.unit || 'kg'})`,
                     type: 'number',
                     min: '0.001',
                     step: '0.001',
@@ -114,13 +125,13 @@ export default function Intake({ records = [], farmers = [], batches = [], coope
         ]}
         columns={[
           { label: 'Farmer', width: '1.5fr', render: row => row.farmer_name || farmers.find(f => Number(f.id) === Number(row.membership_id))?.name || `Farmer #${row.membership_id}` },
-          { label: 'Crop', render: row => row.crop_type || row.crop || '—' },
+          { label: 'Product', render: row => `${row.crop_type || row.crop || '—'} · ${row.production_kind || 'crop'}` },
           {
-            label: 'Weight',
+            label: 'Quantity',
             render: row => (
               <span>
-                {Number(row.quantity_kg || 0).toLocaleString()} kg gross
-                {row.net_quantity_kg && ` · ${Number(row.net_quantity_kg).toLocaleString()} kg net`}
+                {Number(row.quantity_kg || 0).toLocaleString()} {row.unit || 'kg'} gross
+                {row.net_quantity_kg && ` · ${Number(row.net_quantity_kg).toLocaleString()} ${row.unit || 'kg'} net`}
               </span>
             ),
           },
@@ -160,7 +171,7 @@ export default function Intake({ records = [], farmers = [], batches = [], coope
                         onChange={event => setAssignments(current => ({ ...current, [row.id]: event.target.value }))}
                       >
                         <option value="">Choose batch…</option>
-                        {batchOptions.map(option => <option value={option.value} key={option.value}>{option.label}</option>)}
+                        {batchOptionsFor(row).map(option => <option value={option.value} key={option.value}>{option.label}</option>)}
                       </select>
                       <ActionButton
                         disabled={!assignments[row.id] || busy === row.id}
