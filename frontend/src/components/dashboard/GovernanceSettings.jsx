@@ -5,10 +5,36 @@ import {
   updateCooperativeUser,
   inviteCooperativeUser,
 } from '../../api/governance'
+import { getOrganizationType } from '../../utils/auth'
+import { COOP_ROLES, ROLE_DESCRIPTIONS, ROLES, SOLO_ROLES, roleLabel, rolesForTrack } from '../../utils/roles'
 
-const emptyInvite = { email: '', role: 'finance_officer' }
+/**
+ * Role picker (#244). Lists every role the API accepts, grouped by track, with
+ * the current organisation's track first so the common choice is one click.
+ */
+function RoleOptions({ organizationType }) {
+  const primary = rolesForTrack(organizationType)
+  const primaryLabel = organizationType === 'solo_farm' ? 'Solo farm roles' : 'Cooperative roles'
+  const secondary = organizationType === 'solo_farm' ? COOP_ROLES : SOLO_ROLES
+  const secondaryLabel = organizationType === 'solo_farm' ? 'Cooperative roles' : 'Solo farm roles'
+  const renderOptions = (roles) => roles.map((role) => (
+    <option key={role} value={role} title={ROLE_DESCRIPTIONS[role]}>{roleLabel(role)}</option>
+  ))
+  return (
+    <>
+      <optgroup label={primaryLabel}>{renderOptions(primary)}</optgroup>
+      <optgroup label={secondaryLabel}>{renderOptions(secondary.filter((role) => role !== ROLES.ADMIN))}</optgroup>
+    </>
+  )
+}
+
+function defaultInviteRole(organizationType) {
+  return organizationType === 'solo_farm' ? ROLES.FARM_MANAGER : ROLES.FINANCE_OFFICER
+}
 
 export default function GovernanceSettings({ cooperativeId }) {
+  const organizationType = getOrganizationType()
+  const emptyInvite = { email: '', role: defaultInviteRole(organizationType) }
   const [users, setUsers] = useState([])
   const [invite, setInvite] = useState(emptyInvite)
   const [loading, setLoading] = useState(true)
@@ -73,7 +99,11 @@ export default function GovernanceSettings({ cooperativeId }) {
         <div className="admin-card-head">
           <div>
             <h2 id="team-settings-title" className="admin-card-title serif">Team and access</h2>
-            <p className="activity-subtitle">Manage cooperative administrators and finance officers.</p>
+            <p className="activity-subtitle">
+              {organizationType === 'solo_farm'
+                ? 'Manage farm owners, managers and supervisors.'
+                : 'Manage administrators, finance, field, operations and sales officers.'}
+            </p>
           </div>
           <button type="button" className="admin-card-button" onClick={load} disabled={loading}>
             <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
@@ -100,11 +130,7 @@ export default function GovernanceSettings({ cooperativeId }) {
                       disabled={saving === user.id || !user.is_active}
                       onChange={(event) => changeUser(user.id, { role: event.target.value })}
                     >
-                      <option value="admin">Administrator</option>
-                      <option value="finance_officer">Finance officer</option>
-                      <option value="farm_owner">Farm owner</option>
-                      <option value="farm_manager">Farm manager</option>
-                      <option value="supervisor">Supervisor</option>
+                      <RoleOptions organizationType={organizationType} />
                     </select>
                   </label>
                   <button
@@ -135,12 +161,9 @@ export default function GovernanceSettings({ cooperativeId }) {
                 onChange={(event) => setInvite({ ...invite, role: event.target.value })}
                 aria-label="New user role"
               >
-                <option value="finance_officer">Finance officer</option>
-                <option value="admin">Administrator</option>
-                <option value="farm_owner">Farm owner</option>
-                <option value="farm_manager">Farm manager</option>
-                <option value="supervisor">Supervisor</option>
+                <RoleOptions organizationType={organizationType} />
               </select>
+              <small className="settings-role-hint">{ROLE_DESCRIPTIONS[invite.role]}</small>
               <button type="submit" className="btn-lg" disabled={saving === 'invite'}>
                 {saving === 'invite' ? 'Sending…' : 'Send invite'}
               </button>

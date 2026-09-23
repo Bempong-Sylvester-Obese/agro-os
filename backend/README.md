@@ -273,6 +273,9 @@ settlement still accept crop produce only.
 
 Lifecycle rules (trial length, grace period, renewal semantics) are in [`docs/billing.md`](../docs/billing.md).
 
+### Roles
+Staff roles are the `Role` enum in `app/auth/roles.py` (mirrored by `frontend/src/utils/roles.js`). `GET /auth/roles` (public) returns the catalogue; invite/update schemas accept exactly these values. Role matrix: [`docs/api-contract.md`](../docs/api-contract.md#authentication-and-cooperative-roles).
+
 ### Organizations (Enterprise parent)
 All admin-only; `/organizations/{id}/...` is 404 unless `{id}` is the caller's organization.
 

@@ -1,6 +1,8 @@
 // src/components/dashboard/Members.jsx
 import React, { useCallback, useState } from 'react'
 import { Edit3, UserPlus, Loader2 } from 'lucide-react'
+import { getUserRole } from '../../utils/auth'
+import { can } from '../../utils/roles'
 import { createFarmer, deactivateFarmer, updateFarmer } from '../../api/farmers'
 import UpgradePrompt from './UpgradePrompt'
 import { exportDashboardReport } from '../../api/reports'
@@ -428,18 +430,20 @@ export default function Members({ farmers = [], cooperativeId, onMemberAdded, lo
         exporting={exporting}
         exportError={exportError}
       >
-        <button
-          className="btn-nav"
-          onClick={() => cooperativeId && setShowModal(true)}
-          disabled={!cooperativeId}
-          title={!cooperativeId ? 'Link a cooperative before adding members' : undefined}
-          style={{
-            fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
-            opacity: cooperativeId ? 1 : 0.5, cursor: cooperativeId ? 'pointer' : 'not-allowed',
-          }}
-        >
-          <UserPlus size={15} /> Add member
-        </button>
+        {can('manageMembers', getUserRole()) && (
+          <button
+            className="btn-nav"
+            onClick={() => cooperativeId && setShowModal(true)}
+            disabled={!cooperativeId}
+            title={!cooperativeId ? 'Link a cooperative before adding members' : undefined}
+            style={{
+              fontSize: 13, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+              opacity: cooperativeId ? 1 : 0.5, cursor: cooperativeId ? 'pointer' : 'not-allowed',
+            }}
+          >
+            <UserPlus size={15} /> Add member
+          </button>
+        )}
       </DashboardTableToolbar>
 
       {/* ── Empty state ── */}

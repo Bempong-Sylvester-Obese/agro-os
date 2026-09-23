@@ -95,9 +95,11 @@ one. Instead:
 AgroOS mirrors, but does not replace, the legal structure of a
 cooperative society under Act 1148:
 
-- Role scoping in-app (`admin`, `finance_officer`) reflects operational
-  roles, not the formal governance roles (e.g. management committee,
-  auditor) a registered cooperative is required to have.
+- Role scoping in-app (`admin`, `finance_officer`, `field_officer`,
+  `operations_officer`, `sales_officer`; `farm_owner`, `farm_manager`,
+  `supervisor` for solo farms) reflects operational roles, not the formal
+  governance roles (e.g. management committee, auditor) a registered
+  cooperative is required to have.
 - AgroOS is a record-keeping and communication tool for a cooperative's
   existing governance — it does not itself constitute the cooperative's
   legal registration, bylaws, or audit obligations to the Department of
@@ -131,7 +133,7 @@ cooperative society under Act 1148:
 | Data privacy policy documented | Done (`docs/data-privacy.md`) |
 | Security policy & webhook verification (payments) | Done for payment webhook |
 | USSD webhook signature verification | Done — shared-secret validation |
-| Role-based access control (production) | Enforced — JWT scoped per cooperative |
+| Role-based access control (production) | Enforced — JWT scoped per cooperative; eight-role model in `backend/app/auth/roles.py`, per-route `require_roles` gates, role matrix in `docs/api-contract.md` |
 | Tenant isolation model | Decided — API-only tenancy; database RLS not deployed or relied on. Decision record and threat model: `docs/architecture/tenancy-decision.md` |
 | Client database access | None — browser bundle holds no DB SDK/credentials (enforced by frontend test) |
 | Provider-neutral architecture | Done — payment/SMS behind port interfaces |
@@ -140,7 +142,7 @@ cooperative society under Act 1148:
 | Legal review of this policy and data-privacy.md | Outstanding — required before production |
 | Per-member SMS consent recorded and enforced | Open — [#247](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/247) |
 | Short production token TTL, refresh, email delivery of reset/invite tokens | Open — [#248](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/248) |
-| Formal role model beyond `admin`/`finance_officer` | Open — [#244](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/244) |
+| Formal role model beyond `admin`/`finance_officer` | Done — `Role` enum covers every gated role; invite/update accept all of them; dashboard nav and actions gated per role ([#244](https://github.com/Bempong-Sylvester-Obese/agro-os/issues/244)) |
 | Subscription entitlements enforced server-side | Enforced — band-aware member caps, monthly SMS quotas, and AgroCredit/scores feature gates in `backend/app/services/entitlements.py`; see [`docs/billing.md`](docs/billing.md) |
 
 ---

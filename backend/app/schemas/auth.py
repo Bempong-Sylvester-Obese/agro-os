@@ -2,11 +2,13 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.auth.roles import RoleLiteral
+
 
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
-    role: Literal["admin", "finance_officer", "farm_owner", "farm_manager", "supervisor"] = "finance_officer"
+    role: RoleLiteral = "finance_officer"
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -26,7 +28,7 @@ class UserResponse(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    role: Literal["admin", "finance_officer", "farm_owner", "farm_manager", "supervisor"] | None = None
+    role: RoleLiteral | None = None
     is_active: bool | None = None
 
 class CurrentUserResponse(UserResponse):
@@ -87,9 +89,18 @@ class PasswordChangeRequest(BaseModel):
 
 class InviteUserRequest(BaseModel):
     email: str
-    role: Literal[
-        "admin", "finance_officer", "farm_owner", "farm_manager", "supervisor"
-    ]
+    role: RoleLiteral
+
+
+class RoleDescriptor(BaseModel):
+    key: str
+    label: str
+    capabilities: str
+    tracks: list[str]
+
+
+class RoleCatalogue(BaseModel):
+    roles: list[RoleDescriptor]
 
 
 class AcceptInviteRequest(BaseModel):

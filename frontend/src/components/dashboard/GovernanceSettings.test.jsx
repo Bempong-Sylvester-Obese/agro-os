@@ -41,6 +41,21 @@ describe('GovernanceSettings', () => {
     await waitFor(() => expect(updateCooperativeUser).toHaveBeenCalledWith(7, { is_active: false }))
   })
 
+  it('offers every API role in the invite picker, grouped by track (#244)', async () => {
+    render(<GovernanceSettings />)
+    const picker = await screen.findByLabelText('New user role')
+    const values = Array.from(picker.querySelectorAll('option')).map((option) => option.value)
+    expect(values).toEqual([
+      'admin', 'finance_officer', 'field_officer', 'operations_officer', 'sales_officer',
+      'farm_owner', 'farm_manager', 'supervisor',
+    ])
+    expect(picker.value).toBe('finance_officer')
+    expect(Array.from(picker.querySelectorAll('optgroup')).map((group) => group.label)).toEqual(['Cooperative roles', 'Solo farm roles'])
+
+    fireEvent.change(picker, { target: { value: 'sales_officer' } })
+    expect(screen.getByText('Buyers and buyer sales')).toBeTruthy()
+  })
+
   it('hides team controls from non-administrators', async () => {
     fetchCooperativeUsers.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }))
     fetchIntegrationHealth.mockRejectedValue(Object.assign(new Error('Forbidden'), { status: 403 }))
