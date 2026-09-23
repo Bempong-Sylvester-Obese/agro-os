@@ -47,9 +47,10 @@ def test_subscription_checkout_uses_provider_port(client, cooperative):
     provider.generate_payment_link.assert_awaited_once()
     call = provider.generate_payment_link.await_args.kwargs
     assert call["amount"] == 299.0
-    assert call["external_ref"].startswith(
-        f"sub_upg_{cooperative['id']}_growth_"
-    )
+    assert call["external_ref"].startswith(f"sub_upg_{cooperative['id']}_")
+    assert call["external_ref"] == response.json()["reference"]
+    # One payment must map to exactly one intent.
+    assert call["reusable"] is False
 
 
 def test_cooperative_api_cannot_grant_paid_subscription(client, cooperative):

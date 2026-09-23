@@ -153,6 +153,9 @@ PaymentEvent (domain object)
   .amount, .currency, .status, .signature_valid
        │
        ├─ external_ref starts with sub_pre_/sub_upg_ ──► subscription_service.process_subscription_event(event)
+       │      Looks up the single-use PendingCheckout intent by reference, verifies
+       │      event.amount == intent.amount and the plan/band are valid, activates once
+       │      (status pending → consumed), records PaymentWebhookEvent. Replays are no-ops.
        │
        ▼
 payment_service.process_payment_event(event)
@@ -256,7 +259,7 @@ Key tables (PostgreSQL via Supabase):
 | `trust_scores` | AgroCredit AI scoring results |
 | `communication_logs` | SMS delivery records; `provider_ref` = provider message ID |
 | `payment_webhook_events` | Raw webhook event log; `provider_payment_ref` |
-| `pending_checkouts` | Pre-checkout payment sessions |
+| `pending_checkouts` | Single-use subscription payment intents (`kind` = `pre_checkout` before signup, `upgrade` for an existing cooperative); plan, band, amount, cooperative, paid/consumed timestamps |
 | `subscriptions` | Cooperative subscription/plan records |
 
 ### Provider-Neutral Column Names
