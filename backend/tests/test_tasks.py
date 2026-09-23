@@ -127,3 +127,17 @@ def test_assign_workers_rejects_cross_tenant_worker(
     )
     assert res.status_code == 404
     assert res.json()["detail"] == "One or more workers not found"
+
+
+def test_create_task_refused_on_cooperative(auth_client, db):
+    from app.models.models import Cooperative
+
+    coop = Cooperative(name="Member Coop Tasks", currency="GHS", organization_type="cooperative")
+    db.add(coop)
+    db.commit()
+    res = auth_client.post(
+        f"/tasks/?cooperative_id={coop.id}",
+        json={"title": "Should fail", "task_type": "general", "scheduled_date": "2026-08-01"},
+    )
+    assert res.status_code == 403
+    assert "solo farm" in res.json()["detail"].lower()

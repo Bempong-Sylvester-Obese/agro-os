@@ -10,17 +10,9 @@ from app.services.auth_service import (
     get_current_user,
     require_roles,
 )
+from app.services.organization_guards import WORKER_SOLO_FARM_ONLY, require_solo_farm
 
 router = APIRouter(prefix="/workers", tags=["workers"])
-
-
-def _require_solo_farm(coop: Cooperative) -> None:
-    """Workers are a solo-farm entity — never a cooperative membership (#254)."""
-    if (coop.organization_type or "cooperative") != "solo_farm":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Workers can only be managed on a solo farm. Cooperative members live under Members.",
-        )
 
 
 def _validate_linked_user(db: Session, cooperative_id: int, user_id: int | None) -> None:
@@ -84,7 +76,7 @@ def create_worker(
     coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
-    _require_solo_farm(coop)
+    require_solo_farm(coop, detail=WORKER_SOLO_FARM_ONLY)
 
     existing = (
         db.query(Worker)
@@ -123,7 +115,7 @@ def update_worker(
     coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
-    _require_solo_farm(coop)
+    require_solo_farm(coop, detail=WORKER_SOLO_FARM_ONLY)
     worker = (
         db.query(Worker)
         .filter(Worker.id == worker_id, Worker.cooperative_id == cooperative_id)
@@ -158,7 +150,7 @@ def delete_worker(
     coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
     if not coop:
         raise HTTPException(status_code=404, detail="Cooperative not found")
-    _require_solo_farm(coop)
+    require_solo_farm(coop, detail=WORKER_SOLO_FARM_ONLY)
     worker = (
         db.query(Worker)
         .filter(Worker.id == worker_id, Worker.cooperative_id == cooperative_id)
