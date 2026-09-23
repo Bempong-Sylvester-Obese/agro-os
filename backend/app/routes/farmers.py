@@ -123,8 +123,9 @@ def create_farmer(
         animal_type=farmer_in.animal_type,
         animal_scale=farmer_in.animal_scale,
         farmer_code=code,
-        sms_consent=farmer_in.sms_consent,
     )
+    # Consent is an explicit decision captured at onboarding (#247); stamp it.
+    membership.set_sms_consent(farmer_in.sms_consent)
     db.add(membership)
     try:
         db.flush()
@@ -238,10 +239,12 @@ def update_farmer(
         "animal_type",
         "animal_scale",
         "membership_status",
-        "sms_consent",
     ):
         if field in values:
             setattr(membership, field, values[field])
+    consent_changed = False
+    if "sms_consent" in values:
+        consent_changed = membership.set_sms_consent(values["sms_consent"])
 
     focus = membership.production_focus or ProductionFocus.crop
     if focus == ProductionFocus.crop:
@@ -262,6 +265,17 @@ def update_farmer(
                 details="fields=" + ",".join(sorted(updates.model_dump(exclude_none=True))),
             )
         )
+        if consent_changed:
+            db.add(
+                AdminAuditLog(
+                    cooperative_id=membership.cooperative_id,
+                    actor_id=str(current_user.id),
+                    action="member.sms_consent_granted" if membership.sms_consent else "member.sms_consent_withdrawn",
+                    resource_type="membership",
+                    resource_id=str(membership.id),
+                    details="source=dashboard",
+                )
+            )
     db.commit()
     db.refresh(membership)
     return membership

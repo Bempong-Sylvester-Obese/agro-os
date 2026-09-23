@@ -14,6 +14,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.models import (
+    AdminAuditLog,
     Announcement,
     Cooperative,
     CooperativeMembership,
@@ -41,9 +42,17 @@ USSD_MAIN_MENU = (
     "4. Announcements\n"
     "5. Complete Pending Payment\n"
     "6. Repay Loan\n"
-    "7. Link Phone"
+    "7. Link Phone\n"
+    "8. SMS Alerts"
 )
 USSD_MENU_MAIN = USSD_MAIN_MENU
+
+# SMS consent self-service (#247): members can stop or allow SMS from their phone.
+SMS_PREFS_ON = "SMS alerts are ON.\n1. Stop SMS alerts\n2. Keep SMS alerts"
+SMS_PREFS_OFF = "SMS alerts are OFF.\n1. Allow SMS alerts\n2. Keep them off"
+SMS_OPT_OUT_MSG = "You will no longer receive SMS alerts from your cooperative. Dial again to turn them back on."
+SMS_OPT_IN_MSG = "SMS alerts are now ON. You will receive dues, loan and announcement messages."
+SMS_PREFS_UNCHANGED_MSG = "No change made to your SMS alerts."
 
 NOT_REGISTERED_MSG = "Phone not registered with AgroOS. Contact your cooperative."
 LINK_COOP_CODE_PROMPT = "Enter your 4-digit Cooperative Code:"
@@ -413,9 +422,49 @@ class UssdApplicationService:
                 log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=LINK_COOP_CODE_PROMPT, farmer=None, state=state)
                 return UssdResponse(text=LINK_COOP_CODE_PROMPT, continue_session=True)
 
+            if message == "8":
+                if not farmer:
+                    clear_ussd_state(db, session_id)
+                    log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=NOT_REGISTERED_MSG, farmer=None)
+                    return UssdResponse(text=NOT_REGISTERED_MSG, continue_session=False)
+                msg = SMS_PREFS_ON if farmer.sms_consent else SMS_PREFS_OFF
+                state["step"] = "sms_prefs"
+                log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer, state=state)
+                return UssdResponse(text=msg, continue_session=True)
+
             msg = "Invalid option.\n" + USSD_MENU_MAIN
             log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
             return UssdResponse(text=msg, continue_session=True)
+
+        # ---- SMS alert preferences (#247)
+        if state["step"] == "sms_prefs":
+            if not farmer:
+                clear_ussd_state(db, session_id)
+                return UssdResponse(text=NOT_REGISTERED_MSG, continue_session=False)
+            if message == "1":
+                new_value = not farmer.sms_consent
+                farmer.set_sms_consent(new_value)
+                db.add(
+                    AdminAuditLog(
+                        cooperative_id=farmer.cooperative_id,
+                        actor_id=f"ussd:{msisdn}",
+                        action="member.sms_consent_granted" if new_value else "member.sms_consent_withdrawn",
+                        resource_type="membership",
+                        resource_id=str(farmer.id),
+                        details="source=ussd",
+                    )
+                )
+                db.commit()
+                msg = SMS_OPT_IN_MSG if new_value else SMS_OPT_OUT_MSG
+            elif message == "2":
+                msg = SMS_PREFS_UNCHANGED_MSG
+            else:
+                msg = "Invalid option.\n" + (SMS_PREFS_ON if farmer.sms_consent else SMS_PREFS_OFF)
+                log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer, state=state)
+                return UssdResponse(text=msg, continue_session=True)
+            clear_ussd_state(db, session_id)
+            log_ussd_session(db, session_id=session_id, phone=msisdn, input_path=message, response_text=msg, farmer=farmer)
+            return UssdResponse(text=msg, continue_session=False)
 
         # ---- Link phone: cooperative code
         if state["step"] == "link_coop_code":

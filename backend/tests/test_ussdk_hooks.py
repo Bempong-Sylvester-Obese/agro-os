@@ -227,6 +227,7 @@ def test_ussdk_loan_request_handles_unregistered_and_multiple_memberships(
             "name": farmer["name"],
             "phone": farmer["phone"],
             "cooperative_id": second_coop["id"],
+            "sms_consent": True,
         },
     )
     choose = client.post(
@@ -270,6 +271,7 @@ def test_multiple_memberships_require_cooperative_selection(client, farmer):
             "name": farmer["name"],
             "phone": farmer["phone"],
             "cooperative_id": second_coop["id"],
+            "sms_consent": True,
         },
     ).json()
 
@@ -304,6 +306,7 @@ def test_rejects_membership_selection_owned_by_another_phone(client, farmer):
             "name": "Different Farmer",
             "phone": "0249999999",
             "cooperative_id": other_coop["id"],
+            "sms_consent": True,
         },
     ).json()
 
@@ -456,6 +459,7 @@ def test_announcements_require_selection_and_use_selected_cooperative(
             "name": farmer["name"],
             "phone": farmer["phone"],
             "cooperative_id": second_coop["id"],
+            "sms_consent": True,
         },
     ).json()
     db.add_all(
