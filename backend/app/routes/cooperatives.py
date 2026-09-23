@@ -18,6 +18,7 @@ from app.services.auth_service import (
     get_current_user,
     require_roles,
 )
+from app.services import subscription_lifecycle as lifecycle
 from app.services.providers.factory import get_payment_provider
 
 router = APIRouter(prefix="/cooperatives", tags=["cooperatives"])
@@ -95,8 +96,10 @@ def update_cooperative(
                 status_code=403,
                 detail="Plan upgrades require a completed checkout",
             )
-        update_values["subscription_status"] = "active"
+        # Downgrade is immediate: free tier has no billing period.
+        update_values["subscription_status"] = lifecycle.STATUS_ACTIVE
         update_values["subscription_expires_at"] = None
+        update_values["subscription_band"] = None
 
     for field, value in update_values.items():
         setattr(coop, field, value)

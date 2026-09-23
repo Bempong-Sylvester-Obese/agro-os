@@ -1,6 +1,5 @@
 """Plan catalog and pricing — single source of truth for all plan metadata."""
 
-from datetime import datetime, timedelta
 
 PLANS = {
     "starter": {
@@ -166,35 +165,26 @@ def resolve_amount(plan_key: str, band_key: str | None = None) -> float | None:
 SUBSCRIPTION_STATUSES = ["trial", "active", "past_due", "expired", "cancelled"]
 
 
-def activate_subscription(cooperative, plan_key: str, days: int = 30):
-    cooperative.subscription_plan = plan_key
-    cooperative.subscription_status = "active"
-    if (
-        cooperative.subscription_expires_at
-        and cooperative.subscription_expires_at > datetime.utcnow()
-    ):
-        cooperative.subscription_expires_at += timedelta(days=days)
-    else:
-        cooperative.subscription_expires_at = datetime.utcnow() + timedelta(days=days)
+# Lifecycle transitions live in app.services.subscription_lifecycle. The three
+# helpers below are thin compatibility wrappers (lazy import avoids a cycle:
+# the lifecycle module imports the catalogue from here).
+
+
+def activate_subscription(cooperative, plan_key: str, band_key: str | None = None, days: int = 30):
+    from app.services import subscription_lifecycle as lifecycle
+
+    lifecycle.renew(cooperative, plan_key, band_key, days=days)
 
 
 def check_subscription_active(cooperative) -> bool:
-    if (
-        cooperative.subscription_status == "active"
-        and cooperative.subscription_expires_at
-    ):
-        return datetime.utcnow() < cooperative.subscription_expires_at
-    if cooperative.subscription_status == "trial":
-        return True
-    return False
+    from app.services import subscription_lifecycle as lifecycle
+
+    return lifecycle.has_paid_access(cooperative) or lifecycle.is_free_plan(
+        cooperative.subscription_plan
+    )
 
 
-def expire_if_needed(cooperative):
-    if (
-        cooperative.subscription_status == "active"
-        and cooperative.subscription_expires_at
-    ):
-        if datetime.utcnow() > cooperative.subscription_expires_at:
-            cooperative.subscription_status = "expired"
-            return True
-    return False
+def expire_if_needed(cooperative) -> bool:
+    from app.services import subscription_lifecycle as lifecycle
+
+    return lifecycle.reconcile(cooperative) is not None

@@ -7,8 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database.db import get_db
-from app.models.models import Cooperative, PendingCheckout, User
-from app.services.auth_service import enforce_cooperative_scope, get_current_user
+from app.models.models import AdminAuditLog, Cooperative, PendingCheckout, User
+from app.services import subscription_lifecycle as lifecycle
+from app.services.auth_service import enforce_cooperative_scope, get_current_user, require_roles
 from app.services.plans import get_band, get_plan, resolve_amount
 from app.services.providers.factory import get_payment_provider
 from app.services.subscription_service import (
@@ -161,3 +162,152 @@ async def create_checkout(
         "band": intent.band,
         "amount": intent.amount,
     }
+
+
+# ---------------------------------------------------------------------------
+# Lifecycle: status, renewal, cancel, resume
+# ---------------------------------------------------------------------------
+
+
+class CancelRequest(BaseModel):
+    cooperative_id: int
+    immediately: bool = False
+
+
+class LifecycleRequest(BaseModel):
+    cooperative_id: int
+
+
+def _scoped_cooperative(db: Session, current_user: User | None, cooperative_id: int) -> Cooperative:
+    enforce_cooperative_scope(current_user, cooperative_id)
+    coop = db.query(Cooperative).filter(Cooperative.id == cooperative_id).first()
+    if not coop:
+        raise HTTPException(status_code=404, detail="Cooperative not found")
+    return coop
+
+
+@router.get("/status")
+def subscription_status(
+    cooperative_id: int | None = None,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Current lifecycle state, with time-based transitions applied first."""
+    scoped_id = current_user.cooperative_id if current_user and current_user.cooperative_id else cooperative_id
+    if scoped_id is None:
+        raise HTTPException(status_code=400, detail="cooperative_id is required")
+    coop = _scoped_cooperative(db, current_user, scoped_id)
+    lifecycle.reconcile_and_commit(db, coop)
+    return lifecycle.describe(coop).as_dict()
+
+
+@router.post("/renew")
+async def renew_subscription(
+    req: LifecycleRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+) -> dict[str, Any]:
+    """Create a payment intent that renews the cooperative's current paid plan.
+
+    Renewal is the same verified path as an upgrade: the webhook activates
+    from the intent and extends the current period (or starts a fresh one if
+    it has lapsed). Free-tier and trial cooperatives must pick a plan via
+    ``/checkout`` instead.
+    """
+    coop = _scoped_cooperative(db, current_user, req.cooperative_id)
+    lifecycle.reconcile_and_commit(db, coop)
+    if lifecycle.is_free_plan(coop.subscription_plan) or coop.subscription_status == lifecycle.STATUS_TRIAL:
+        raise HTTPException(status_code=400, detail="No paid plan to renew; choose a plan via checkout")
+
+    try:
+        intent = create_upgrade_intent(
+            db,
+            cooperative=coop,
+            plan_key=coop.subscription_plan,
+            band_key=coop.subscription_band,
+            created_by_user_id=current_user.id if current_user else None,
+        )
+    except SubscriptionIntentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    provider = get_payment_provider()
+    result = await provider.generate_payment_link(
+        amount=intent.amount,
+        email=current_user.email if current_user else f"admin@{coop.name.replace(' ', '').lower()}.com",
+        currency=intent.currency or "GHS",
+        external_ref=intent.reference,
+        reusable=False,
+    )
+    payment_url = result.get("payment_url")
+    if not result.get("success") or not payment_url:
+        db.rollback()
+        raise HTTPException(status_code=400, detail="Failed to generate payment link")
+    db.commit()
+    return {
+        "intent_id": intent.id,
+        "authorization_url": payment_url,
+        "reference": intent.reference,
+        "plan_key": intent.plan_key,
+        "band": intent.band,
+        "amount": intent.amount,
+    }
+
+
+@router.post("/cancel")
+def cancel_subscription(
+    req: CancelRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+) -> dict[str, Any]:
+    """Cancel the paid plan.
+
+    By default access continues until the end of the paid period, after which
+    the cooperative drops to the free tier. ``immediately=true`` drops now.
+    """
+    coop = _scoped_cooperative(db, current_user, req.cooperative_id)
+    lifecycle.reconcile_and_commit(db, coop)
+    try:
+        lifecycle.cancel(coop, immediately=req.immediately)
+    except lifecycle.SubscriptionStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if current_user:
+        db.add(
+            AdminAuditLog(
+                cooperative_id=coop.id,
+                actor_id=str(current_user.id),
+                action="subscription.cancelled",
+                resource_type="cooperative",
+                resource_id=str(coop.id),
+                details=f"immediately={req.immediately}",
+            )
+        )
+    db.commit()
+    return lifecycle.describe(coop).as_dict()
+
+
+@router.post("/resume")
+def resume_subscription(
+    req: LifecycleRequest,
+    db: Session = Depends(get_db),
+    current_user: User | None = Depends(require_roles("admin")),
+) -> dict[str, Any]:
+    """Undo a pending cancellation while the paid period is still running."""
+    coop = _scoped_cooperative(db, current_user, req.cooperative_id)
+    lifecycle.reconcile_and_commit(db, coop)
+    try:
+        lifecycle.resume(coop)
+    except lifecycle.SubscriptionStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if current_user:
+        db.add(
+            AdminAuditLog(
+                cooperative_id=coop.id,
+                actor_id=str(current_user.id),
+                action="subscription.resumed",
+                resource_type="cooperative",
+                resource_id=str(coop.id),
+                details=None,
+            )
+        )
+    db.commit()
+    return lifecycle.describe(coop).as_dict()

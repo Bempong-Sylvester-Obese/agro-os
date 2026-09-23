@@ -134,6 +134,10 @@ Optional env: `VITE_COOPERATIVE_ID`.
 | Pricing page | GET | `/plans` | Plan catalogue (public) |
 | Pricing page checkout | POST | `/subscriptions/pre-checkout` | Public. Creates a `pre_checkout` intent (`sub_pre_*`) and returns `{checkout_id, reference, authorization_url, amount}` |
 | Settings → upgrade | POST | `/subscriptions/checkout` | Auth. Creates a single-use `upgrade` intent for the caller's cooperative and returns `{intent_id, reference, authorization_url, plan_key, band, amount}` |
+| Settings → billing panel | GET | `/subscriptions/status` | Auth. Applies pending time-based transitions and returns the lifecycle view (`status`, `effective_plan_key`, `paid_access`, `in_grace`, `days_remaining`, ...) |
+| Settings → renew | POST | `/subscriptions/renew` | Admin. Single-use intent for the plan/band already on record; 400 on free tier or trial |
+| Settings → cancel | POST | `/subscriptions/cancel` | Admin. `{cooperative_id, immediately?: bool}`. Default keeps access until period end |
+| Settings → resume | POST | `/subscriptions/resume` | Admin. Undo a cancellation before the period ends (409 otherwise) |
 
 **Payment intents.** Every paid flow records a `PendingCheckout` intent
 (plan, band, amount, cooperative) *before* a payment link is issued, and the
@@ -150,6 +154,15 @@ link is non-reusable. The payment webhook resolves the provider's
 
 `pre_checkout` intents move `pending → paid` on webhook and `paid → consumed`
 when signup redeems them with `checkout_ref`.
+
+**Lifecycle.** Free signups start a 14-day Growth trial (`subscription_status =
+trial`, plan stays `starter`); paid periods are 30 days with a 7-day grace
+period (`past_due`) before `expired`. Limits and feature gates always use the
+*effective* plan from `subscription_lifecycle.effective_plan_key`, never the
+raw `subscription_plan` column. Routes that need a live paid plan use
+`Depends(require_active_subscription(...))`, which returns `402
+{"code": "subscription_required"}`. States, transitions, and renewal semantics
+are documented in [`docs/billing.md`](billing.md).
 
 ### Cooperative commerce
 
