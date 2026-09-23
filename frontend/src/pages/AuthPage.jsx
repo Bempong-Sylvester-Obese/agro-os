@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { acceptInvite, changePassword, confirmPasswordReset, login, requestPasswordReset, signup, storeAuthToken, userFromAuthToken, userFromSignupResponse, warmAuthBackend } from '../api/auth'
+import { acceptInvite, changePassword, confirmPasswordReset, login, requestPasswordReset, signup, storeAuthToken, userFromLoginResponse, userFromSignupResponse, warmAuthBackend } from '../api/auth'
 import { Sprout, ArrowLeft, ArrowRight, Building2, Users, MapPin, Mail, Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
@@ -213,9 +213,8 @@ export default function AuthPage({ onAuth }) {
   }, [searchParams])
 
   function completeAuth(tokenPayload, extras = {}) {
-    const apiUser = tokenPayload.user || userFromAuthToken(tokenPayload.access_token)
     onAuth({
-      ...(apiUser || {}),
+      ...userFromLoginResponse(tokenPayload, email),
       ...extras,
     })
   }
@@ -235,11 +234,7 @@ export default function AuthPage({ onAuth }) {
         return
       }
       storeAuthToken(data.access_token)
-      completeAuth(data, {
-        email: data.user?.email || email.trim(),
-        cooperative_id: data.user?.cooperative_id ?? userFromAuthToken(data.access_token)?.cooperative_id ?? null,
-        cooperative: data.user?.cooperative || 'Kuapa Kokoo Demo Cooperative',
-      })
+      completeAuth(data)
       return
     } catch (err) {
       setError(err.message)
@@ -345,11 +340,7 @@ export default function AuthPage({ onAuth }) {
       await changePassword(pendingLoginToken, resetPassword)
       storeAuthToken(pendingLoginToken)
       setError(null)
-      completeAuth(pendingLoginData, {
-        email: pendingLoginData?.user?.email || email.trim(),
-        cooperative_id: pendingLoginData?.user?.cooperative_id ?? userFromAuthToken(pendingLoginToken)?.cooperative_id ?? null,
-        cooperative: pendingLoginData?.user?.cooperative || 'Kuapa Kokoo Demo Cooperative',
-      })
+      completeAuth({ ...pendingLoginData, access_token: pendingLoginToken })
     } catch (err) {
       setError(err.message)
       setLoading(false)

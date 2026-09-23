@@ -292,3 +292,31 @@ def test_cooperative_staff_records_only_own_attendance(
     assert cross_tenant.status_code == 404
     assert own_member.cooperative_id == own_coop.id
 
+
+
+def test_auth_me_returns_real_profile_not_demo_strings(client, db, auth_enabled):
+    coop, user, _, headers = _tenant(db, "31", role="finance_officer")
+
+    response = client.get("/auth/me", headers=headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["id"] == user.id
+    assert body["email"] == user.email
+    assert body["role"] == "finance_officer"
+    assert body["cooperative_id"] == coop.id
+    assert body["cooperative_name"] == coop.name
+    assert body["organization_type"] == coop.organization_type
+    assert body["password_change_required"] is False
+    assert "Kuapa" not in response.text
+
+
+def test_auth_me_fails_closed_without_token(client, db, auth_enabled):
+    assert client.get("/auth/me").status_code == 401
+
+
+def test_login_response_carries_cooperative_name(client, db, auth_enabled):
+    coop, user, _, _ = _tenant(db, "32")
+    login = client.post("/auth/login", json={"email": user.email, "password": "password"})
+    assert login.status_code == 200
+    assert login.json()["cooperative_name"] == coop.name
+    assert login.json()["user"]["cooperative_id"] == coop.id
