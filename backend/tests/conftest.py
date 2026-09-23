@@ -203,7 +203,7 @@ def auth_client(client):
 def test_cooperative(db):
     from app.models.models import Cooperative
 
-    coop = Cooperative(name="Test Coop", currency="GHS")
+    coop = Cooperative(name="Test Coop", currency="GHS", organization_type="solo_farm")
     db.add(coop)
     db.commit()
     return coop
@@ -213,7 +213,7 @@ def test_cooperative(db):
 def another_cooperative(db):
     from app.models.models import Cooperative
 
-    coop = Cooperative(name="Another Coop", currency="GHS")
+    coop = Cooperative(name="Another Coop", currency="GHS", organization_type="solo_farm")
     db.add(coop)
     db.commit()
     return coop

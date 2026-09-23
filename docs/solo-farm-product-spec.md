@@ -137,7 +137,7 @@ explicitly later:
 | `organization_type` + solo signup + nav gating | Shipped | — |
 | `workers` CRUD, tasks, labor attendance, farm production, wage payroll | Shipped | — |
 | Solo plan + worker bands in the catalogue | Shipped | — |
-| Refuse worker create on a cooperative; `hire_date` / `pay_type` / `user_id` on `Worker` | **MVP remaining** | #254 |
+| Refuse worker create on a cooperative; `hire_date` / `pay_type` / `user_id` on `Worker` | Shipped | #254 |
 | Invite/update roles filtered by org type | **MVP remaining** | #255 |
 | `solo_farm` guard on task and labor-attendance mutations | **MVP remaining** | #256 |
 | Band-aware `max_workers` + payroll feature gate | **MVP remaining** | #260 |
