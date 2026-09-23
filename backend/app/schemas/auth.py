@@ -29,10 +29,23 @@ class UserUpdate(BaseModel):
     role: Literal["admin", "finance_officer", "farm_owner", "farm_manager", "supervisor"] | None = None
     is_active: bool | None = None
 
+class CurrentUserResponse(UserResponse):
+    """Authoritative profile for the signed-in user (``GET /auth/me``).
+
+    The frontend hydrates its session from this instead of inventing display
+    strings from JWT claims (#251).
+    """
+
+    cooperative_name: str | None = None
+    organization_type: str | None = None
+    password_change_required: bool = False
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str
     user: UserResponse | None = None
+    cooperative_name: str | None = None
     organization_type: str | None = None
     password_change_required: bool = False
 

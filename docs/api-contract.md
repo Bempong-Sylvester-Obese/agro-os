@@ -234,8 +234,22 @@ crop columns.
 | UI | Method | Path |
 |----|--------|------|
 | Login | POST | `/auth/login` |
+| Session hydrate (app load) | GET | `/auth/me` |
 | Signup | POST | `/auth/signup` |
 | Add cooperative user | POST | `/auth/register` |
+
+`POST /auth/login` returns `{access_token, token_type, user, cooperative_name,
+organization_type, password_change_required}`. `GET /auth/me` returns the same
+`user` fields plus `cooperative_name`, `organization_type`, and
+`password_change_required` for the token's user (401 without a valid token).
+
+**Session hydration (#251).** The frontend never invents display strings. On
+load it bootstraps from the stored user or, failing that, from JWT claims only
+(`sub`, `user_id`, `role`, `cooperative_id`, `organization_id`,
+`organization_type` — no name or cooperative), then replaces that with
+`GET /auth/me`. A transport failure keeps the bootstrap session and the
+dashboard shows its own error state; a reachable backend rejecting the token
+clears the session.
 
 When `AUTH_ENABLED=true`, every route except signup/login, health probes, and
 the exact Moolre/USSDK callback paths requires `Authorization: Bearer <token>`.

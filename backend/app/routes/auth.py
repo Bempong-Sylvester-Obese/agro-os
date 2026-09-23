@@ -8,6 +8,7 @@ from app.models.models import AdminAuditLog, Cooperative, PendingCheckout, User
 from app.services import subscription_lifecycle as lifecycle
 from app.schemas.auth import (
     AcceptInviteRequest,
+    CurrentUserResponse,
     InviteUserRequest,
     PasswordChangeRequest,
     PasswordResetConfirm,
@@ -24,6 +25,7 @@ from app.services.auth_service import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     create_access_token,
     generate_reset_or_invite_token,
+    get_current_user,
     get_password_change_user,
     get_password_hash,
     invite_token_valid,
@@ -326,9 +328,32 @@ def login(user_in: UserLogin, db: Session = Depends(get_db)):
         "access_token": access_token,
         "token_type": "bearer",
         "user": UserResponse.model_validate(user),
+        "cooperative_name": user.cooperative.name if user.cooperative else None,
         "organization_type": user.cooperative.organization_type if user.cooperative else None,
         "password_change_required": user.must_change_password,
     }
+
+
+def _current_user_response(user: User) -> CurrentUserResponse:
+    base = UserResponse.model_validate(user).model_dump()
+    return CurrentUserResponse(
+        **base,
+        cooperative_name=user.cooperative.name if user.cooperative else None,
+        organization_type=user.cooperative.organization_type if user.cooperative else None,
+        password_change_required=bool(user.must_change_password),
+    )
+
+
+@router.get("/me", response_model=CurrentUserResponse)
+def read_current_user(current_user: User | None = Depends(get_current_user)):
+    """Return the signed-in user's profile, cooperative name and organization type.
+
+    401 when unauthenticated or when auth is disabled (there is no user to
+    describe); the frontend must not fall back to fabricated demo data.
+    """
+    if current_user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    return _current_user_response(current_user)
 
 @router.post("/password-reset-request", status_code=200)
 def password_reset_request(data: PasswordResetRequest, db: Session = Depends(get_db)):

@@ -126,7 +126,7 @@ export default function DashboardUserMenu({ user, onLogout }) {
         {menuOpen && (
           <div className="admin-dropdown admin-user-menu" role="menu">
             <div className="admin-user-menu-head">
-              <div className="admin-user-menu-name">{user?.name || 'Cooperative Admin'}</div>
+              <div className="admin-user-menu-name">{user?.name || user?.cooperative || 'Account'}</div>
               <div className="admin-user-menu-email">{email}</div>
             </div>
 

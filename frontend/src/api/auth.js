@@ -1,4 +1,4 @@
-import { API_URL, AUTH_FETCH_TIMEOUT_MS, formatTransportError, fetchJson } from './config'
+import { API_URL, AUTH_FETCH_TIMEOUT_MS, authHeaders, formatTransportError, fetchJson } from './config'
 
 export const TOKEN_KEY = 'agro_os_token'
 const USER_KEY = 'agro_os_user'
@@ -157,19 +157,54 @@ export async function signup({
 }
 
 export function userFromSignupResponse(data, email) {
-  const cooperativeName = data.cooperative_name || 'My Cooperative'
   const resolvedEmail = data.user?.email || email?.trim() || ''
-  const name = data.user?.name || 'Cooperative Admin'
   return {
     id: data.user?.id ?? data.user_id ?? null,
     email: resolvedEmail,
-    name,
-    initials: name.split(' ').map((part) => part[0]).join('').slice(0, 2).toUpperCase() || 'CA',
     role: data.user?.role || 'admin',
     cooperative_id: data.cooperative_id ?? data.user?.cooperative_id ?? null,
     organization_id: data.user?.organization_id ?? null,
-    cooperative: cooperativeName,
+    cooperative: data.cooperative_name ?? null,
     organization_type: data.organization_type || 'cooperative',
+  }
+}
+
+/**
+ * Build the session user from a login/token response. Only values the API
+ * actually returned are used; nothing is invented for display (#251).
+ */
+export function userFromLoginResponse(data, fallbackEmail = '') {
+  const claims = userFromAuthToken(data?.access_token) || {}
+  const apiUser = data?.user || {}
+  return {
+    ...claims,
+    ...apiUser,
+    email: apiUser.email || claims.email || fallbackEmail?.trim() || '',
+    cooperative_id: apiUser.cooperative_id ?? claims.cooperative_id ?? null,
+    organization_id: apiUser.organization_id ?? claims.organization_id ?? null,
+    cooperative: data?.cooperative_name ?? null,
+    organization_type: data?.organization_type || claims.organization_type || 'cooperative',
+  }
+}
+
+/** Authoritative profile for the signed-in user (`GET /auth/me`). */
+export async function fetchCurrentUser() {
+  return fetchJson(`${API_URL}/auth/me`, { headers: authHeaders() })
+}
+
+export function userFromMeResponse(me) {
+  if (!me) return null
+  return {
+    id: me.id ?? null,
+    email: me.email,
+    role: me.role,
+    is_active: me.is_active,
+    onboarding_role: me.onboarding_role ?? null,
+    cooperative_id: me.cooperative_id ?? null,
+    organization_id: me.organization_id ?? null,
+    cooperative: me.cooperative_name ?? null,
+    organization_type: me.organization_type || 'cooperative',
+    password_change_required: Boolean(me.password_change_required),
   }
 }
 
@@ -255,21 +290,26 @@ function decodeJwtPayloadSegment(segment) {
   return atob(padded)
 }
 
+/**
+ * Minimal session user from JWT claims only. This is a *bootstrap* value used
+ * until `GET /auth/me` answers; it carries no display strings (no fake name or
+ * cooperative), so nothing fabricated can reach the UI (#251).
+ */
 export function userFromAuthToken(token) {
   try {
+    if (!token) return null
     const segment = token.split('.')[1]
     if (!segment) return null
     const payload = JSON.parse(decodeJwtPayloadSegment(segment))
     const email = payload.sub
     if (!email) return null
     return {
+      id: payload.user_id ?? null,
       email,
-      name: 'Cooperative Admin',
-      initials: 'CA',
-      role: 'admin',
+      role: payload.role ?? null,
       cooperative_id: payload.cooperative_id ?? null,
       organization_id: payload.organization_id ?? null,
-      cooperative: 'Kuapa Kokoo Demo Cooperative',
+      cooperative: null,
       organization_type: payload.organization_type || 'cooperative',
     }
   } catch {

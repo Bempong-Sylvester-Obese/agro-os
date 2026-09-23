@@ -1,9 +1,9 @@
 /**
  * API client configuration.
  *
- * Policy: prefer live backend data when the API is reachable. Demo fallback applies
- * only to transport-level failures (network errors, timeouts). HTTP 4xx/5xx from
- * a reachable backend are surfaced to callers as ApiError.
+ * Policy: the dashboard renders live backend data only. There is no static demo
+ * dataset; transport failures (network errors, timeouts) and HTTP 4xx/5xx are
+ * surfaced to callers as errors so the UI shows a real error state (#251).
  */
 import { clearAuthSession, getAuthToken } from './auth'
 

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { clearAuthSession, getAuthToken, getAuthUser, isAuthTokenUsable, storeAuthUser, userFromAuthToken } from './api/auth'
+import { clearAuthSession, fetchCurrentUser, getAuthToken, getAuthUser, isAuthTokenUsable, storeAuthUser, userFromAuthToken, userFromMeResponse } from './api/auth'
+import { isTransportFailure } from './api/config'
 import Navbar from './components/Navbar'
 import { pageKeyFromPath } from './constants/routes'
 import HomePage from './pages/HomePage'
@@ -107,19 +108,40 @@ function AppRouter() {
       return
     }
 
-    if (storedUser) {
-      setUser(storedUser)
-    } else {
-      const fromToken = userFromAuthToken(token)
-      if (fromToken) {
-        storeAuthUser(fromToken)
-        setUser(fromToken)
-      } else {
-        clearAuthSession()
-      }
+    // Bootstrap from what we already have (stored user, else JWT claims only —
+    // never fabricated display strings), then hydrate from the API (#251).
+    const bootstrap = storedUser || userFromAuthToken(token)
+    if (!bootstrap) {
+      clearAuthSession()
+      setAuthReady(true)
+      return
     }
-
+    if (!storedUser) storeAuthUser(bootstrap)
+    setUser(bootstrap)
     setAuthReady(true)
+
+    let cancelled = false
+    fetchCurrentUser()
+      .then((me) => {
+        if (cancelled) return
+        const hydrated = { ...bootstrap, ...userFromMeResponse(me) }
+        storeAuthUser(hydrated)
+        setUser(hydrated)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        // Transport failures keep the bootstrap session; the dashboard shows
+        // its own error state. A reachable backend rejecting the token
+        // (401 is handled globally) or returning another error means the
+        // session cannot be trusted.
+        if (isTransportFailure(err)) return
+        if (err?.status === 401) return
+        clearAuthSession()
+        setUser(null)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   function handleAuth(u) {
