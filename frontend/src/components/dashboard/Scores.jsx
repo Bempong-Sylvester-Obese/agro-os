@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchFarmerTrustScore, recalculateTrustScore } from '../../api/farmers'
 import { exportDashboardReport } from '../../api/reports'
+import { dashboardPath } from '../../constants/routes'
 import { RefreshCw, Loader2 } from 'lucide-react'
 import { ScoresSkeleton, Skeleton } from './DashboardSkeleton'
 import { DashboardPagination, DashboardTableToolbar, useDashboardTable } from './DashboardTableTools'
@@ -115,7 +116,8 @@ function ScoreDetail({ farmer }) {
         </div>
       ) : (
         <div style={{ padding: '12px 0', color: 'var(--muted)', fontSize: 13 }}>
-          No trust score breakdown available yet. Record payments, production, and attendance data, then recalculate.
+          No trust score breakdown available yet. Record payments, production, and{' '}
+          <a href={dashboardPath('attendance')} style={{ fontWeight: 600 }}>meeting attendance</a>, then recalculate.
         </div>
       )}
 
@@ -210,7 +212,8 @@ export default function Scores({ farmers = [], cooperativeId, loading }) {
       </div>
       <div className="info-banner">
         <strong>AgroCredit Trust Score</strong> — Calculated from real cooperative data: payment compliance (40%),
-        production history (25%), loan repayment (20%), and attendance (15%). Threshold for credit eligibility: 68/100.
+        production history (25%), loan repayment (20%), and attendance (15%). Threshold for credit eligibility: 68/100.{' '}
+        <a href={dashboardPath('attendance')} style={{ fontWeight: 600 }}>Record meeting attendance</a> to feed the attendance factor.
       </div>
       <DashboardTableToolbar
         label="Scores"

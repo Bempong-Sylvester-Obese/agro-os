@@ -26,6 +26,9 @@ When the database is seeded, Agro-AI assessments are built from DB farmer record
 | Add member | POST | `/farmers/` | `FarmerResponse` |
 | Agro-AI scores | GET | `/api/farmers` | Assessment objects (see below) |
 | Credit summary | GET | `/api/agro-ai/credit-summary` | Summary object |
+| Attendance → recent records | GET | `/farmers/{id}/attendance?limit=5` | `AttendanceResponse[]` per member; the dashboard merges one call per member (`fetchCooperativeAttendance`) |
+| Attendance → log meeting | POST | `/farmers/{id}/attendance` | `{farmer_id, event_name, event_date, attended}` — one row per member per meeting (`recordMeetingAttendance`). Roles: admin, finance_officer (coop); farm roles on solo farms |
+| Scores → recalculate | POST | `/farmers/{id}/recalculate-trust-score` | Admin. Attendance over the last 12 months is 15% of the score (neutral 50 with no records) |
 
 **FarmerResponse** (abbreviated):
 

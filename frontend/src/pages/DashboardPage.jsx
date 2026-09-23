@@ -464,7 +464,7 @@ export default function DashboardPage({ user, onLogout }) {
             <Attendance cooperativeId={cooperativeId} />
           )}
           {section === 'attendance' && organizationType !== 'solo_farm' && (
-            <CooperativeAttendance cooperativeId={cooperativeId} farmers={farmers} />
+            <CooperativeAttendance cooperativeId={cooperativeId} farmers={farmers} onRecorded={handleMemberAdded} />
           )}
           {section === 'announcements' && (
             <Announcements cooperativeId={cooperativeId} userRole={userRole} />
