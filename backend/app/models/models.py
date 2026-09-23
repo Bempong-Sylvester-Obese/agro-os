@@ -173,6 +173,30 @@ class User(Base):
     organization = relationship("Organization", back_populates="administrators")
 
 
+class StaffRefreshToken(Base):
+    """Opaque, rotating refresh token for staff sessions (#248).
+
+    Only the SHA-256 hash of the token is stored. Each token is single-use:
+    ``POST /auth/refresh`` revokes it and issues a replacement, and a password
+    change/reset revokes every live token for the user.
+    """
+
+    __tablename__ = "staff_refresh_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+    # True only when this token was exchanged at /auth/refresh. Presenting a
+    # rotated token is treated as theft and revokes the rest of the family.
+    # Logout / password change set revoked_at without rotating.
+    rotated = Column(Boolean, default=False, nullable=False)
+
+    user = relationship("User")
+
+
 # ---------------------------------------------------------------------------
 # Organization (Enterprise parent of many cooperatives)
 # ---------------------------------------------------------------------------

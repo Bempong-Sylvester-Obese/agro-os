@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchCurrentUser, isAuthTokenUsable, signup, TOKEN_KEY, userFromAuthToken, userFromLoginResponse, userFromMeResponse } from './auth'
+import { fetchCurrentUser, isAuthTokenUsable, refreshAccessToken, REFRESH_KEY, signup, storeAuthSession, TOKEN_KEY, userFromAuthToken, userFromLoginResponse, userFromMeResponse } from './auth'
 
 function tokenWithExpiry(exp) {
   const payload = globalThis.btoa(JSON.stringify({ sub: 'admin@example.com', exp }))
@@ -97,6 +97,21 @@ describe('auth api', () => {
     expect(userFromMeResponse(me)).toMatchObject({ id: 7, cooperative: 'Ashanti Growers', role: 'admin', cooperative_id: 3 })
     expect(userFromMeResponse(null)).toBeNull()
     localStorage.removeItem(TOKEN_KEY)
+  })
+
+  it('stores and rotates the refresh token on silent refresh (#248)', async () => {
+    storeAuthSession({ access_token: 'old', refresh_token: 'refresh-1' })
+    expect(localStorage.getItem(REFRESH_KEY)).toBe('refresh-1')
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({ access_token: 'new', refresh_token: 'refresh-2', token_type: 'bearer', expires_in: 3600 }),
+    })
+    await expect(refreshAccessToken()).resolves.toBe('new')
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ refresh_token: 'refresh-1' })
+    expect(localStorage.getItem(TOKEN_KEY)).toBe('new')
+    expect(localStorage.getItem(REFRESH_KEY)).toBe('refresh-2')
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(REFRESH_KEY)
   })
 
   it('does not retry a signup after a transport failure', async () => {

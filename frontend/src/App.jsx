@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
-import { clearAuthSession, fetchCurrentUser, getAuthToken, getAuthUser, isAuthTokenUsable, storeAuthUser, userFromAuthToken, userFromMeResponse } from './api/auth'
+import { clearAuthSession, fetchCurrentUser, getAuthToken, getAuthUser, getRefreshToken, isAuthTokenUsable, logoutSession, refreshAccessToken, storeAuthUser, userFromAuthToken, userFromMeResponse } from './api/auth'
 import { isTransportFailure } from './api/config'
 import Navbar from './components/Navbar'
 import { pageKeyFromPath } from './constants/routes'
@@ -98,49 +98,58 @@ function AppRouter() {
   const [authReady, setAuthReady] = useState(false)
 
   useEffect(() => {
-    const token = getAuthToken()
-    const storedUser = getAuthUser()
-
-    if (!isAuthTokenUsable(token)) {
-      if (storedUser) clearAuthSession()
-      else if (token) clearAuthSession()
-      setAuthReady(true)
-      return
-    }
-
-    // Bootstrap from what we already have (stored user, else JWT claims only —
-    // never fabricated display strings), then hydrate from the API (#251).
-    const bootstrap = storedUser || userFromAuthToken(token)
-    if (!bootstrap) {
-      clearAuthSession()
-      setAuthReady(true)
-      return
-    }
-    if (!storedUser) storeAuthUser(bootstrap)
-    setUser(bootstrap)
-    setAuthReady(true)
-
     let cancelled = false
-    fetchCurrentUser()
-      .then((me) => {
+
+    async function boot() {
+      let token = getAuthToken()
+      const storedUser = getAuthUser()
+
+      if (!isAuthTokenUsable(token) && getRefreshToken()) {
+        try {
+          token = await refreshAccessToken()
+        } catch {
+          if (!cancelled) {
+            clearAuthSession()
+            setAuthReady(true)
+          }
+          return
+        }
+      }
+
+      if (!isAuthTokenUsable(token)) {
+        if (storedUser || token) clearAuthSession()
+        if (!cancelled) setAuthReady(true)
+        return
+      }
+
+      const bootstrap = storedUser || userFromAuthToken(token)
+      if (!bootstrap) {
+        clearAuthSession()
+        if (!cancelled) setAuthReady(true)
+        return
+      }
+      if (!storedUser) storeAuthUser(bootstrap)
+      if (!cancelled) {
+        setUser(bootstrap)
+        setAuthReady(true)
+      }
+
+      try {
+        const me = await fetchCurrentUser()
         if (cancelled) return
         const hydrated = { ...bootstrap, ...userFromMeResponse(me) }
         storeAuthUser(hydrated)
         setUser(hydrated)
-      })
-      .catch((err) => {
+      } catch (err) {
         if (cancelled) return
-        // Transport failures keep the bootstrap session; the dashboard shows
-        // its own error state. 401 is handled globally. A 404 means the
-        // backend predates /auth/me (frontend deployed ahead of the API) and
-        // the token is still valid, so keep the claims-only session. Only an
-        // explicit rejection (403: inactive / password change required)
-        // means the session cannot be trusted.
         if (isTransportFailure(err)) return
         if (err?.status === 401 || err?.status === 404 || err?.status >= 500) return
         clearAuthSession()
         setUser(null)
-      })
+      }
+    }
+
+    boot()
     return () => {
       cancelled = true
     }
@@ -155,10 +164,12 @@ function AppRouter() {
   }
 
   function handleLogout() {
-    clearAuthSession()
-    setUser(null)
-    navigate('/')
-    window.scrollTo({ top: 0, behavior: 'instant' })
+    logoutSession().finally(() => {
+      clearAuthSession()
+      setUser(null)
+      navigate('/')
+      window.scrollTo({ top: 0, behavior: 'instant' })
+    })
   }
 
   return <AppShell user={user} authReady={authReady} onAuth={handleAuth} onLogout={handleLogout} />

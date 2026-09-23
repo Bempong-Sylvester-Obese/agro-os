@@ -69,10 +69,18 @@ export default function GovernanceSettings({ cooperativeId }) {
     setSaving('invite')
     setError('')
     try {
-      await inviteCooperativeUser(invite.email, invite.role)
+      const invited = await inviteCooperativeUser(invite.email, invite.role)
+      const invitedEmail = invite.email
       setInvite(emptyInvite)
-      setError('Invite sent. Share the invite link from the backend logs with the user.')
       await load()
+      const delivery = invited?.delivery
+      if (delivery?.delivered) {
+        setError(`Invite emailed to ${invitedEmail}.`)
+      } else if (delivery?.invite_link) {
+        setError(`Invite created. Email delivery is not configured — share this link with ${invitedEmail}: ${delivery.invite_link}`)
+      } else {
+        setError(delivery?.message || 'Invite sent.')
+      }
     } catch (err) {
       setError(err.message || 'Could not invite this user.')
     } finally {

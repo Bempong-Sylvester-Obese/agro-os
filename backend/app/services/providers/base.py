@@ -142,3 +142,20 @@ class SmsProvider(ABC):
     async def diagnose_sms(self) -> dict:
         """Run configuration-only SMS connectivity diagnostics."""
         ...
+
+
+class EmailProvider(ABC):
+    """Port for transactional staff email (invites, password resets) — #248.
+
+    Implementations return ``{"delivered": bool, "channel": str, "message": str}``.
+    ``delivered=False`` means the caller must surface the link another way
+    (the ``log`` adapter writes it to the application log).
+    """
+
+    #: Short identifier reported to the frontend (``log``, ``smtp``, ...).
+    channel: str = "unknown"
+
+    @abstractmethod
+    def send(self, *, to: str, subject: str, text: str) -> dict:
+        """Send a plain-text email synchronously."""
+        ...

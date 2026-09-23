@@ -1,4 +1,4 @@
-import { getAuthUser, storeAuthToken, storeAuthUser } from './auth'
+import { getAuthUser, storeAuthSession, storeAuthUser } from './auth'
 import { API_URL, authHeaders, fetchJson } from './config'
 
 /** The caller's organization with its cooperatives; rejects with 404 when none. */
@@ -48,7 +48,7 @@ export async function switchOrganizationCooperative(organizationId, cooperativeI
     headers: authHeaders(true),
     body: JSON.stringify({ cooperative_id: cooperativeId }),
   })
-  storeAuthToken(token.access_token)
+  storeAuthSession(token)
   const current = getAuthUser() || {}
   storeAuthUser({
     ...current,

@@ -1,4 +1,5 @@
-import os
+import hashlib
+import secrets
 from datetime import datetime, timedelta
 
 import bcrypt
@@ -9,10 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.database.db import get_db
-from app.models.models import User
+from app.models.models import StaffRefreshToken, User
 
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60 * 24 * 7))
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
 optional_bearer = HTTPBearer(auto_error=False)
@@ -20,6 +20,119 @@ optional_bearer = HTTPBearer(auto_error=False)
 
 def _secret_key() -> str:
     return get_settings().secret_key
+
+
+def access_token_minutes() -> int:
+    """Configured access-token lifetime (#248): 60 min in production unless
+    ``ACCESS_TOKEN_EXPIRE_MINUTES`` overrides it (capped at 24h there)."""
+    return get_settings().effective_access_token_minutes
+
+
+def session_claims(user: User) -> dict:
+    """Claims embedded in every staff access token; single source of truth so
+    login, signup, scope switching and refresh all agree."""
+    cooperative = user.cooperative
+    return {
+        "sub": user.email,
+        "user_id": user.id,
+        "cooperative_id": user.cooperative_id,
+        "organization_id": user.organization_id,
+        "role": user.role,
+        "organization_type": cooperative.organization_type if cooperative else None,
+    }
+
+
+def issue_access_token(user: User) -> str:
+    return create_access_token(session_claims(user), expires_delta=timedelta(minutes=access_token_minutes()))
+
+
+def _hash_refresh_token(raw: str) -> str:
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def issue_refresh_token(db: Session, user: User) -> str:
+    """Create an opaque, single-use refresh token and persist only its hash."""
+    raw = secrets.token_urlsafe(48)
+    db.add(
+        StaffRefreshToken(
+            user_id=user.id,
+            token_hash=_hash_refresh_token(raw),
+            expires_at=datetime.utcnow() + timedelta(days=get_settings().refresh_token_expire_days),
+        )
+    )
+    db.flush()
+    return raw
+
+
+def rotate_refresh_token(db: Session, raw: str) -> tuple[User, str]:
+    """Exchange a live refresh token for a new one (rotation).
+
+    The presented token is revoked whether or not the exchange succeeds so a
+    replayed token cannot be used twice. Raises 401 on unknown, expired,
+    revoked or inactive-user tokens.
+    """
+    invalid = HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired refresh token")
+    if not raw:
+        raise invalid
+    record = db.query(StaffRefreshToken).filter(StaffRefreshToken.token_hash == _hash_refresh_token(raw)).first()
+    if record is None:
+        raise invalid
+    now = datetime.utcnow()
+    if record.revoked_at is not None or record.expires_at <= now:
+        # Replay of a *rotated* token is treated as theft (the original holder
+        # already received a replacement). Logout / password-change revokes
+        # without rotating and must not kill a newly issued session.
+        if record.rotated:
+            revoke_user_refresh_tokens(db, record.user_id)
+            db.commit()
+        raise invalid
+    user = db.query(User).filter(User.id == record.user_id).first()
+    if user is None or not user.is_active:
+        record.revoked_at = now
+        db.commit()
+        raise invalid
+    record.revoked_at = now
+    record.rotated = True
+    new_raw = issue_refresh_token(db, user)
+    db.commit()
+    return user, new_raw
+
+
+def revoke_user_refresh_tokens(db: Session, user_id: int) -> int:
+    """Revoke every live refresh token for a user (password change/reset, deactivation)."""
+    now = datetime.utcnow()
+    return (
+        db.query(StaffRefreshToken)
+        .filter(StaffRefreshToken.user_id == user_id, StaffRefreshToken.revoked_at.is_(None))
+        .update({StaffRefreshToken.revoked_at: now}, synchronize_session=False)
+    )
+
+
+def revoke_refresh_token(db: Session, raw: str | None) -> bool:
+    """Revoke one presented refresh token (logout). Unknown tokens are ignored."""
+    if not raw:
+        return False
+    record = db.query(StaffRefreshToken).filter(StaffRefreshToken.token_hash == _hash_refresh_token(raw)).first()
+    if record is None or record.revoked_at is not None:
+        return False
+    record.revoked_at = datetime.utcnow()
+    return True
+
+
+def session_response(db: Session, user: User, *, refresh_token: str | None = None, **extra) -> dict:
+    """Login/refresh payload: short-lived access token + rotating refresh token.
+
+    Pass ``refresh_token`` when one was already minted (rotation) so exactly
+    one live refresh token is created per exchange.
+    """
+    payload = {
+        "access_token": issue_access_token(user),
+        "refresh_token": refresh_token or issue_refresh_token(db, user),
+        "token_type": "bearer",
+        "expires_in": access_token_minutes() * 60,
+    }
+    payload.update(extra)
+    return payload
 
 
 def verify_password(plain_password, hashed_password):
@@ -155,7 +268,6 @@ def enforce_cooperative_scope(current_user: User | None, cooperative_id: int) ->
     if current_user is not None and current_user.cooperative_id != cooperative_id:
         raise HTTPException(status_code=404, detail="Resource not found")
 
-import secrets
 
 def generate_reset_or_invite_token() -> str:
     return secrets.token_hex(32)

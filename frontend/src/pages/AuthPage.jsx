@@ -1,6 +1,6 @@
 import React, { useEffect, useId, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { acceptInvite, changePassword, confirmPasswordReset, login, requestPasswordReset, signup, storeAuthToken, userFromLoginResponse, userFromSignupResponse, warmAuthBackend } from '../api/auth'
+import { acceptInvite, changePassword, confirmPasswordReset, login, requestPasswordReset, signup, storeAuthSession, userFromLoginResponse, userFromSignupResponse, warmAuthBackend } from '../api/auth'
 import { Sprout, ArrowLeft, ArrowRight, Building2, Users, MapPin, Mail, Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
 
 // ---------------------------------------------------------------------------
@@ -184,7 +184,7 @@ export default function AuthPage({ onAuth }) {
     setOrganizationType('cooperative')
     setForgotSent(false)
 
-    const token = searchParams.get('token')
+    const token = searchParams.get('token') || searchParams.get('reset')
     const invite = searchParams.get('invite')
     if (token) {
       setSpecialMode('reset')
@@ -233,7 +233,7 @@ export default function AuthPage({ onAuth }) {
         setLoading(false)
         return
       }
-      storeAuthToken(data.access_token)
+      storeAuthSession(data)
       completeAuth(data)
       return
     } catch (err) {
@@ -274,7 +274,7 @@ export default function AuthPage({ onAuth }) {
         onboardingRole: subscriptionIntent?.role || 'Cooperative administrator',
         organizationType,
       })
-      storeAuthToken(data.access_token)
+      storeAuthSession(data)
       if (subscriptionIntent) window.sessionStorage.removeItem('agroos-subscription-intent')
       setSuccess(true)
       setTimeout(() => {
@@ -305,7 +305,7 @@ export default function AuthPage({ onAuth }) {
     setError(null)
     setLoading(true)
     try {
-      const token = searchParams.get('token')
+      const token = searchParams.get('token') || searchParams.get('reset')
       await confirmPasswordReset(token, resetPassword)
       setError(null)
       setSuccess(true)
@@ -337,10 +337,10 @@ export default function AuthPage({ onAuth }) {
     setError(null)
     setLoading(true)
     try {
-      await changePassword(pendingLoginToken, resetPassword)
-      storeAuthToken(pendingLoginToken)
+      const changed = await changePassword(pendingLoginToken, resetPassword)
+      storeAuthSession({ ...pendingLoginData, ...changed, access_token: changed?.access_token || pendingLoginToken })
       setError(null)
-      completeAuth({ ...pendingLoginData, access_token: pendingLoginToken })
+      completeAuth({ ...pendingLoginData, ...changed, access_token: changed?.access_token || pendingLoginToken })
     } catch (err) {
       setError(err.message)
       setLoading(false)

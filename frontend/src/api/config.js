@@ -37,12 +37,21 @@ export function handleUnauthorized() {
   }, 1000)
 }
 
-async function handleAuthResponse(response) {
-  if (response.status === 401) {
-    handleUnauthorized()
-    return response
+function isAuthLifecycleUrl(url) {
+  return /\/auth\/(refresh|login|signup|logout|password-reset-request|password-reset-confirm|accept-invite)(\?|$)/.test(
+    typeof url === 'string' ? url : '',
+  )
+}
+
+async function trySilentRefresh(url) {
+  if (isAuthLifecycleUrl(url)) return false
+  try {
+    const { refreshAccessToken } = await import('./auth')
+    await refreshAccessToken()
+    return true
+  } catch {
+    return false
   }
-  return response
 }
 
 export class ApiError extends Error {
@@ -146,8 +155,14 @@ export async function apiFetch(url, options = {}) {
     ? { signal: options.signal, clear: () => {} }
     : createFetchSignal()
   try {
-    const response = await fetch(url, { ...options, signal })
-    await handleAuthResponse(response)
+    let response = await fetch(url, { ...options, signal })
+    if (response.status === 401 && await trySilentRefresh(url)) {
+      const headers = { ...(options.headers || {}), ...authHeaders() }
+      response = await fetch(url, { ...options, headers, signal })
+    }
+    if (response.status === 401 && !isAuthLifecycleUrl(url)) {
+      handleUnauthorized()
+    }
     return response
   } finally {
     clear()
