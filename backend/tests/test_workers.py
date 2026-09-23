@@ -1,7 +1,14 @@
 def test_create_worker(auth_client, test_cooperative):
     res = auth_client.post(
         f"/workers/?cooperative_id={test_cooperative.id}",
-        json={"name": "John Doe", "phone": "0241112233", "wage_rate": 50.0, "role": "worker"},
+        json={
+            "name": "John Doe",
+            "phone": "0241112233",
+            "wage_rate": 50.0,
+            "role": "worker",
+            "hire_date": "2026-03-01",
+            "pay_type": "monthly",
+        },
     )
     assert res.status_code == 201
     data = res.json()
@@ -9,6 +16,23 @@ def test_create_worker(auth_client, test_cooperative):
     assert data["phone"] == "0241112233"
     assert data["wage_rate"] == 50.0
     assert data["status"] == "active"
+    assert data["hire_date"] == "2026-03-01"
+    assert data["pay_type"] == "monthly"
+    assert data["user_id"] is None
+
+
+def test_create_worker_refused_on_cooperative(auth_client, db):
+    from app.models.models import Cooperative
+
+    coop = Cooperative(name="Member Coop", currency="GHS", organization_type="cooperative")
+    db.add(coop)
+    db.commit()
+    res = auth_client.post(
+        f"/workers/?cooperative_id={coop.id}",
+        json={"name": "Should Fail", "phone": "0241112200", "wage_rate": 20.0},
+    )
+    assert res.status_code == 403
+    assert "solo farm" in res.json()["detail"].lower()
 
 
 def test_list_workers(auth_client, test_cooperative):
@@ -44,6 +68,14 @@ def test_update_worker(auth_client, test_cooperative):
     assert res.json()["name"] == "Alice Updated"
     assert res.json()["wage_rate"] == 45.0
 
+    res = auth_client.patch(
+        f"/workers/{created['id']}?cooperative_id={test_cooperative.id}",
+        json={"hire_date": "2026-01-15", "pay_type": "shift"},
+    )
+    assert res.status_code == 200
+    assert res.json()["hire_date"] == "2026-01-15"
+    assert res.json()["pay_type"] == "shift"
+
 
 def test_delete_worker_soft(auth_client, test_cooperative):
     created = auth_client.post(
@@ -66,6 +98,49 @@ def test_create_worker_duplicate_phone(auth_client, test_cooperative):
         json={"name": "Second", "phone": "0241112238"},
     )
     assert res.status_code == 409
+
+
+def test_create_worker_links_same_workspace_user(auth_client, test_cooperative, db):
+    from app.models.models import User
+    from app.services.auth_service import get_password_hash
+
+    user = User(
+        email="linked-supervisor@farm.test",
+        hashed_password=get_password_hash("password"),
+        role="farm_manager",
+        cooperative_id=test_cooperative.id,
+    )
+    db.add(user)
+    db.commit()
+    res = auth_client.post(
+        f"/workers/?cooperative_id={test_cooperative.id}",
+        json={
+            "name": "Linked",
+            "phone": "0241112240",
+            "user_id": user.id,
+        },
+    )
+    assert res.status_code == 201
+    assert res.json()["user_id"] == user.id
+
+
+def test_create_worker_rejects_foreign_user(auth_client, test_cooperative, another_cooperative, db):
+    from app.models.models import User
+    from app.services.auth_service import get_password_hash
+
+    user = User(
+        email="foreign-supervisor@farm.test",
+        hashed_password=get_password_hash("password"),
+        role="farm_manager",
+        cooperative_id=another_cooperative.id,
+    )
+    db.add(user)
+    db.commit()
+    res = auth_client.post(
+        f"/workers/?cooperative_id={test_cooperative.id}",
+        json={"name": "Foreign", "phone": "0241112241", "user_id": user.id},
+    )
+    assert res.status_code == 403
 
 
 def test_worker_cross_coop_not_found(auth_client, test_cooperative, another_cooperative):

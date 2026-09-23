@@ -62,6 +62,8 @@ export default function Workers({ cooperativeId }) {
             <th>Name</th>
             <th>Phone</th>
             <th>Wage rate</th>
+            <th>Pay type</th>
+            <th>Hire date</th>
             <th>Role</th>
             <th>Status</th>
             <th>Actions</th>
@@ -73,6 +75,8 @@ export default function Workers({ cooperativeId }) {
               <td>{w.name}</td>
               <td>{w.phone}</td>
               <td>GHS {w.wage_rate?.toFixed(2)}</td>
+              <td>{w.pay_type || 'daily'}</td>
+              <td>{w.hire_date || '—'}</td>
               <td><span className="badge">{w.role}</span></td>
               <td>{w.status === 'active'
                 ? <span className="status-active"><UserCheck size={14} /> Active</span>
@@ -90,7 +94,7 @@ export default function Workers({ cooperativeId }) {
             </tr>
           ))}
           {paged.length === 0 && (
-            <tr><td colSpan={6} className="empty-state">No workers yet</td></tr>
+            <tr><td colSpan={8} className="empty-state">No workers yet</td></tr>
           )}
         </tbody>
       </table>

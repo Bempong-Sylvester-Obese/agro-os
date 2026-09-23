@@ -1,7 +1,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Column, Date, DateTime, Enum, Float, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from app.database.db import Base
@@ -27,6 +27,9 @@ class Worker(Base):
     wage_rate = Column(Float, default=0.0)
     role = Column(Enum(WorkerRole), default=WorkerRole.worker)
     status = Column(Enum(WorkerStatus), default=WorkerStatus.active)
+    hire_date = Column(Date, nullable=True)
+    pay_type = Column(String, default="daily", nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
