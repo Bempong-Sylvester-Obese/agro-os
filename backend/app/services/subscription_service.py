@@ -25,13 +25,8 @@ from sqlalchemy.orm import Session
 
 from app.domain.payment_event import PaymentEvent
 from app.models.models import Cooperative, PaymentWebhookEvent, PendingCheckout
-from app.services.plans import (
-    PLANS,
-    activate_subscription,
-    get_band,
-    get_plan,
-    resolve_amount,
-)
+from app.services import subscription_lifecycle as lifecycle
+from app.services.plans import PLANS, get_band, get_plan, resolve_amount
 
 logger = logging.getLogger(__name__)
 
@@ -243,8 +238,7 @@ def _activate_from_intent(db: Session, event: PaymentEvent, intent: PendingCheck
     if not coop:
         return {"status": "ok", "message": "Cooperative not found"}
 
-    activate_subscription(coop, intent.plan_key)
-    coop.subscription_band = intent.band
+    lifecycle.renew(coop, intent.plan_key, intent.band)
     now = datetime.utcnow()
     intent.status = PendingCheckout.STATUS_CONSUMED
     intent.paid_at = now
@@ -330,8 +324,7 @@ def _legacy_upgrade_from_reference(db: Session, event: PaymentEvent) -> dict:
         )
         return {"status": "ok", "message": "Subscription amount mismatch"}
 
-    activate_subscription(coop, plan_key)
-    coop.subscription_band = band_key
+    lifecycle.renew(coop, plan_key, band_key)
     _record_event(db, event, processed=True, message=f"subscription activated: {plan_key}")
     db.commit()
     logger.info(

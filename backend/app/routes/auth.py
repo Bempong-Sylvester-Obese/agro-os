@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database.db import get_db
 from app.models.models import AdminAuditLog, Cooperative, PendingCheckout, User
+from app.services import subscription_lifecycle as lifecycle
 from app.schemas.auth import (
     AcceptInviteRequest,
     InviteUserRequest,
@@ -79,7 +80,12 @@ async def signup(data: SignupRequest, db: Session = Depends(get_db)):
         )
 
     if resolved_plan != "starter":
-        subscription_expires_at = datetime.utcnow() + timedelta(days=30)
+        # Paid checkout: first billing period starts now.
+        subscription_expires_at = datetime.utcnow() + timedelta(days=lifecycle.PERIOD_DAYS)
+    else:
+        # Free signup: time-boxed Growth trial, then the free tier.
+        subscription_status = lifecycle.STATUS_TRIAL
+        subscription_expires_at = datetime.utcnow() + timedelta(days=lifecycle.TRIAL_DAYS)
 
     # 2. Create the cooperative
     description = None

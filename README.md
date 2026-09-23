@@ -133,6 +133,7 @@ Reference docs:
 | Backend endpoints, env vars, tests | [`backend/README.md`](backend/README.md) |
 | Deployment runbook (Render, Vercel, webhooks) | [`docs/deployment.md`](docs/deployment.md) |
 | Payment provider setup | [`docs/moolre-setup.md`](docs/moolre-setup.md) |
+| Billing and subscription lifecycle | [`docs/billing.md`](docs/billing.md) |
 | Security, tenancy, compliance, privacy | [`SECURITY.md`](SECURITY.md), [`docs/architecture/tenancy-decision.md`](docs/architecture/tenancy-decision.md), [`COMPLIANCE.md`](COMPLIANCE.md), [`docs/data-privacy.md`](docs/data-privacy.md) |
 | Solo-farm tier | [`docs/solo-farm-product-spec.md`](docs/solo-farm-product-spec.md) |
 | AgroCredit / Agro-AI | [`docs/scoring-systems.md`](docs/scoring-systems.md), [`docs/agro-ai-governance.md`](docs/agro-ai-governance.md) |
