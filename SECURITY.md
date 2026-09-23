@@ -21,9 +21,13 @@ The following areas are in scope for security review:
 ## Authentication Model
 
 The backend uses JWT-based authentication with configurable token TTL.
-JWTs include `cooperative_id` and `role`. `admin` can manage cooperative
-profiles, members, production, finance, loans, and communications.
-`finance_officer` is limited to finance, loan, and communication operations.
+JWTs include `cooperative_id` and `role`. Roles are the `Role` enum in
+`backend/app/auth/roles.py` (`admin`, `finance_officer`, `field_officer`,
+`operations_officer`, `sales_officer` for cooperatives; `admin`, `farm_owner`,
+`farm_manager`, `supervisor` for solo farms). `admin` can manage everything in
+its cooperative including team access and billing; every other role is limited
+to the write operations listed in the role matrix in `docs/api-contract.md`
+and receives `403` elsewhere.
 Authenticated reads and writes are constrained to the user's cooperative;
 request body and query-string cooperative IDs cannot override that scope.
 

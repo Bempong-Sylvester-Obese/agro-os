@@ -131,11 +131,13 @@ function AppRouter() {
       .catch((err) => {
         if (cancelled) return
         // Transport failures keep the bootstrap session; the dashboard shows
-        // its own error state. A reachable backend rejecting the token
-        // (401 is handled globally) or returning another error means the
-        // session cannot be trusted.
+        // its own error state. 401 is handled globally. A 404 means the
+        // backend predates /auth/me (frontend deployed ahead of the API) and
+        // the token is still valid, so keep the claims-only session. Only an
+        // explicit rejection (403: inactive / password change required)
+        // means the session cannot be trusted.
         if (isTransportFailure(err)) return
-        if (err?.status === 401) return
+        if (err?.status === 401 || err?.status === 404 || err?.status >= 500) return
         clearAuthSession()
         setUser(null)
       })

@@ -1952,6 +1952,7 @@ html.page-dashboard .admin-shell {
 }
 .settings-invite-form h3 { display: flex; align-items: center; gap: 6px; grid-column: 1 / -1; font-size: 13px; }
 .settings-invite-form .btn-lg { min-height: 38px; padding: 0 16px; font-size: 12px; }
+.settings-invite-form .settings-role-hint { grid-column: 1 / -1; color: var(--muted); font-size: 11px; line-height: 1.4; }
 .integration-health-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 20px 22px; }
 .integration-health-item {
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center;

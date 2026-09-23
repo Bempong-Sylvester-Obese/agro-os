@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.database.db import get_db
 from app.models.models import AdminAuditLog, Cooperative, PendingCheckout, User
+from app.auth.roles import COOP_ROLES, ROLE_CAPABILITIES, ROLE_LABELS, SOLO_ROLES, Role
 from app.services import subscription_lifecycle as lifecycle
 from app.schemas.auth import (
     AcceptInviteRequest,
@@ -13,6 +14,7 @@ from app.schemas.auth import (
     PasswordChangeRequest,
     PasswordResetConfirm,
     PasswordResetRequest,
+    RoleCatalogue,
     SignupRequest,
     SignupResponse,
     Token,
@@ -342,6 +344,28 @@ def _current_user_response(user: User) -> CurrentUserResponse:
         organization_type=user.cooperative.organization_type if user.cooperative else None,
         password_change_required=bool(user.must_change_password),
     )
+
+
+@router.get("/roles", response_model=RoleCatalogue)
+def list_roles():
+    """Public catalogue of staff roles: label, what each may mutate, and the
+    organisation tracks (``cooperative`` / ``solo_farm``) it belongs to."""
+    roles = []
+    for role in Role:
+        tracks = []
+        if role.value in COOP_ROLES:
+            tracks.append("cooperative")
+        if role.value in SOLO_ROLES:
+            tracks.append("solo_farm")
+        roles.append(
+            {
+                "key": role.value,
+                "label": ROLE_LABELS[role.value],
+                "capabilities": ROLE_CAPABILITIES[role.value],
+                "tracks": tracks,
+            }
+        )
+    return {"roles": roles}
 
 
 @router.get("/me", response_model=CurrentUserResponse)

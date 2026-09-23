@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { CheckSquare, Square } from 'lucide-react'
+import { getUserRole } from '../../utils/auth'
+import { can } from '../../utils/roles'
 import { API_URL, authHeaders, fetchJson } from '../../api/config'
 import DashboardPagination from './DashboardPagination'
 
@@ -152,6 +154,7 @@ export default function CooperativeAttendance({ cooperativeId, farmers = [] }) {
         </div>
       )}
 
+      {can('recordMemberAttendance', getUserRole()) && (
       <div className="section-card" style={{ marginBottom: 24 }}>
         <div className="section-header">
           <h2>Log meeting attendance</h2>
@@ -237,6 +240,7 @@ export default function CooperativeAttendance({ cooperativeId, farmers = [] }) {
           </button>
         </form>
       </div>
+      )}
 
       <div className="admin-card">
         <div className="section-header">

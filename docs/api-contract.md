@@ -256,9 +256,28 @@ the exact Moolre/USSDK callback paths requires `Authorization: Bearer <token>`.
 Tokens contain `cooperative_id` and `role`; authenticated query/body scope is
 always replaced by the token's cooperative.
 
-`admin` can manage members, production, cooperative settings, finance, loans,
-and communications. `finance_officer` can manage finance, loans, and
-communications but receives `403` for admin-only resources.
+**Roles (#244).** The role model is `backend/app/auth/roles.py` (`Role` enum),
+mirrored by `frontend/src/utils/roles.js`. Invite/update schemas accept exactly
+these values and `GET /auth/roles` (public) returns the catalogue with labels,
+capabilities, and tracks. Reads are open to every authenticated staff account
+within its cooperative; the table lists what each role may **mutate**.
+
+| Role | Track | May mutate |
+|---|---|---|
+| `admin` | both | Everything: team, billing, settings, members, production, finance, commerce, communications |
+| `finance_officer` | cooperative | Payments, loans, settlements, buyers and sales, SMS, announcements, audit log read |
+| `field_officer` | cooperative | Produce intake, aggregation batches |
+| `operations_officer` | cooperative | Produce intake, aggregation batches |
+| `sales_officer` | cooperative | Buyers, buyer sales |
+| `farm_owner` | solo farm | Workers (incl. delete), tasks, attendance, payroll runs and disbursement, farm production |
+| `farm_manager` | solo farm | Workers, tasks, attendance, payroll runs, farm production |
+| `supervisor` | solo farm | Worker attendance only |
+
+Anything outside a role's column returns `403 Insufficient permissions`. The
+dashboard hides nav sections and action buttons the role cannot use
+(`filterNavGroups` / `can()` in `utils/roles.js`), so a finance officer no
+longer sees "Add member" or the commerce intake screens; a URL for a hidden
+section redirects to the role's default section.
 
 Demo credentials (`admin@agroos.demo` / `demo1234`) exist only when the Golden
 Path seed has run (see below). The backend refuses to start with
