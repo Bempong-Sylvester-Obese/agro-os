@@ -155,6 +155,11 @@ class User(Base):
     is_active = Column(Boolean, default=True, nullable=False)
     onboarding_role = Column(String, nullable=True)
     cooperative_id = Column(Integer, ForeignKey("cooperatives.id"), nullable=True)
+    # Set for organization administrators; grants cooperative switching within
+    # the organization and the consolidated billing view (#237).
+    organization_id = Column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     reset_token = Column(String, nullable=True)
@@ -165,6 +170,53 @@ class User(Base):
 
     # Relationship to cooperative
     cooperative = relationship("Cooperative")
+    organization = relationship("Organization", back_populates="administrators")
+
+
+# ---------------------------------------------------------------------------
+# Organization (Enterprise parent of many cooperatives)
+# ---------------------------------------------------------------------------
+
+
+class Organization(Base):
+    """Parent account that owns several cooperatives (unions, lenders, NGOs).
+
+    Tenancy stays cooperative-scoped: every operational record belongs to one
+    cooperative and every request is scoped to the caller's *active*
+    cooperative. An organization administrator (``users.organization_id``) may
+    switch their active cooperative among the organization's members and see
+    a consolidated billing view; nothing else crosses cooperative boundaries.
+
+    Billing can attach here: while the organization's subscription is live,
+    member cooperatives inherit its plan as their effective plan.
+    """
+
+    __tablename__ = "organizations"
+
+    STATUS_PENDING = "pending"  # created, contract not yet active
+    STATUS_ACTIVE = "active"
+    STATUS_EXPIRED = "expired"
+    STATUS_CANCELLED = "cancelled"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, index=True, nullable=False)
+    description = Column(Text, nullable=True)
+    billing_email = Column(String, nullable=True)
+    subscription_plan = Column(String, default="enterprise", nullable=False, server_default="enterprise")
+    subscription_status = Column(String, default=STATUS_PENDING, nullable=False, server_default=STATUS_PENDING)
+    subscription_expires_at = Column(DateTime, nullable=True)
+    contract_reference = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    cooperatives = relationship("Cooperative", back_populates="organization")
+    administrators = relationship("User", back_populates="organization")
+
+    def subscription_is_live(self, now: datetime | None = None) -> bool:
+        now = now or datetime.utcnow()
+        if self.subscription_status != self.STATUS_ACTIVE:
+            return False
+        return self.subscription_expires_at is None or now < self.subscription_expires_at
 
 
 # ---------------------------------------------------------------------------
@@ -197,11 +249,16 @@ class Cooperative(Base):
     wallet_account_id = Column(String, nullable=True)
     # 4-digit code for USSD onboarding
     ussd_code = Column(String(4), unique=True, index=True, nullable=True)
+    # Optional Enterprise parent (#237); NULL for independent cooperatives.
+    organization_id = Column(
+        Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     memberships = relationship("CooperativeMembership", back_populates="cooperative")
+    organization = relationship("Organization", back_populates="cooperatives")
 
 
 # ---------------------------------------------------------------------------

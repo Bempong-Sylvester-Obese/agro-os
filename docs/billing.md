@@ -166,6 +166,55 @@ upgrade/renewal since. `outcome` collapses the intent state machine
 (`pending → paid → consumed`) to **Pending** / **Paid** for display; the raw
 `status`, reference, and provider transaction id are kept for audit.
 
+## Enterprise organizations (consolidated billing)
+
+The Enterprise plan is contracted per **organization**, not per cooperative
+(#237). An organization is a parent row (`organizations`) that groups member
+cooperatives and carries the contract:
+
+| Column | Meaning |
+|---|---|
+| `subscription_plan` | Always `enterprise` today |
+| `subscription_status` | `pending` (created, no contract yet) → `active` → `expired` / `cancelled` |
+| `subscription_expires_at` | Contract end; `NULL` = open-ended while `active` |
+| `contract_reference` | Free-text reference to the signed agreement |
+
+### Plan inheritance
+
+`subscription_lifecycle.organization_plan_key(coop)` returns `enterprise`
+while the parent contract is **live** (`status == active` and not past
+`subscription_expires_at`). `effective_plan_key` checks this first, so every
+member cooperative is enforced against Enterprise limits (`0 = unlimited`,
+`feature_keys = ["all"]`) regardless of its own `subscription_plan`, and
+`GET /cooperatives/{id}/usage` reports `inherits_organization_plan: true`.
+When the contract lapses each cooperative falls back to its own plan and
+lifecycle state — nothing is rewritten on the cooperative rows.
+
+### Activation is an operator action
+
+Contract state is never changed through the API (`PATCH /organizations/{id}`
+only accepts profile fields). Operators run:
+
+```bash
+cd backend
+python scripts/activate_enterprise.py --org 12 --months 12 --contract "MSA-2026-014"
+python scripts/activate_enterprise.py --org 12 --cancel
+```
+
+`--months` sets `active` and extends `subscription_expires_at` from the later
+of now or the current expiry; `--cancel` sets `cancelled`. Exit code `2` means
+the organization id was not found.
+
+### Consolidated view
+
+`GET /organizations/{id}/billing` (organization admin) returns the contract
+row, one row per member cooperative (own plan, effective plan, `inherits_organization_plan`,
+members/workers/SMS meters from `entitlements.usage_summary`), totals across
+the organization, and the payment history of every member cooperative's
+intents. The dashboard renders this in Settings → **Organization**
+(`OrganizationPanel.jsx`); the sidebar `OrganizationSwitcher` lets the admin
+change active cooperative scope via `POST /organizations/{id}/switch`.
+
 ## Related
 
 - `docs/api-contract.md` → "Subscriptions and billing" (endpoints and

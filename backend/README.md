@@ -273,6 +273,25 @@ settlement still accept crop produce only.
 
 Lifecycle rules (trial length, grace period, renewal semantics) are in [`docs/billing.md`](../docs/billing.md).
 
+### Organizations (Enterprise parent)
+All admin-only; `/organizations/{id}/...` is 404 unless `{id}` is the caller's organization.
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/organizations` | Create an organization; the caller's cooperative becomes its first member |
+| GET | `/organizations/me` | Caller's organization and member cooperatives (marks the active scope) |
+| PATCH | `/organizations/{id}` | Update profile fields (`name`, `description`, `billing_email`) |
+| GET | `/organizations/{id}/cooperatives` | List member cooperatives |
+| POST | `/organizations/{id}/cooperatives` | Create a new cooperative inside the organization |
+| POST | `/organizations/{id}/switch` | Change the admin's active cooperative scope; returns a re-issued JWT (audited) |
+| GET | `/organizations/{id}/billing` | Consolidated billing: contract state, per-cooperative effective plan and usage, totals, payment history |
+
+Enterprise contracts are activated by operators, not through the API:
+`python scripts/activate_enterprise.py --org <id> --months 12 --contract <ref>`
+(`--cancel` to end a contract). Member cooperatives inherit the Enterprise plan
+while the contract is live; see [`docs/billing.md`](../docs/billing.md) and
+[`docs/architecture/tenancy-decision.md`](../docs/architecture/tenancy-decision.md).
+
 ### Webhooks
 | Method | Path | Description |
 |---|---|---|
