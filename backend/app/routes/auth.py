@@ -5,7 +5,14 @@ from sqlalchemy.orm import Session
 
 from app.database.db import get_db
 from app.models.models import AdminAuditLog, Cooperative, PendingCheckout, User
-from app.auth.roles import COOP_ROLES, ROLE_CAPABILITIES, ROLE_LABELS, SOLO_ROLES, Role
+from app.auth.roles import (
+    COOP_ROLES,
+    ROLE_CAPABILITIES,
+    ROLE_LABELS,
+    SOLO_ROLES,
+    Role,
+    roles_for_track,
+)
 from app.services import subscription_lifecycle as lifecycle
 from app.schemas.auth import (
     AcceptInviteRequest,
@@ -192,6 +199,14 @@ def register(
     if db_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
+    workspace = None
+    if current_user and current_user.cooperative_id:
+        workspace = (
+            current_user.cooperative
+            or db.query(Cooperative).filter(Cooperative.id == current_user.cooperative_id).first()
+        )
+    _assert_track_role(workspace, user_in.role)
+
     hashed_password = get_password_hash(user_in.password)
     new_user = User(
         email=user_in.email,
@@ -270,7 +285,7 @@ def update_user(
     if target.id == getattr(current_user, "id", None) and body.is_active is False:
         raise HTTPException(status_code=409, detail="You cannot deactivate your own account")
     removing_admin = target.role == "admin" and (
-        body.role == "finance_officer" or body.is_active is False
+        (body.role is not None and body.role != "admin") or body.is_active is False
     )
     if removing_admin:
         active_admins = (
@@ -285,6 +300,7 @@ def update_user(
         if active_admins <= 1:
             raise HTTPException(status_code=409, detail="At least one active administrator is required")
     if body.role is not None:
+        _assert_track_role(cooperative, body.role)
         target.role = body.role
     if body.is_active is not None:
         target.is_active = body.is_active
@@ -357,6 +373,17 @@ def logout(
         revoke_user_refresh_tokens(db, current_user.id)
     db.commit()
     return None
+
+
+def _assert_track_role(cooperative: Cooperative | None, role: str) -> None:
+    """Invite / update may only grant roles that belong to this workspace (#255)."""
+    org_type = (cooperative.organization_type if cooperative else None) or "cooperative"
+    if role not in roles_for_track(org_type):
+        track = "solo farm" if org_type == "solo_farm" else "cooperative"
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"{role} is not a {track} role.",
+        )
 
 
 def _current_user_response(user: User) -> CurrentUserResponse:
@@ -467,6 +494,13 @@ def invite_user(
 ):
     if db.query(User).filter(User.email == data.email).first():
         raise HTTPException(status_code=409, detail="Email already registered")
+    workspace = None
+    if current_user and current_user.cooperative_id:
+        workspace = (
+            current_user.cooperative
+            or db.query(Cooperative).filter(Cooperative.id == current_user.cooperative_id).first()
+        )
+    _assert_track_role(workspace, data.role)
     token = generate_reset_or_invite_token()
     expires = datetime.utcnow() + timedelta(hours=72)
     new_user = User(

@@ -217,9 +217,9 @@ def test_required_password_change_blocks_api_until_completed(
         "/auth/register",
         headers=admin_headers,
         json={
-            "email": "manager-12@example.com",
+            "email": "officer-12@example.com",
             "password": "temporary-password",
-            "role": "farm_manager",
+            "role": "finance_officer",
         },
     )
     assert created.status_code == 200
@@ -227,7 +227,7 @@ def test_required_password_change_blocks_api_until_completed(
     login = client.post(
         "/auth/login",
         json={
-            "email": "manager-12@example.com",
+            "email": "officer-12@example.com",
             "password": "temporary-password",
         },
     )
@@ -249,14 +249,14 @@ def test_required_password_change_blocks_api_until_completed(
     assert client.post(
         "/auth/login",
         json={
-            "email": "manager-12@example.com",
+            "email": "officer-12@example.com",
             "password": "temporary-password",
         },
     ).status_code == 401
     relogin = client.post(
         "/auth/login",
         json={
-            "email": "manager-12@example.com",
+            "email": "officer-12@example.com",
             "password": "permanent-password",
         },
     )
@@ -348,10 +348,10 @@ def test_role_catalogue_matches_enforced_gates(client):
 
 
 def test_admin_can_invite_and_update_every_api_role(client, db, auth_enabled):
-    from app.auth.roles import ALL_ROLES
+    from app.auth.roles import COOP_ROLES
 
     _, admin, _, headers = _tenant(db, "40")
-    for index, role in enumerate(sorted(ALL_ROLES)):
+    for index, role in enumerate(sorted(COOP_ROLES)):
         invited = client.post(
             "/auth/invite",
             headers=headers,
@@ -373,3 +373,35 @@ def test_admin_can_invite_and_update_every_api_role(client, db, auth_enabled):
         json={"email": "nobody-40@example.com", "role": "superuser"},
     )
     assert rejected.status_code == 422
+
+    off_track = client.post(
+        "/auth/invite",
+        headers=headers,
+        json={"email": "farm-owner-40@example.com", "role": "farm_owner"},
+    )
+    assert off_track.status_code == 403
+
+
+def test_solo_farm_invite_accepts_only_solo_roles(client, db, auth_enabled):
+    from app.auth.roles import SOLO_ROLES
+
+    coop, _, _, headers = _tenant(db, "41")
+    coop.organization_type = "solo_farm"
+    db.commit()
+
+    for index, role in enumerate(sorted(SOLO_ROLES)):
+        invited = client.post(
+            "/auth/invite",
+            headers=headers,
+            json={"email": f"{role}-41-{index}@example.com", "role": role},
+        )
+        assert invited.status_code == 201, (role, invited.text)
+        assert invited.json()["role"] == role
+
+    rejected = client.post(
+        "/auth/invite",
+        headers=headers,
+        json={"email": "finance-41@example.com", "role": "finance_officer"},
+    )
+    assert rejected.status_code == 403
+    assert "solo farm" in rejected.json()["detail"].lower()

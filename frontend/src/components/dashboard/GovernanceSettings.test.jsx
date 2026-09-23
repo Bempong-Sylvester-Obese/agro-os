@@ -8,6 +8,7 @@ import {
   inviteCooperativeUser,
   updateCooperativeUser,
 } from '../../api/governance'
+import { getOrganizationType } from '../../utils/auth'
 
 vi.mock('../../api/governance', () => ({
   fetchCooperativeUsers: vi.fn(),
@@ -16,9 +17,13 @@ vi.mock('../../api/governance', () => ({
   registerCooperativeUser: vi.fn(),
   updateCooperativeUser: vi.fn(),
 }))
+vi.mock('../../utils/auth', () => ({
+  getOrganizationType: vi.fn(() => 'cooperative'),
+}))
 
 describe('GovernanceSettings', () => {
   beforeEach(() => {
+    getOrganizationType.mockReturnValue('cooperative')
     fetchCooperativeUsers.mockResolvedValue([
       { id: 7, email: 'finance@example.com', role: 'finance_officer', is_active: true },
     ])
@@ -54,19 +59,32 @@ describe('GovernanceSettings', () => {
     await waitFor(() => expect(updateCooperativeUser).toHaveBeenCalledWith(7, { is_active: false }))
   })
 
-  it('offers every API role in the invite picker, grouped by track (#244)', async () => {
+  it('offers only cooperative roles in the invite picker (#255)', async () => {
     render(<GovernanceSettings />)
     const picker = await screen.findByLabelText('New user role')
     const values = Array.from(picker.querySelectorAll('option')).map((option) => option.value)
     expect(values).toEqual([
       'admin', 'finance_officer', 'field_officer', 'operations_officer', 'sales_officer',
-      'farm_owner', 'farm_manager', 'supervisor',
     ])
     expect(picker.value).toBe('finance_officer')
-    expect(Array.from(picker.querySelectorAll('optgroup')).map((group) => group.label)).toEqual(['Cooperative roles', 'Solo farm roles'])
+    expect(Array.from(picker.querySelectorAll('optgroup')).map((group) => group.label)).toEqual(['Cooperative roles'])
 
     fireEvent.change(picker, { target: { value: 'sales_officer' } })
     expect(screen.getByText('Buyers and buyer sales')).toBeTruthy()
+  })
+
+  it('offers only solo-farm roles when the workspace is a solo farm (#255)', async () => {
+    getOrganizationType.mockReturnValue('solo_farm')
+    fetchCooperativeUsers.mockResolvedValue([
+      { id: 8, email: 'manager@example.com', role: 'farm_manager', is_active: true },
+    ])
+    render(<GovernanceSettings />)
+    const picker = await screen.findByLabelText('New user role')
+    expect(Array.from(picker.querySelectorAll('option')).map((option) => option.value)).toEqual([
+      'admin', 'farm_owner', 'farm_manager', 'supervisor',
+    ])
+    expect(picker.value).toBe('farm_manager')
+    expect(Array.from(picker.querySelectorAll('optgroup')).map((group) => group.label)).toEqual(['Solo farm roles'])
   })
 
   it('surfaces the invite link when email delivery is not configured (#248)', async () => {
