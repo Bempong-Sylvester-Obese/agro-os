@@ -8,3 +8,9 @@ updates:
     directory: /frontend
     schedule:
       interval: weekly
+    ignore:
+      # @eslint/js@10 requires eslint@10; eslint-plugin-react still peers eslint<=9
+      - dependency-name: "@eslint/js"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
